@@ -19,7 +19,15 @@ building the account system for a game nobody has confirmed is fun yet is the wr
   `--lobby-size 2` and a new `--server-bin`/port range, the same way ECOWAR's own matchmaker was
   stood up. Real work here is the seed-plumbing S370 already had to build for real for ECOWAR
   (the matchmaker generates a match seed, passes it to both the spawned server via `--seed` and
-  every client via `MatchFoundMsg.seed`) — reused directly, not re-derived.
+  every client via `MatchFoundMsg.seed`) — reused directly, not re-derived. **Note**: this copy
+  (like every game's own `apps/matchmaker` copy) is a duplicated file, not shared infrastructure
+  — `EMILY/docs/PARENGINE_NORTHSTAR.md` names this exact pattern (a live example from this same
+  session: ECOWAR's own S370 seed fix already left REDGARDEN's identical copy behind). D2's own
+  wire-protocol framing (`NetHeader` + typed snapshot packets, MTU-split) is named there as
+  `stdlib/engine/net_snapshot.prn`'s own real first intended consumer — if that PARENA module
+  exists by the time D2 actually starts, build against it instead of hand-porting ECOWAR's
+  structs again; if it doesn't yet, port by hand as planned and this becomes the reason it gets
+  built sooner rather than later.
 - The real-time shared draft pool ("Debris Field"), server-authoritative, resolving the race
   condition `SPEC_REVIEW.md` §4 names: first-claim-received-wins, explicit "Sniped!" rejection to
   the losing claimant, never a silent client-side desync.
