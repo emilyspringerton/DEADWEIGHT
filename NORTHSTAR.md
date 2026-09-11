@@ -179,35 +179,59 @@ fork named explicitly" precedent every other scoping doc in this monorepo alread
   premature to lock in exact byte layouts before the core loop's own real shape (which fields the
   grid needs) is proven in a working prototype.
 
+## Real holes found on a second pass (2026-09-11, same session)
+
+Founder real-time: "review the document again it was written by gemini mostly flash so there may
+be holes or opportunities for improving the spec." Full write-up: `docs/SPEC_REVIEW.md`. Real
+findings, each resolved for V0 rather than just flagged: the transcript builds two incompatible
+splitting systems (1-D quantized-fraction Knapsack, then a 2-D polyomino/Dead-Square system) and
+never reconciles them — resolved by authoring fragment shapes per item rather than computing them
+generically; no single-match win condition is ever stated (resolved: hull% at timeout, cargo value
+as tiebreak); energy-routing conflict resolution for many-to-one wiring is unspecified (resolved:
+one-to-many only, matching the Splitter Node's own real design); the real-time shared draft pool
+has no stated race-condition rule (resolved: server-authoritative first-claim-wins with an
+explicit "Sniped!" rejection); the `Naked Short` Mystery card is close to a free-roll exploit as
+written (moot for V0 — the whole derivatives deck is already deferred — but named for whoever
+designs that layer for real); and several 300-Flow Ultimates (`Realm Warp`, `Command: Shockwave`)
+have no stated counterplay and are excluded even from the post-V0 catalog until redesigned, not
+just deferred for complexity.
+
 ## Phased plan (not yet built)
+
+Each phase below now has its own real, detailed spec doc in `docs/` — this section stays the
+short index; see each doc for concrete tasks and acceptance criteria.
 
 - [ ] **D0: repo hygiene.** `CLAUDE.md` (this session, alongside this doc), register `DEADWEIGHT-
   NORTH` in `EMILY/context/golden-docs-index.md`, add a `DEADWEIGHT` row to the root
   `/home/fatbaby/CLAUDE.md` repo table (every repo in this monorepo gets one).
-- [ ] **D1: the core loop, single-player/local only.** Grid, polyomino placement, split mechanics
-  +tax, energy routing, one weapon type, one shield type — playable against a fixed dummy grid,
-  no networking yet. Proves the mechanical core is actually fun before a single line of server
-  code exists.
-- [ ] **D2: server-authoritative 1v1.** New `apps/deadweight_server` (hand-written C, same
-  architecture as `arena_server`) + `apps/deadweight_matchmaker` (literally `apps/matchmaker`
-  reused with new flags/ports) + a placeholder heuristic bot. IDUNA: new `game='deadweight'`
-  scope, new `DEADWEIGHT-BOTS` M2M agent identity, guest-account provider (`provider="guest"`)
-  built for real here — the one genuinely new IDUNA auth capability this whole ask needs.
-- [ ] **D3: Windows client.** Hand-written C/SDL2 shell (`apps/deadweight_client`), same shape as
-  `apps/arena`. First real PARENA mod integration for combat-decision logic (bot AI nudges,
-  damage-resolution edge cases) — same "PARENA mod is the trigger, host does the real work" idiom.
-- [ ] **D4: Android client.** Hand-written native Kotlin/Java shell, `MJOLNIR`'s own real
-  architecture as the template (not a fork of it — a new app). PARENA's Java emitter used only for
-  the specific scalar decision helpers its real v0 capability actually reaches (mirroring
-  `SPIDERBEETLE`'s own honest precedent) — full combat logic stays server-authoritative either way,
-  so the Java emitter's narrowness is a real but non-blocking constraint, not a project-ending one.
-- [ ] **D5: EOSUI Option C, shared.** Once `stdlib/ui/style.prn` exists (a real, separate,
-  cross-repo deliverable — `EOSUI-NORTH`'s own item, not owned solely by this repo), retrofit both
-  clients' shop/ticker/tab UI onto it, becoming its second real consumer alongside BRAWLPIT.
-- [ ] **D6: V0 launch bar.** `bash scripts/build.sh` (or Bazel-equivalent, matching this monorepo's
-  own convention) clean on both client targets + the server, live-verified 1v1 match (human vs.
-  bot minimum, human vs. human if a second tester is available), Apple + CHANGELOG + commit/push
-  per this repo's own `CLAUDE.md` protocol (once written).
+- [ ] **D1: the core loop, single-player/local only** — `docs/PHASE_D1_CORE_LOOP.md`. Grid,
+  polyomino placement, split mechanics +tax, energy routing, one weapon type, one shield type —
+  playable against a fixed dummy grid, no networking yet. Proves the mechanical core is actually
+  fun before a single line of server code exists.
+- [ ] **D2: server-authoritative 1v1** — `docs/PHASE_D2_SERVER_AND_ACCOUNTS.md`. New
+  `apps/deadweight_server` (hand-written C, same architecture as `arena_server`) +
+  `apps/deadweight_matchmaker` (literally `apps/matchmaker` reused with new flags/ports) + a
+  placeholder heuristic bot. IDUNA: new `game='deadweight'` scope, new `DEADWEIGHT-BOTS` M2M
+  agent identity, guest-account provider (`provider="guest"`) built for real here — the one
+  genuinely new IDUNA auth capability this whole ask needs.
+- [ ] **D3: Windows client** — `docs/PHASE_D3_WINDOWS_CLIENT.md`. Hand-written C/SDL2 shell
+  (`apps/deadweight_client`), same shape as `apps/arena`. First real PARENA mod integration for
+  combat-decision logic (bot AI nudges, damage-resolution edge cases) — same "PARENA mod is the
+  trigger, host does the real work" idiom.
+- [ ] **D4: Android client** — `docs/PHASE_D4_ANDROID_CLIENT.md`. Hand-written native Kotlin/Java
+  shell, `MJOLNIR`'s own real architecture as the template (not a fork of it — a new app).
+  PARENA's Java emitter used only for the specific scalar decision helpers its real v0 capability
+  actually reaches (mirroring `SPIDERBEETLE`'s own honest precedent) — full combat logic stays
+  server-authoritative either way, so the Java emitter's narrowness is a real but non-blocking
+  constraint, not a project-ending one.
+- [ ] **D5: EOSUI Option C, shared** — `docs/PHASE_D5_D6_UI_AND_LAUNCH.md`. Once
+  `stdlib/ui/style.prn` exists (a real, separate, cross-repo deliverable — `EOSUI-NORTH`'s own
+  item, not owned solely by this repo), retrofit both clients' shop/ticker/tab UI onto it,
+  becoming its second real consumer alongside BRAWLPIT.
+- [ ] **D6: V0 launch bar** — `docs/PHASE_D5_D6_UI_AND_LAUNCH.md`. `bash scripts/build.sh` (or
+  Bazel-equivalent, matching this monorepo's own convention) clean on both client targets + the
+  server, live-verified 1v1 match (human vs. bot minimum, human vs. human if a second tester is
+  available), Apple + CHANGELOG + commit/push per this repo's own `CLAUDE.md` protocol.
 
 No code written yet — this pass is scoping only, matching `LO`, `MIXFORGE`, `PARENA`'s own LLVM-
 backend scoping, and every other "real critical review before code" precedent this monorepo
