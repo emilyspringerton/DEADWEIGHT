@@ -1,6 +1,7 @@
 # CHANGELOG
 
 ## 2026-09-18
+- docs(card_expansion): graded Haiku's card-expansion proposal + meta prompt, wrote proposal review, metaprompt engineering pass, and v2 meta prompt (not yet run against a model) (sess-20260918-1725-497f394f)
 - fix(android): LOCK IN crashed the app -- Session sent frames on the UI thread (NetworkOnMainThreadException); all outbound writes now go through a single writer thread + regression test (sess-20260918-1725-497f394f)
 - S503-14b: dw_bot hybrid brain -- hand-written MLP (PARENA bot_brain.prn -> core/bot_brain.c) blended with heuristic archetype prior; distilled default weights embedded; --brain/--weights/--wh/--wn/--sigma; tests + win-rate table (sess-20260918-1725-497f394f)
 - S503-09: dw_gui SDL2 card client (Windows+Linux), build.sh --gui, headless selftest, CI gui job + release packaging (sess-20260918-1725-497f394f)
