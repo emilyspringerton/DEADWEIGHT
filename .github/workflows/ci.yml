@@ -77,6 +77,43 @@ jobs:
             build/dw_server.exe
           if-no-files-found: error
 
+  gui:
+    name: SDL2 GUI (Linux + Windows, headless selftest)
+    needs: version
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y mingw-w64 file libsdl2-dev patchelf zip imagemagick
+          wget -q https://www.libsdl.org/release/SDL2-devel-2.28.5-mingw.tar.gz
+          tar xzf SDL2-devel-2.28.5-mingw.tar.gz
+          mv SDL2-2.28.5/x86_64-w64-mingw32 ./sdl2_mingw
+      # Builds dw_gui (Linux) + dw_gui.exe (mingw), runs the headless selftest (SDL dummy video driver): the GUI plays a
+      # full match against a real dw_server + dw_bot through its own state machine.
+      - name: Build + selftest
+        run: DW_VERSION=${{ needs.version.outputs.version }} SDL2_MINGW=./sdl2_mingw scripts/build.sh --gui --windows
+      # A plain `gcc -lSDL2` build dynamically links libSDL2-2.0.so.0, absent on a typical fresh Linux box: bundle it and
+      # point RPATH at $ORIGIN/lib (same mechanism BRAWLPIT/PITVIPER use).
+      - name: Package
+        run: |
+          set -euo pipefail
+          mkdir -p pkg/lin/lib pkg/win
+          cp build/dw_gui pkg/lin/dw_gui
+          cp /usr/lib/x86_64-linux-gnu/libSDL2-2.0.so.0 pkg/lin/lib/
+          patchelf --set-rpath '$ORIGIN/lib' pkg/lin/dw_gui
+          tar -C pkg/lin -czf dw_gui_linux_x86_64.tar.gz dw_gui lib
+          cp build/dw_gui.exe sdl2_mingw/bin/SDL2.dll pkg/win/
+          (cd pkg/win && zip -q ../../dw_gui_windows.zip dw_gui.exe SDL2.dll)
+      - uses: actions/upload-artifact@v4
+        with:
+          name: gui-${{ github.run_number }}
+          path: |
+            dw_gui_linux_x86_64.tar.gz
+            dw_gui_windows.zip
+          if-no-files-found: error
+
   android:
     name: Android (JVM parity test + APK)
     needs: version
@@ -120,7 +157,7 @@ jobs:
 
   release:
     name: Tag & Release
-    needs: [version, core, windows, android]
+    needs: [version, core, windows, gui, android]
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     runs-on: ubuntu-latest
     permissions:
@@ -143,6 +180,8 @@ jobs:
           cp artifacts/linux-*/dw_client "out/dw_client_linux_x86_64"
           cp artifacts/windows-*/dw_client.exe out/dw_client.exe
           cp artifacts/windows-*/dw_server.exe out/dw_server.exe
+          cp artifacts/gui-*/dw_gui_linux_x86_64.tar.gz out/
+          cp artifacts/gui-*/dw_gui_windows.zip out/
           cp artifacts/android-*/deadweight.apk "out/deadweight-${TAG}.apk"
           # Create the tag server-side via the release API (--target). A plain `git push origin $TAG` from the runner is
           # rejected ("refusing to allow a GitHub App to create or update workflow ... without `workflows`

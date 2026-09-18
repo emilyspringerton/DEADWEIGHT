@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
-# Clean build + test. Usage: scripts/build.sh [--windows] [--android] [--all]
+# Clean build + test. Usage: scripts/build.sh [--windows] [--android] [--gui] [--all]
+# --gui needs libsdl2-dev (pkg-config sdl2); it is NOT part of --all so machines without SDL stay green. With
+# --gui --windows the Windows dw_gui.exe is also cross-built if SDL2_MINGW (or ./sdl2_mingw) points at the SDL2 mingw dev tree.
 # Default: C core, ASan+UBSan tests, server+client binaries. Anything that fails stops the script (set -e).
 set -euo pipefail
 cd "$(dirname "$0")/.."
@@ -50,5 +52,24 @@ if [[ "$ARGS" == *" --android "* || "$ARGS" == *" --all "* ]]; then
   echo "== Android: core JVM tests + APK =="
   "$BAZEL" run //android:core_test -- "$PWD/tests/parity_vectors.txt"
   "$BAZEL" build //android:deadweight
+fi
+if [[ "$ARGS" == *" --gui "* ]]; then
+  echo "== GUI: dw_gui (SDL2) + headless selftest =="
+  command -v pkg-config >/dev/null && pkg-config --exists sdl2 || { echo "--gui requires libsdl2-dev (pkg-config sdl2)"; exit 1; }
+  GUI_SRC="apps/gui/main.c core/client.c core/policy.c core/protocol.c core/card_rules.c core/iduna.c core/http.c"
+  gcc $CFLAGS_BASE -O2 $(pkg-config --cflags sdl2) $GUI_SRC $(pkg-config --libs sdl2) -o build/dw_gui
+  ./build/dw_gui --version
+  tests/test_gui_selftest.sh
+  if [[ "$ARGS" == *" --windows "* ]]; then
+    SDLW="${SDL2_MINGW:-./sdl2_mingw}"
+    if [ -d "$SDLW/include" ]; then
+      echo "== GUI: Windows cross-build =="
+      x86_64-w64-mingw32-gcc $CFLAGS_BASE -O2 -I"$SDLW/include" -I"$SDLW/include/SDL2" $GUI_SRC -o build/dw_gui.exe \
+        -L"$SDLW/lib" -lmingw32 -lSDL2 -lws2_32 -mwindows
+      file build/dw_gui.exe | grep -q PE32
+    else
+      echo "(skipping Windows GUI: no SDL2 mingw tree at $SDLW; set SDL2_MINGW)"
+    fi
+  fi
 fi
 echo "BUILD CLEAN"
