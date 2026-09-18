@@ -18,11 +18,14 @@ typedef struct {
     long target_matches;                   /* stop after this many completed matches (<=0: forever) */
     int think_ms;                          /* artificial delay before each play */
     int verbose;
+    int idle_timeout_ms;                   /* give up (-1) after this long with no server message; 0 = wait forever */
+    volatile int *stop;                    /* optional: set nonzero (e.g. from a signal handler) to return -3 */
     /* out */
     long done, wins, losses, draws;
 } DwRunOpts;
 
 /* Connect-less driver: HELLO, QUEUE, play matches until target reached. Returns 0 = target reached,
- * -1 = connection lost/error (caller may reconnect), -2 = server rejected us (ERROR frame). */
+ * -1 = connection lost/error/idle timeout (caller may reconnect), -2 = server rejected us (ERROR frame),
+ * -3 = stop requested. */
 int dwc_run(DwClient *c, DwRunOpts *o);
 #endif

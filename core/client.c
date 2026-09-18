@@ -43,9 +43,13 @@ int dwc_run(DwClient *c, DwRunOpts *o) {
     m.type = DW_C_HELLO; m.u.hello.proto = DW_PROTO_VERSION; m.u.hello.mode = DW_MODE_CARD; m.u.hello.kind = (uint8_t)o->kind;
     strncpy(m.u.hello.name, o->name, DW_NAME_LEN);
     if (dwc_send(c, &m)) return -1;
+    int idle = 0;
     for (;;) {
-        int r = dwc_recv(c, &m, 60000);
-        if (r <= 0) return -1;
+        if (o->stop && *o->stop) return -3;
+        int r = dwc_recv(c, &m, 500);
+        if (r < 0) return -1;
+        if (r == 0) { idle += 500; if (o->idle_timeout_ms > 0 && idle >= o->idle_timeout_ms) return -1; continue; }
+        idle = 0;
         switch (m.type) {
         case DW_S_WELCOME: { DwMsg q; memset(&q, 0, sizeof q); q.type = DW_C_QUEUE; if (dwc_send(c, &q)) return -1; break; }
         case DW_S_QUEUED: break;

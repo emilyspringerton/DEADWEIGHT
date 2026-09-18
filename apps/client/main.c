@@ -25,7 +25,7 @@ int main(int argc, char **argv) {
     DwClient c;
     if (dwc_connect(&c, host, port)) { fprintf(stderr, "dw_client: cannot connect to %s:%d\n", host, port); return 1; }
     DwRunOpts o; memset(&o, 0, sizeof o);
-    o.name = name; o.kind = kind; o.policy = policy; o.seed = seed; o.target_matches = matches; o.think_ms = think; o.verbose = !quiet;
+    o.name = name; o.kind = kind; o.policy = policy; o.seed = seed; o.target_matches = matches; o.think_ms = think; o.verbose = !quiet; o.idle_timeout_ms = 60000;
     int rc = dwc_run(&c, &o);
     dwc_close(&c);
     printf("dw_client: matches=%ld wins=%ld losses=%ld draws=%ld\n", o.done, o.wins, o.losses, o.draws);
