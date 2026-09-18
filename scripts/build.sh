@@ -24,8 +24,10 @@ gcc $CFLAGS_BASE -g -fsanitize=address,undefined -fno-sanitize-recover=all \
 ./build/test_match
 
 echo "== C: server + client =="
-gcc $CFLAGS_BASE -O2 apps/server/main.c core/card_rules.c -o build/dw_server
-gcc $CFLAGS_BASE -O2 apps/client/main.c core/card_rules.c -o build/dw_client
+SERVER_SRC="apps/server/main.c core/match.c core/protocol.c core/card_rules.c"
+CLIENT_SRC="apps/client/main.c core/client.c core/policy.c core/protocol.c core/card_rules.c"
+gcc $CFLAGS_BASE -O2 $SERVER_SRC -o build/dw_server
+gcc $CFLAGS_BASE -O2 $CLIENT_SRC -o build/dw_client
 ./build/dw_server --version
 ./build/dw_client --version
 
@@ -33,8 +35,8 @@ gcc $CFLAGS_BASE -O2 apps/client/main.c core/card_rules.c -o build/dw_client
 ARGS=" $* "
 if [[ "$ARGS" == *" --windows "* || "$ARGS" == *" --all "* ]]; then
   echo "== Windows cross-build (mingw) =="
-  x86_64-w64-mingw32-gcc $CFLAGS_BASE -O2 apps/client/main.c core/card_rules.c -o build/dw_client.exe -lws2_32
-  x86_64-w64-mingw32-gcc $CFLAGS_BASE -O2 apps/server/main.c core/card_rules.c -o build/dw_server.exe -lws2_32
+  x86_64-w64-mingw32-gcc $CFLAGS_BASE -O2 $CLIENT_SRC -o build/dw_client.exe -lws2_32
+  x86_64-w64-mingw32-gcc $CFLAGS_BASE -O2 $SERVER_SRC -o build/dw_server.exe -lws2_32
   file build/dw_client.exe | grep -q PE32 
 fi
 if [[ "$ARGS" == *" --android "* || "$ARGS" == *" --all "* ]]; then
