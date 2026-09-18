@@ -13,7 +13,7 @@
 #define MAX_MATCHES 256
 #define INBUF 1024
 #define OUTBUF 8192
-#define ROUND_MS 20000
+#define ROUND_MS_DEFAULT 20000
 #define HELLO_TIMEOUT_MS 10000
 
 enum { S_FREE = 0, S_CONNECTED, S_READY, S_QUEUED, S_IN_MATCH };
@@ -36,6 +36,7 @@ static Match matches[MAX_MATCHES];
 static volatile sig_atomic_t stop_flag = 0;
 static int opt_ff = 0, opt_noauth = 1, opt_verbose = 0;
 static long opt_max_matches = -1;
+static int opt_round_ms = ROUND_MS_DEFAULT;
 static const char *opt_log_dir = NULL;
 static uint32_t next_session = 1, next_match = 1, seed_state = 0x9E3779B9u;
 static uint64_t queue_seq = 0;
@@ -87,10 +88,10 @@ static void send_round_start(Match *mt) {
         m.u.round_start.round = (uint8_t)v.round; m.u.round_start.hull_you = v.hull_you; m.u.round_start.hull_opp = v.hull_opp;
         m.u.round_start.energy_you = v.energy_you; m.u.round_start.energy_opp = v.energy_opp;
         memcpy(m.u.round_start.hand, v.hand, 4); m.u.round_start.opp_hand_size = v.opp_hand_size;
-        m.u.round_start.deadline_ms = opt_ff ? 0 : ROUND_MS;
+        m.u.round_start.deadline_ms = opt_ff ? 0 : (uint16_t)opt_round_ms;
         send_msg(mt->conn[s], &m);
     }
-    mt->deadline = opt_ff ? 0 : dw_now_ms() + ROUND_MS;
+    mt->deadline = opt_ff ? 0 : dw_now_ms() + (uint64_t)opt_round_ms;
 }
 
 static void write_match_log(const Match *mt) {
@@ -309,9 +310,10 @@ int main(int argc, char **argv) {
         else if (!strcmp(argv[i], "--no-auth")) opt_noauth = 1;
         else if (!strcmp(argv[i], "--match-log") && i + 1 < argc) opt_log_dir = argv[++i];
         else if (!strcmp(argv[i], "--max-matches") && i + 1 < argc) opt_max_matches = atol(argv[++i]);
+        else if (!strcmp(argv[i], "--round-ms") && i + 1 < argc) { opt_round_ms = atoi(argv[++i]); if (opt_round_ms < 50 || opt_round_ms > 60000) { fprintf(stderr, "--round-ms must be 50..60000\n"); return 2; } }
         else if (!strcmp(argv[i], "--verbose")) opt_verbose = 1;
         else {
-            fprintf(stderr, "usage: dw_server [--port N] [--bind ADDR] [--fast-forward] [--no-auth] [--match-log DIR] [--max-matches N] [--verbose] [--version]\n");
+            fprintf(stderr, "usage: dw_server [--port N] [--bind ADDR] [--fast-forward] [--no-auth] [--match-log DIR] [--max-matches N] [--round-ms N] [--verbose] [--version]\n");
             return 2;
         }
     }

@@ -36,6 +36,9 @@ gcc $CFLAGS_BASE -O2 $BOT_SRC -o build/dw_bot
 
 
 ARGS=" $* "
+echo "== e2e: sanitized server + 3-bot pool + clients =="
+tests/test_server_e2e.sh
+
 if [[ "$ARGS" == *" --windows "* || "$ARGS" == *" --all "* ]]; then
   echo "== Windows cross-build (mingw) =="
   x86_64-w64-mingw32-gcc $CFLAGS_BASE -O2 $CLIENT_SRC -o build/dw_client.exe -lws2_32

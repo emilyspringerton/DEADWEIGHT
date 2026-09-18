@@ -67,10 +67,14 @@ int dwc_run(DwClient *c, DwRunOpts *o) {
             break;
         }
         case DW_S_PLAY_ACK: break;
-        case DW_S_PLAY_REJECT: {   /* should not happen with legal policies; fall back to a pass so the round can't stall */
-            DwMsg p; memset(&p, 0, sizeof p); p.type = DW_C_PLAY; p.u.play.match_id = m.u.reject.match_id; p.u.play.round = m.u.reject.round; p.u.play.slot = -1;
-            if (o->verbose) printf("play rejected (reason %d), passing\n", m.u.reject.reason);
-            if (dwc_send(c, &p)) return -1;
+        case DW_S_PLAY_REJECT: {
+            /* Only a bad/illegal card is worth retrying (as a pass). Stale-round/no-match/already-locked rejects
+             * must NOT be answered, or a late client would ping-pong rejects with the server forever. */
+            if (o->verbose) printf("play rejected (reason %d)\n", m.u.reject.reason);
+            if (m.u.reject.reason == DW_REJ_ILLEGAL_CARD || m.u.reject.reason == DW_REJ_BAD_SLOT) {
+                DwMsg p; memset(&p, 0, sizeof p); p.type = DW_C_PLAY; p.u.play.match_id = m.u.reject.match_id; p.u.play.round = m.u.reject.round; p.u.play.slot = -1;
+                if (dwc_send(c, &p)) return -1;
+            }
             break;
         }
         case DW_S_ROUND_RESULT:
