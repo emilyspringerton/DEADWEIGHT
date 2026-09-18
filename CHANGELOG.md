@@ -1,6 +1,7 @@
 # CHANGELOG
 
 ## 2026-09-18
+- S503-09: dw_gui SDL2 card client (Windows+Linux), build.sh --gui, headless selftest, CI gui job + release packaging (sess-20260918-1725-497f394f)
 - S503-10: NOCK-built card art (art/build_art.sh) wired into CardView with shape fallback (sess-20260918-1725-497f394f)
 - training: AUTH frame (0x06) in codec/env/fake server; integration + dry-run trainer verified against real dw_server; fixed ghost-queue pairing on opponent shutdown (sess-20260918-1725-497f394f)
 - Android: AUTH frame for full IDUNA tokens, 1024 max frame, integration test vs real dw_server+dw_bot (S503-07) (sess-20260918-1725-497f394f)
