@@ -155,9 +155,30 @@ jobs:
           path: deadweight.apk
           if-no-files-found: error
 
+  construct:
+    name: Generate Source Construct (Principle 21)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Generate CONSTRUCT
+        run: bash scripts/generate_construct.sh DEADWEIGHT_CONSTRUCT.txt
+      - name: Verify determinism
+        run: |
+          bash scripts/generate_construct.sh DEADWEIGHT_CONSTRUCT.txt.check
+          if ! cmp DEADWEIGHT_CONSTRUCT.txt DEADWEIGHT_CONSTRUCT.txt.check; then
+            echo "ERROR: CONSTRUCT not deterministic!"
+            diff DEADWEIGHT_CONSTRUCT.txt DEADWEIGHT_CONSTRUCT.txt.check || true
+            exit 1
+          fi
+      - uses: actions/upload-artifact@v4
+        with:
+          name: construct-${{ github.run_number }}
+          path: DEADWEIGHT_CONSTRUCT.txt
+          if-no-files-found: error
+
   release:
     name: Tag & Release
-    needs: [version, core, windows, gui, android]
+    needs: [version, core, windows, gui, android, construct]
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     runs-on: ubuntu-latest
     permissions:
@@ -183,6 +204,7 @@ jobs:
           cp artifacts/gui-*/dw_gui_linux_x86_64.tar.gz out/
           cp artifacts/gui-*/dw_gui_windows.zip out/
           cp artifacts/android-*/deadweight.apk "out/deadweight-${TAG}.apk"
+          cp artifacts/construct-*/DEADWEIGHT_CONSTRUCT.txt out/
           # Create the tag server-side via the release API (--target). A plain `git push origin $TAG` from the runner is
           # rejected ("refusing to allow a GitHub App to create or update workflow ... without `workflows`
           # permission") because the GITHUB_TOKEN treats the workflow file in history as part of the new ref.

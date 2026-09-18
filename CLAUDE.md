@@ -74,6 +74,14 @@ emily changelog add DEADWEIGHT "<what changed>"
 # or manually: append a dated bullet under ## YYYY-MM-DD in DEADWEIGHT/CHANGELOG.md
 ```
 
+## CONSTRUCT File Generation (standing instruction, monorepo Principle 21)
+
+DEADWEIGHT auto-generates a CONSTRUCT file on every release via CI (`.github/workflows/ci.yml`). The CONSTRUCT is a deterministic plaintext snapshot of all repo source files with SHA256 hashes and sizes — used for reproducible builds, audit trails, and offline source access.
+
+The generation script (`scripts/generate_construct.sh`) uses `git ls-files` for byte-for-byte determinism and verifies itself on the second run (same tree → identical output). No manual work needed — it happens automatically during the release build.
+
+See the main `CLAUDE.md`'s "Principle 21: CONSTRUCT Files" section for the full rationale and shared implementation patterns across the monorepo.
+
 ## README Reality — SAGA reconciliation (standing instruction, monorepo-wide)
 
 Founder real-time, 2026-09-18: if a change of yours **substantially changes the claim of this project's core README**,
