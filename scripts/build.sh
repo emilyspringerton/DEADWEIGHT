@@ -13,6 +13,11 @@ gcc $CFLAGS_BASE -g -fsanitize=address,undefined -fno-sanitize-recover=all \
     tests/test_rules.c core/card_rules.c -o build/test_rules
 ./build/test_rules tests/parity_vectors.txt
 
+echo "== C: protocol codec tests (ASan+UBSan) =="
+gcc $CFLAGS_BASE -g -fsanitize=address,undefined -fno-sanitize-recover=all \
+    tests/test_protocol.c core/protocol.c -o build/test_protocol
+./build/test_protocol
+
 echo "== C: server + client =="
 gcc $CFLAGS_BASE -O2 apps/server/main.c core/card_rules.c -o build/dw_server
 gcc $CFLAGS_BASE -O2 apps/client/main.c core/card_rules.c -o build/dw_client

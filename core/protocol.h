@@ -1,0 +1,51 @@
+/* DEADWEIGHT wire protocol v1 codec (docs/WIRE_PROTOCOL.md). Little-endian, explicit byte ops (no struct
+ * punning, no alignment assumptions). Frame = u16 len (bytes after this field) + u8 type + payload. */
+#ifndef DW_PROTOCOL_H
+#define DW_PROTOCOL_H
+#include <stddef.h>
+#include <stdint.h>
+
+#define DW_PROTO_VERSION 1
+#define DW_MAX_FRAME_LEN 256      /* max value of the u16 len field */
+#define DW_MAX_TOKEN 200
+#define DW_NAME_LEN 16
+
+enum {
+    DW_C_HELLO = 0x01, DW_C_QUEUE = 0x02, DW_C_PLAY = 0x03, DW_C_LEAVE = 0x04, DW_C_PING = 0x05,
+    DW_S_WELCOME = 0x81, DW_S_QUEUED = 0x82, DW_S_MATCH_FOUND = 0x83, DW_S_ROUND_START = 0x84,
+    DW_S_PLAY_ACK = 0x85, DW_S_PLAY_REJECT = 0x86, DW_S_ROUND_RESULT = 0x87, DW_S_MATCH_END = 0x88,
+    DW_S_PONG = 0x89, DW_S_ERROR = 0x8F
+};
+enum { DW_MODE_CARD = 0, DW_MODE_BACKPACK = 1 };
+enum { DW_KIND_HUMAN = 0, DW_KIND_BOT = 1 };
+enum { DW_FLAG_FAST_FORWARD = 1, DW_FLAG_AUTH_REQUIRED = 2 };
+enum { DW_REJ_ILLEGAL_CARD = 1, DW_REJ_BAD_SLOT = 2, DW_REJ_WRONG_ROUND = 3, DW_REJ_ALREADY_LOCKED = 4, DW_REJ_NO_MATCH = 5 };
+enum { DW_RES_LOSS = 0, DW_RES_WIN = 1, DW_RES_DRAW = 2 };
+enum { DW_END_HULL = 0, DW_END_ROUNDS = 1, DW_END_FORFEIT = 2, DW_END_SERVER = 3 };
+enum { DW_ERR_BAD_PROTO = 1, DW_ERR_AUTH = 2, DW_ERR_BAD_FRAME = 3, DW_ERR_BAD_STATE = 4 };
+
+typedef struct {
+    uint8_t type;
+    union {
+        struct { uint8_t proto, mode, kind; char name[DW_NAME_LEN + 1]; uint8_t token_len; uint8_t token[DW_MAX_TOKEN]; } hello;
+        struct { uint32_t match_id; uint8_t round; int8_t slot; } play;
+        struct { uint32_t nonce; } ping;             /* PING and PONG */
+        struct { uint32_t session_id; uint8_t flags; } welcome;
+        struct { uint16_t waiting; } queued;
+        struct { uint32_t match_id, seed; uint8_t seat; char opp_name[DW_NAME_LEN + 1]; uint8_t opp_kind; } match_found;
+        struct { uint8_t round; int8_t hull_you, hull_opp; uint8_t energy_you, energy_opp; int8_t hand[4];
+                 uint8_t opp_hand_size; uint16_t deadline_ms; } round_start;
+        struct { uint32_t match_id; uint8_t round; } ack;
+        struct { uint32_t match_id; uint8_t round, reason; } reject;
+        struct { uint8_t round; int8_t card_you, card_opp; uint8_t dmg_you, dmg_opp; int8_t hull_you, hull_opp; } round_result;
+        struct { uint32_t match_id; uint8_t result, reason; } match_end;
+        struct { uint8_t code; } error;
+    } u;
+} DwMsg;
+
+/* Encode one message. Returns total bytes written (incl. the 2-byte len), or -1 on bad input / small buffer. */
+int dw_encode(const DwMsg *m, uint8_t *buf, size_t cap);
+/* Decode one frame from buf[0..len). Returns 1 = decoded (*consumed set), 0 = need more bytes, -1 = malformed
+ * (oversized len, unknown type, payload size mismatch, invalid token_len). After -1 the connection must close. */
+int dw_decode(const uint8_t *buf, size_t len, DwMsg *out, size_t *consumed);
+#endif
