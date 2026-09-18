@@ -7,9 +7,9 @@ public final class Protocol {
     private Protocol() {}
 
     public static final int PROTO = 1;
-    public static final int MAX_FRAME = 256;
+    public static final int MAX_FRAME = 1024; // only AUTH exceeds 256
 
-    public static final int C_HELLO = 0x01, C_QUEUE = 0x02, C_PLAY = 0x03, C_LEAVE = 0x04, C_PING = 0x05;
+    public static final int C_HELLO = 0x01, C_QUEUE = 0x02, C_PLAY = 0x03, C_LEAVE = 0x04, C_PING = 0x05, C_AUTH = 0x06;
     public static final int S_WELCOME = 0x81, S_QUEUED = 0x82, S_MATCH_FOUND = 0x83, S_ROUND_START = 0x84,
         S_PLAY_ACK = 0x85, S_PLAY_REJECT = 0x86, S_ROUND_RESULT = 0x87, S_MATCH_END = 0x88, S_PONG = 0x89,
         S_ERROR = 0x8F;
@@ -17,7 +17,8 @@ public final class Protocol {
     public static final int MODE_CARD = 0;
     public static final int KIND_HUMAN = 0, KIND_BOT = 1;
     public static final int RESULT_LOSS = 0, RESULT_WIN = 1, RESULT_DRAW = 2;
-    public static final int MAX_TOKEN = 200;
+    public static final int MAX_TOKEN = 200; // inline HELLO token
+    public static final int MAX_AUTH_TOKEN = 900;
 
     // ---- encoding ----
     private static byte[] frame(int type, int payloadLen) {
@@ -42,6 +43,15 @@ public final class Protocol {
         System.arraycopy(nm, 0, f, 6, Math.min(nm.length, 15)); // always NUL-terminated
         f[22] = (byte) token.length;
         System.arraycopy(token, 0, f, 23, token.length);
+        return f;
+    }
+
+    /** AUTH frame carrying a full IDUNA JWT (~450-500 bytes; too big for HELLO's inline field). */
+    public static byte[] auth(byte[] token) {
+        if (token == null || token.length > MAX_AUTH_TOKEN) throw new IllegalArgumentException("bad token length");
+        byte[] f = frame(C_AUTH, 2 + token.length);
+        f[3] = (byte) token.length; f[4] = (byte) (token.length >> 8);
+        System.arraycopy(token, 0, f, 5, token.length);
         return f;
     }
 

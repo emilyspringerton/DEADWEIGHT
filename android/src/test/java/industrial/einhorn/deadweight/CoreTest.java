@@ -62,7 +62,7 @@ public final class CoreTest {
         try { Protocol.hello(0, 0, "x", new byte[201]); fails++; System.out.println("FAIL oversize token accepted"); }
         catch (IllegalArgumentException ok) { }
         // oversize / zero length prefix through the real transport
-        for (int bad : new int[]{257, 0, 65535}) {
+        for (int bad : new int[]{1025, 0, 65535}) {
             try (ServerSocket ss = new ServerSocket(0)) {
                 Thread t = new Thread(() -> {
                     try (Socket s = ss.accept()) { OutputStream o = s.getOutputStream(); o.write(new byte[]{(byte) bad, (byte) (bad >> 8), (byte) 0x81}); o.flush(); Thread.sleep(200); }
@@ -85,7 +85,7 @@ public final class CoreTest {
         byte[] b = new byte[len]; in.readFully(b); return b;
     }
 
-    static void fullMatch() throws Exception {
+    static void fullMatch(final int tokenLen) throws Exception {
         final int[] hand = {0, 3, 6, 2}; // burst t0, tank t0, shield t0, burst t2 (constant fake hand)
         final AtomicInteger playsSeen = new AtomicInteger();
         try (ServerSocket ss = new ServerSocket(0)) {
@@ -95,6 +95,14 @@ public final class CoreTest {
                     OutputStream out = s.getOutputStream();
                     byte[] hello = readClientFrame(in);
                     eq("srv hello type", hello[0], 1);
+                    eq("srv hello token_len is 0", hello[20], 0);
+                    if (tokenLen > 0) {
+                        byte[] au = readClientFrame(in);
+                        eq("srv auth type", au[0], 6);
+                        eq("srv auth len", (au[1] & 0xFF) | ((au[2] & 0xFF) << 8), tokenLen);
+                        eq("srv auth frame size", au.length, 3 + tokenLen);
+                        eq("srv auth last byte", au[au.length - 1], 'x');
+                    }
                     out.write(Protocol.welcome(42, 0)); out.flush();
                     eq("srv queue type", readClientFrame(in)[0], 2);
                     // deliver MATCH_FOUND split into single-byte writes to exercise frame reassembly
@@ -143,7 +151,7 @@ public final class CoreTest {
                 public void onMatchEnd(MatchModel m) { eq("result win", m.result, 1); ended.countDown(); }
                 public void onError(String msg) { System.out.println("session error: " + msg); ended.countDown(); }
             };
-            Session s = new Session(new SocketTransport("127.0.0.1", ss.getLocalPort(), 2000), l, 0, 0, "Tester", new byte[0]);
+            Session s = new Session(new SocketTransport("127.0.0.1", ss.getLocalPort(), 2000), l, 0, 0, "Tester", tokenLen == 0 ? new byte[0] : xs(tokenLen));
             holder[0] = s;
             s.start();
             yes("match completes", ended.await(10, TimeUnit.SECONDS));
@@ -158,6 +166,17 @@ public final class CoreTest {
             yes("closed on server EOF", s.state() == Session.State.CLOSED);
             s.close();
         }
+    }
+
+    static byte[] xs(int n) { byte[] b = new byte[n]; java.util.Arrays.fill(b, (byte) 'x'); return b; }
+
+    static void authFrame() throws Exception {
+        byte[] t = new byte[500]; java.util.Arrays.fill(t, (byte) 'x');
+        byte[] f = Protocol.auth(t);
+        eq("auth len field", (f[0] & 0xFF) | ((f[1] & 0xFF) << 8), 503); eq("auth type", f[2], 6);
+        eq("auth tok len", (f[3] & 0xFF) | ((f[4] & 0xFF) << 8), 500);
+        checks++;
+        try { Protocol.auth(new byte[901]); fails++; System.out.println("FAIL oversize auth"); } catch (IllegalArgumentException ok) { }
     }
 
     static void legality() {
@@ -199,7 +218,7 @@ public final class CoreTest {
     }
 
     public static void main(String[] a) throws Exception {
-        codec(); malformed(); legality(); guestAuth(); fullMatch();
+        codec(); malformed(); legality(); guestAuth(); authFrame(); fullMatch(0); fullMatch(480);
         System.out.println("CoreTest: " + checks + " checks, " + fails + " failures");
         System.exit(fails == 0 ? 0 : 1);
     }

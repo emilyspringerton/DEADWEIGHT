@@ -54,7 +54,9 @@ public final class Session {
         try {
             listener.onState(State.CONNECTING);
             transport.connect();
-            transport.send(Protocol.hello(mode, kind, name, token));
+            // Real IDUNA JWTs (~500 B) don't fit HELLO's 200 B field: HELLO carries none, AUTH carries it.
+            transport.send(Protocol.hello(mode, kind, name, null));
+            if (token != null && token.length > 0) transport.send(Protocol.auth(token));
             while (true) {
                 byte[] f = transport.readFrame();
                 if (f == null) { fail("server closed the connection"); return; }
