@@ -5,7 +5,7 @@ load("@rules_java//java:defs.bzl", "java_binary", "java_library")
 # Plain java_library so it builds and tests on a bare JVM with no Android SDK (KARAMBIT convention).
 java_library(
     name = "core_lib",
-    srcs = glob(["src/main/java/industrial/einhorn/deadweight/core/**/*.java"], allow_empty = True) + [
+    srcs = glob(["src/main/java/industrial/einhorn/deadweight/core/**/*.java"]) + [
         "src/main/java/industrial/einhorn/deadweight/generated/CardRules.java",
     ],
     visibility = ["//visibility:public"],

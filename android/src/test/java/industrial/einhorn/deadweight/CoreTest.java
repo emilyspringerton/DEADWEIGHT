@@ -172,8 +172,34 @@ public final class CoreTest {
         m.locked = true; yes("locked blocks", !m.canPlaySlot(-1));
     }
 
+    static void guestAuth() throws Exception {
+        com.sun.net.httpserver.HttpServer h = com.sun.net.httpserver.HttpServer.create(new java.net.InetSocketAddress("127.0.0.1", 0), 0);
+        h.createContext("/api/v1/games/deadweight/guest-register", ex -> {
+            String req = new String(ex.getRequestBody().readAllBytes());
+            yes("register body has name", req.contains("\"display_name\":\"Ad\\\"a\""));
+            byte[] r = "{\"player_id\":\"p-1\",\"guest_secret\":\"s3cret\",\"display_name\":\"Ad\\\"a\",\"token\":\"tok.en\",\"expires_at\":1}".getBytes();
+            ex.sendResponseHeaders(201, r.length); ex.getResponseBody().write(r); ex.close();
+        });
+        h.createContext("/api/v1/games/deadweight/guest-login", ex -> {
+            String req = new String(ex.getRequestBody().readAllBytes());
+            boolean ok = req.contains("\"guest_secret\":\"s3cret\"");
+            byte[] r = (ok ? "{\"player_id\":\"p-1\",\"display_name\":\"Ada\",\"token\":\"tok2\"}" : "{\"error\":\"invalid credentials\"}").getBytes();
+            ex.sendResponseHeaders(ok ? 200 : 401, r.length); ex.getResponseBody().write(r); ex.close();
+        });
+        h.start();
+        try {
+            GuestAuth a = new GuestAuth.Iduna("http://127.0.0.1:" + h.getAddress().getPort() + "/");
+            GuestAuth.Result r = a.register("Ad\"a");
+            yes("register fields", r.playerId.equals("p-1") && r.guestSecret.equals("s3cret") && r.token.equals("tok.en") && r.displayName.equals("Ad\"a"));
+            r = a.login("p-1", "s3cret");
+            yes("login token", r.token.equals("tok2") && r.guestSecret.equals("s3cret"));
+            checks++;
+            try { a.login("p-1", "wrong"); fails++; System.out.println("FAIL bad secret accepted"); } catch (GuestAuth.AuthRejected ok) { }
+        } finally { h.stop(0); }
+    }
+
     public static void main(String[] a) throws Exception {
-        codec(); malformed(); legality(); fullMatch();
+        codec(); malformed(); legality(); guestAuth(); fullMatch();
         System.out.println("CoreTest: " + checks + " checks, " + fails + " failures");
         System.exit(fails == 0 ? 0 : 1);
     }
