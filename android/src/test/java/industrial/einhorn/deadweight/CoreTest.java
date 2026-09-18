@@ -217,8 +217,40 @@ public final class CoreTest {
         } finally { h.stop(0); }
     }
 
+    /** Android forbids socket writes on the UI thread: Session must never send on the caller's thread. */
+    static void sendsOffCallerThread() throws Exception {
+        final java.util.concurrent.BlockingQueue<byte[]> in = new java.util.concurrent.LinkedBlockingQueue<>();
+        final java.util.concurrent.atomic.AtomicReference<Thread> sender = new java.util.concurrent.atomic.AtomicReference<>();
+        final java.util.concurrent.CountDownLatch sent = new java.util.concurrent.CountDownLatch(2); // hello + queue
+        Transport t = new Transport() {
+            public void connect() { }
+            public void send(byte[] f) { sender.set(Thread.currentThread()); sent.countDown(); }
+            public byte[] readFrame() throws java.io.IOException {
+                try { byte[] f = in.take(); return f.length == 0 ? null : java.util.Arrays.copyOfRange(f, 2, f.length); }
+                catch (InterruptedException e) { throw new java.io.IOException(e); }
+            }
+            public void close() { in.offer(new byte[0]); }
+        };
+        final java.util.concurrent.CountDownLatch ready = new java.util.concurrent.CountDownLatch(1);
+        Session s = new Session(t, new Session.Listener() {
+            public void onState(Session.State st) { if (st == Session.State.READY) ready.countDown(); }
+            public void onQueued(int w) { } public void onMatchFound(MatchModel m) { } public void onRoundStart(MatchModel m) { }
+            public void onPlayAck(MatchModel m) { } public void onPlayReject(MatchModel m, int r) { }
+            public void onRoundResult(MatchModel m, MatchModel.RoundLog r) { } public void onMatchEnd(MatchModel m) { }
+            public void onError(String msg) { }
+        }, Protocol.MODE_CARD, Protocol.KIND_HUMAN, "t", null);
+        s.start();
+        in.offer(Protocol.welcome(1, 0));
+        yes("ready reached", ready.await(3, java.util.concurrent.TimeUnit.SECONDS));
+        Thread caller = Thread.currentThread();
+        s.queue(); // as the UI thread would
+        yes("send completed", sent.await(3, java.util.concurrent.TimeUnit.SECONDS));
+        yes("send ran off the caller thread", sender.get() != null && sender.get() != caller);
+        s.close();
+    }
+
     public static void main(String[] a) throws Exception {
-        codec(); malformed(); legality(); guestAuth(); authFrame(); fullMatch(0); fullMatch(480);
+        codec(); malformed(); legality(); guestAuth(); authFrame(); sendsOffCallerThread(); fullMatch(0); fullMatch(480);
         System.out.println("CoreTest: " + checks + " checks, " + fails + " failures");
         System.exit(fails == 0 ? 0 : 1);
     }

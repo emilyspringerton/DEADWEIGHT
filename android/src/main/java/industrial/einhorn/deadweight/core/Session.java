@@ -1,6 +1,8 @@
 package industrial.einhorn.deadweight.core;
 
 import java.io.IOException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 /**
  * Client session state machine: CONNECTED -> READY -> QUEUED -> IN_MATCH -> READY ... A single reader thread drives
@@ -32,6 +34,11 @@ public final class Session {
     private volatile MatchModel match;
     private Thread reader;
     private volatile boolean autoQueue;
+    // Android throws NetworkOnMainThreadException on socket writes from the UI thread, so every outbound frame goes
+    // through this single writer thread (also keeps frame order).
+    private final ExecutorService writer = Executors.newSingleThreadExecutor(r -> {
+        Thread t = new Thread(r, "dw-writer"); t.setDaemon(true); return t;
+    });
 
     public Session(Transport t, Listener l, int mode, int kind, String name, byte[] token) {
         transport = t; listener = l; this.mode = mode; this.kind = kind; this.name = name; this.token = token;
@@ -100,13 +107,20 @@ public final class Session {
     private void fail(String msg) {
         if (state == State.CLOSED) return;
         transport.close();
+        writer.shutdown();
         state = State.CLOSED;
         listener.onState(State.CLOSED);
         listener.onError(msg);
     }
 
     private void send(byte[] f) {
-        try { transport.send(f); } catch (IOException e) { fail("send failed: " + e.getMessage()); }
+        try {
+            writer.execute(() -> {
+                try { transport.send(f); }
+                catch (IOException e) { fail("send failed: " + e.getMessage()); }
+                catch (RuntimeException e) { fail("send failed: " + e); }
+            });
+        } catch (java.util.concurrent.RejectedExecutionException ignored) { }
     }
 
     public void queue() { if (state == State.READY) send(Protocol.queue()); }
@@ -125,6 +139,7 @@ public final class Session {
     public void close() {
         if (state == State.CLOSED) return;
         state = State.CLOSED;
+        writer.shutdown();
         transport.close();
     }
 }
