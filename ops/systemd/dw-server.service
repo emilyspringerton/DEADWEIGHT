@@ -13,9 +13,9 @@ StartLimitBurst=10
 [Service]
 Type=simple
 EnvironmentFile=%h/.config/deadweight/dw.env
-ExecStartPre=/usr/bin/test -x %h/DEADWEIGHT/build/dw_server
+ExecStartPre=/usr/bin/test -x %h/.local/opt/deadweight/bin/dw_server
 ExecStartPre=/usr/bin/mkdir -p ${DW_MATCH_LOG_DIR}
-ExecStart=%h/DEADWEIGHT/build/dw_server --port ${DW_PORT} --match-log ${DW_MATCH_LOG_DIR} $DW_SERVER_ARGS
+ExecStart=%h/.local/opt/deadweight/bin/dw_server --port ${DW_PORT} --bind ${DW_BIND} --match-log ${DW_MATCH_LOG_DIR} $DW_SERVER_ARGS
 Restart=always
 RestartSec=3
 # dw_server shuts down cleanly on SIGTERM (ends active matches with reason=server).

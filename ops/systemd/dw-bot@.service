@@ -9,8 +9,8 @@ Wants=network-online.target
 [Service]
 Type=simple
 EnvironmentFile=%h/.config/deadweight/dw.env
-ExecStartPre=/usr/bin/test -x %h/DEADWEIGHT/build/dw_bot
-ExecStart=%h/DEADWEIGHT/build/dw_bot --archetype %i --name bot-%i --host ${DW_HOST} --port ${DW_PORT} --think-ms ${DW_BOT_THINK_MS} $DW_BOT_ARGS
+ExecStartPre=/usr/bin/test -x %h/.local/opt/deadweight/bin/dw_bot
+ExecStart=%h/.local/opt/deadweight/bin/dw_bot --archetype %i --name bot-%i --host ${DW_HOST} --port ${DW_PORT} --think-ms ${DW_BOT_THINK_MS} $DW_BOT_ARGS
 Restart=always
 RestartSec=3
 KillSignal=SIGTERM
