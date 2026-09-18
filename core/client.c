@@ -1,4 +1,5 @@
 #include "client.h"
+#include "card_rules.h"
 #include <stdio.h>
 #include <string.h>
 
@@ -39,6 +40,7 @@ void dwc_close(DwClient *c) { if (c->fd != DW_BAD_SOCK) { dw_close(c->fd); c->fd
 int dwc_run(DwClient *c, DwRunOpts *o) {
     DwMsg m; DwPolicyCtx ctx; uint32_t match_id = 0; int8_t last_hand[4] = {-1, -1, -1, -1};
     dw_policy_reset(&ctx, o->seed);
+    ctx.decide = o->decide; ctx.brain = o->brain; ctx.arch = o->arch; ctx.w_h = o->w_h; ctx.w_n = o->w_n; ctx.sigma = o->sigma;
     memset(&m, 0, sizeof m);
     m.type = DW_C_HELLO; m.u.hello.proto = DW_PROTO_VERSION; m.u.hello.mode = DW_MODE_CARD; m.u.hello.kind = (uint8_t)o->kind;
     strncpy(m.u.hello.name, o->name, DW_NAME_LEN);
@@ -64,6 +66,8 @@ int dwc_run(DwClient *c, DwRunOpts *o) {
             if (o->verbose) printf("match %u vs %s (%s), seat %d\n", match_id, m.u.match_found.opp_name, m.u.match_found.opp_kind ? "bot" : "human", m.u.match_found.seat);
             break;
         case DW_S_ROUND_START: {
+            ctx.hull_you = m.u.round_start.hull_you; ctx.hull_opp = m.u.round_start.hull_opp;
+            ctx.energy_opp = m.u.round_start.energy_opp; ctx.opp_hand_size = m.u.round_start.opp_hand_size;
             int slot = dw_policy_choose(o->policy, &ctx, m.u.round_start.hand, m.u.round_start.energy_you, m.u.round_start.round);
             memcpy(last_hand, m.u.round_start.hand, 4);
             if (o->think_ms > 0) dw_sleep_ms((unsigned)o->think_ms);
@@ -85,6 +89,8 @@ int dwc_run(DwClient *c, DwRunOpts *o) {
         }
         case DW_S_ROUND_RESULT:
             ctx.last_opp_card = m.u.round_result.card_opp;
+            ctx.opp_kinds[0] = ctx.opp_kinds[1]; ctx.opp_kinds[1] = ctx.opp_kinds[2];
+            ctx.opp_kinds[2] = m.u.round_result.card_opp >= 0 ? card_kind(m.u.round_result.card_opp) : 3;
             if (o->verbose) printf("  result: you %d opp %d, dmg taken %d dealt %d, hull %d/%d\n", m.u.round_result.card_you, m.u.round_result.card_opp, m.u.round_result.dmg_you, m.u.round_result.dmg_opp, m.u.round_result.hull_you, m.u.round_result.hull_opp);
             break;
         case DW_S_MATCH_END:

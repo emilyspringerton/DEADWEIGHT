@@ -25,13 +25,22 @@ gcc $CFLAGS_BASE -g -fsanitize=address,undefined -fno-sanitize-recover=all \
     tests/test_match.c core/match.c core/card_rules.c -o build/test_match
 ./build/test_match
 
+echo "== C: bot brain tests (ASan+UBSan) =="
+BRAIN_SRC="core/brain.c core/bot_brain.c core/brain_default.c core/runtime/parena_runtime.c"
+gcc $CFLAGS_BASE -include card_rules.h -g -fsanitize=address,undefined -fno-sanitize-recover=all \
+    tests/test_brain.c core/policy.c core/card_rules.c $BRAIN_SRC -lm -o build/test_brain
+./build/test_brain
+gcc $CFLAGS_BASE -include card_rules.h -O1 tests/brain_dump.c core/policy.c core/card_rules.c $BRAIN_SRC -lm -o build/brain_dump
+if command -v python3 >/dev/null; then (cd training && python3 -m unittest test_dw_brain -v 2>&1 | tail -4); fi
+
 echo "== C: server + client =="
 SERVER_SRC="apps/server/main.c core/match.c core/protocol.c core/card_rules.c core/iduna.c core/http.c"
 CLIENT_SRC="apps/client/main.c core/client.c core/policy.c core/protocol.c core/card_rules.c core/iduna.c core/http.c"
 gcc $CFLAGS_BASE -O2 -pthread $SERVER_SRC -o build/dw_server
 gcc $CFLAGS_BASE -O2 $CLIENT_SRC -o build/dw_client
-BOT_SRC="apps/bot/main.c core/client.c core/policy.c core/protocol.c core/card_rules.c core/iduna.c core/http.c"
-gcc $CFLAGS_BASE -O2 $BOT_SRC -o build/dw_bot
+BRAIN_SRC="core/brain.c core/bot_brain.c core/brain_default.c core/runtime/parena_runtime.c"   # bot_brain.c is PARENA-generated: needs card_rules.h forced in
+BOT_SRC="apps/bot/main.c core/client.c core/policy.c core/protocol.c core/card_rules.c core/iduna.c core/http.c $BRAIN_SRC"
+gcc $CFLAGS_BASE -include card_rules.h -O2 $BOT_SRC -lm -o build/dw_bot
 ./build/dw_bot --version
 ./build/dw_server --version
 ./build/dw_client --version
@@ -45,7 +54,7 @@ if [[ "$ARGS" == *" --windows "* || "$ARGS" == *" --all "* ]]; then
   echo "== Windows cross-build (mingw) =="
   x86_64-w64-mingw32-gcc $CFLAGS_BASE -O2 $CLIENT_SRC -o build/dw_client.exe -lws2_32
   x86_64-w64-mingw32-gcc $CFLAGS_BASE -O2 -pthread $SERVER_SRC -o build/dw_server.exe -lws2_32
-  x86_64-w64-mingw32-gcc $CFLAGS_BASE -O2 $BOT_SRC -o build/dw_bot.exe -lws2_32
+  x86_64-w64-mingw32-gcc $CFLAGS_BASE -include card_rules.h -O2 $BOT_SRC -o build/dw_bot.exe -lws2_32 -lm
   file build/dw_client.exe | grep -q PE32 
 fi
 if [[ "$ARGS" == *" --android "* || "$ARGS" == *" --all "* ]]; then

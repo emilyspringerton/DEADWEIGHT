@@ -14,4 +14,8 @@ grep -q '^package industrial.einhorn.deadweight.generated;' "$JAVA_OUT" || {
   sed -i '1a\\npackage industrial.einhorn.deadweight.generated;' "$JAVA_OUT"; }
 gcc -std=c99 -Wall -Wextra -Icore -Icore/runtime -DPARENA_NO_GRAPHICS tests/gen_vectors.c core/card_rules.c -o /tmp/dw_gen_vectors
 /tmp/dw_gen_vectors > tests/parity_vectors.txt
+# Bot brain (S503-14b): PARENA decision math -> C. Compiled with -include card_rules.h (the emitter references
+# card_kind/card_power/kind_beats without prototypes). Skipped quietly if the .prn isn't present.
+BRAIN_PRN="${PARENA_BRAIN_PRN:-/home/fatbaby/PARENA/stdlib/deadweight/bot_brain.prn}"
+if [ -f "$BRAIN_PRN" ]; then "$PARENA_BIN" build "$BRAIN_PRN" -o core/bot_brain.c; fi
 echo "regenerated core/card_rules.c, $JAVA_OUT, tests/parity_vectors.txt"
