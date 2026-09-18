@@ -31,10 +31,14 @@ public final class Session {
     private volatile State state = State.IDLE;
     private volatile MatchModel match;
     private Thread reader;
+    private volatile boolean autoQueue;
 
     public Session(Transport t, Listener l, int mode, int kind, String name, byte[] token) {
         transport = t; listener = l; this.mode = mode; this.kind = kind; this.name = name; this.token = token;
     }
+
+    /** One-tap play: queue automatically as soon as the server's WELCOME arrives (call before start()). */
+    public void setAutoQueue(boolean v) { autoQueue = v; }
 
     public State state() { return state; }
     public MatchModel match() { return match; }
@@ -71,7 +75,7 @@ public final class Session {
 
     private boolean handle(Msg m) {
         switch (m.type) {
-            case Protocol.S_WELCOME: set(State.READY); break;
+            case Protocol.S_WELCOME: set(State.READY); if (autoQueue) { autoQueue = false; queue(); } break;
             case Protocol.S_QUEUED: set(State.QUEUED); listener.onQueued(m.waiting); break;
             case Protocol.S_MATCH_FOUND: {
                 MatchModel mm = new MatchModel(); mm.onMatchFound(m); match = mm;

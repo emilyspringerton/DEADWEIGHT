@@ -121,12 +121,12 @@ public final class MainActivity extends Activity implements Session.Listener {
         root = col;
         text("DEADWEIGHT", 34, Color.WHITE).setTypeface(Typeface.DEFAULT_BOLD);
         text("Card duel, 1v1", 16, 0xFFAAAAAA);
-        EditText name = field("Your name (1-16 chars)", prefs.getString("name", ""), InputType.TYPE_CLASS_TEXT);
+        EditText name = field("Your name (1-16 chars)", prefs.getString("name", defaultName()), InputType.TYPE_CLASS_TEXT);
         EditText host = field("Server host", prefs.getString("host", Config.DEFAULT_HOST), InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_URI);
         EditText port = field("Server port", String.valueOf(prefs.getInt("port", Config.DEFAULT_PORT)), InputType.TYPE_CLASS_NUMBER);
         EditText iduna = field("IDUNA URL (blank = name only)", prefs.getString("iduna", Config.DEFAULT_IDUNA_URL), InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_URI);
         text(status, 15, 0xFFFFB74D);
-        Button go = button(connecting ? "Connecting…" : "PLAY", v -> {
+        Button go = button(connecting ? "Connecting…" : "PLAY VS BOT", v -> {
             int p;
             try { p = Integer.parseInt(port.getText().toString().trim()); } catch (NumberFormatException e) { p = -1; }
             String n = name.getText().toString().trim();
@@ -158,12 +158,15 @@ public final class MainActivity extends Activity implements Session.Listener {
                     shown = r.displayName;
                 }
                 Session ns = new Session(new SocketTransport(host, port, 5000), this, Protocol.MODE_CARD, Protocol.KIND_HUMAN, shown, token);
+                ns.setAutoQueue(true);
                 ui(() -> { session = ns; connecting = false; status = ""; menuMode = false; ns.start(); render(); });
             } catch (Exception e) {
                 ui(() -> { connecting = false; status = "Sign-in failed: " + e.getMessage(); render(); });
             }
         }, "dw-connect").start();
     }
+
+    private String defaultName() { return "Player" + (1000 + new java.util.Random().nextInt(9000)); }
 
     private void renderLobby(Session s) {
         text("Connected", 26, Color.WHITE);

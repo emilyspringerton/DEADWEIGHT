@@ -34,7 +34,7 @@ public final class IntegrationTest {
             final Session[] h = new Session[1];
             String[] err = {null};
             Session s = new Session(new SocketTransport("127.0.0.1", port, 3000), new Session.Listener() {
-                public void onState(Session.State st) { if (st == Session.State.READY && h[0] != null && h[0].match() == null) h[0].queue(); }
+                public void onState(Session.State st) { }
                 public void onQueued(int w) { }
                 public void onMatchFound(MatchModel m) { }
                 public void onRoundStart(MatchModel m) {
@@ -50,6 +50,7 @@ public final class IntegrationTest {
                 public void onError(String msg) { err[0] = msg; ended.countDown(); }
             }, Protocol.MODE_CARD, Protocol.KIND_HUMAN, "itHuman", new byte[0]);
             h[0] = s;
+            s.setAutoQueue(true); // exactly what the app's one-tap PLAY does: no explicit queue() call
             s.start();
             boolean ok = ended.await(20, TimeUnit.SECONDS);
             if (!ok || err[0] != null || result.get() < 0 || rounds.get() < 1) {
