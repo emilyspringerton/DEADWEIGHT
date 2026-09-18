@@ -1,6 +1,7 @@
 # CHANGELOG
 
 ## 2026-09-18
+- training: AUTH frame (0x06) in codec/env/fake server; integration + dry-run trainer verified against real dw_server; fixed ghost-queue pairing on opponent shutdown (sess-20260918-1725-497f394f)
 - Android: AUTH frame for full IDUNA tokens, 1024 max frame, integration test vs real dw_server+dw_bot (S503-07) (sess-20260918-1725-497f394f)
 - lane B: wire protocol codec + AUTH frame, deterministic match core, dw_server/dw_client/dw_bot, 3-bot pool, e2e under ASan/UBSan, IDUNA auth+result reporting, systemd unit files (S503-04/05) (sess-20260918-1725-497f394f)
 - training/: PFSP 3-role league (ported), game-scoped registry client, wire-protocol env + fake server, dw_train dry-run, Colab stub (S503-08) (sess-20260918-1725-497f394f)
