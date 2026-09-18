@@ -65,3 +65,14 @@ Base `/api/v1/game-checkpoints/deadweight` — **same routes, fields and multipa
 Writes (`POST`) need `deadweight.checkpoints.write` (DEADWEIGHT-RL); reads are public. Roles are lowercase:
 `main`, `main_exploiter`, `league_exploiter`. Checkpoints are isolated per game (a deadweight id is a 404 under brawlpit's routes and vice-versa).
 The existing `/api/v1/brawlpit-checkpoints…` routes are unchanged (they are the `brawlpit` game's alias).
+
+## Implementation notes (shipped, IDUNA `281ef1a`, live-verified on a throwaway instance; NOT yet deployed to prod)
+
+- Agent JWTs (`/api/v1/auth/agent`) live **1 hour**. Bots only need a valid one at HELLO time; dw_server must re-auth
+  on 401 before posting a result. Guest tokens live 24 h; re-`guest-login` on launch.
+- Guest register/login are rate limited (30/min/IP bucket) → 429 + `Retry-After: 60`.
+- Migrations `202609181800_game_checkpoints_game_column.sql`, `202609181810_deadweight_agents_and_stats.sql` apply at IDUNA
+  startup; agent permissions/secrets need `go run ./cmd/bootstrap` (writes `var/agent-secrets.env`:
+  `IDUNA_SECRET_DEADWEIGHT_BOTS`, `..._SERVER`, `..._RL`).
+- Throwaway testing: IDUNA now honors `IDUNA_ADDR` (default `:8080`); use a private port + its own `SQLITE_PATH`/`IDUNA_ROOT`/`KEY_FILE`/`NOCK_DATA_DIR`
+  (checkpoint blobs go to `./var/deadweight-checkpoints` relative to the process cwd).
