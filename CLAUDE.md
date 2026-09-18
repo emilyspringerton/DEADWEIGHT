@@ -2,7 +2,7 @@
 
 ## What this is
 
-New repo (2026-09-11), scoping-only so far — no code yet. Home for **Dark Sector: Hold Battles**,
+New repo (2026-09-11); VS0 (card mode, Android-first) build started 2026-09-18 (S503) — see `docs/VS0_SCOPING.md`. Home for **Dark Sector: Hold Battles**,
 a 1v1 real-time PvP spatial-knapsack auto-battler: players pack polyomino cargo items (some
 splittable, at a real fragmentation-tax cost) into a 6x6 grid under a Black-Market draft phase,
 then the same grid becomes their ship's combat layout — item shape/orientation routes energy from
@@ -17,29 +17,25 @@ tree proofs, 24 items, 16 Ultimates, a double-elimination tournament bracket, 2v
 `NORTHSTAR.md`'s own "Recommended real V0 cut" section names exactly what's in vs. deferred, and
 why, before any of it gets built.
 
-## Stack (planned, not yet built)
+## Stack (VS0 in progress — see `docs/VS0_SCOPING.md`, `EMILY/BACKLOG.md` SECTION 503)
 
-Two separate native client shells sharing one server-authoritative backend — **not** a single
-PARENA-emitted binary for both platforms; see `NORTHSTAR.md`'s own real capability audit of
-PARENA's C vs. Java emitters for why "1 client, 2 platforms" doesn't mean what it sounds like yet:
+**VS0 = card mode first, Android-first, multiplayer + bots from day one.** Backpack battler (6x6 grid) is VS1.
 
-- **Server**: hand-written C, same server-authoritative UDP architecture as `REDGARDEN`/`ECOWAR`'s
-  `apps/arena_server`. Matchmaker + bot pool reuse `apps/matchmaker`'s own real, already-generic
-  binary (`--lobby-size 2`, new ports) — no fork needed.
-- **Windows client**: hand-written C/SDL2, same shape as `apps/arena`.
-- **Android client**: hand-written native Kotlin/Java, `MJOLNIR`'s own architecture as the
-  template (a new app, not a fork).
-- **PARENA**: mod-first for gameplay-decision logic on the C side (mature emitter, this
-  monorepo's own established "PARENA mod is the trigger, host does the real work" idiom); on the
-  Java side, only the narrow scalar-helper slice `SPIDERBEETLE` already proved is real today —
-  named as a real, non-blocking constraint in `NORTHSTAR.md`.
-- **UI**: `EOSUI-NORTH`'s own recommended Option C (`stdlib/ui/style.prn`, PARENA-native
-  flexbox-lite styling) once it exists — this repo is a real, planned second consumer alongside
-  BRAWLPIT, not the owner of building it.
-- **Accounts**: IDUNA `players` table, new `provider="guest"` (name-only, no email — genuinely new
-  work, not built anywhere in IDUNA yet, see `NORTHSTAR.md`), new `game='deadweight'` scope
-  (`202609050003_players_game_scope.sql`'s own real per-game scoping), new `DEADWEIGHT-BOTS` M2M
-  agent identity (`ECOWAR-BOTS`'s own real precedent).
+- **Rules**: `PARENA/stdlib/deadweight/card_rules.prn` is the single source of truth (scalar-only), emitted to C
+  (`core/card_rules.c`) and Java (`android/.../generated/CardRules.java`); regenerate with `scripts/gen_rules.sh`.
+  **Firm constraint: no FFI is ever added to PARENA's Java target and the Java side makes no syscalls.** The Java
+  emitter's real ceiling is scalar single-expression defns; anything beyond that is PARENA emitter work, scoped
+  separately, never a workaround here.
+- **Server**: hand-written C `dw_server` (TCP, `poll()`, many matches/process, `--fast-forward`, `--port`),
+  authoritative; bots (`dw_bot`, pool of 3) and the training env speak the same wire protocol as humans
+  (`docs/WIRE_PROTOCOL.md`). Training league = same binary on separate ports, PFSP 3-role (BRAWLPIT's `rl_league.py`).
+- **Clients**: Android = hand-written Java shell (Bazel + rules_android, KARAMBIT precedent) over a plain-JVM
+  `core_lib`; Windows = C (headless in VS0, SDL2 UI in VS0.5).
+- **IDUNA**: `game='deadweight'` scope, `DEADWEIGHT-BOTS`/`DEADWEIGHT-RL` M2M agents, guest accounts
+  (`provider="guest"`), game-scoped checkpoint registry — multi-tenant by default. Art via NOCK, not PARENA FFI.
+- **Build**: `scripts/build.sh [--windows|--android|--all]`; CI in `.github/workflows/ci.yml`, auto minor-version
+  releases on every green `main` push. **Clean builds first**: keep it green before adding anything.
+- **Sandbox**: run Bazel with `HOME=/tmp/dw-home` (parent `go.work` leak), see `README.md`.
 
 ## Related Repos
 

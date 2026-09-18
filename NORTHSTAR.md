@@ -236,3 +236,10 @@ short index; see each doc for concrete tasks and acceptance criteria.
 No code written yet — this pass is scoping only, matching `LO`, `MIXFORGE`, `PARENA`'s own LLVM-
 backend scoping, and every other "real critical review before code" precedent this monorepo
 already sets for a captured-transcript source document.
+
+## Update 2026-09-18 (S503): VS0 build order changed
+
+`docs/VS0_SCOPING.md` supersedes the D1–D6 *ordering* above for VS0: **card mode ships first** (small discrete
+action space, no inventory UI, bot- and RL-friendly), Android-first over a TCP server-authoritative backend with a
+bot pool of 3 from day one. The backpack battler (this doc's core mechanic, D1) becomes **VS1** on the same server
+and wire protocol (`mode=1` reserved). The V0 item cut, deferrals, and hole findings in this doc all stand.
