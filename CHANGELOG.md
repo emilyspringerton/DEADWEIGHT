@@ -1,6 +1,7 @@
 # CHANGELOG
 
 ## 2026-09-18
+- S503-14b: dw_bot hybrid brain -- hand-written MLP (PARENA bot_brain.prn -> core/bot_brain.c) blended with heuristic archetype prior; distilled default weights embedded; --brain/--weights/--wh/--wn/--sigma; tests + win-rate table (sess-20260918-1725-497f394f)
 - S503-09: dw_gui SDL2 card client (Windows+Linux), build.sh --gui, headless selftest, CI gui job + release packaging (sess-20260918-1725-497f394f)
 - S503-10: NOCK-built card art (art/build_art.sh) wired into CardView with shape fallback (sess-20260918-1725-497f394f)
 - training: AUTH frame (0x06) in codec/env/fake server; integration + dry-run trainer verified against real dw_server; fixed ghost-queue pairing on opponent shutdown (sess-20260918-1725-497f394f)
