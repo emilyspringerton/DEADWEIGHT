@@ -1,0 +1,13 @@
+/* Minimal blocking HTTP/1.1 client + tiny JSON field helpers, for talking to IDUNA (same-box, plain HTTP, trusted
+ * responses -- same scope decision as ECOWAR's http_client.h, but on the winsock-portable net.h shim). */
+#ifndef DW_HTTP_H
+#define DW_HTTP_H
+#include <stddef.h>
+/* Returns 0 with *status/resp filled (body NUL-terminated, truncated to resp_n-1), -1 on any socket-level failure. */
+int dw_http(const char *method, const char *host, int port, const char *path, const char *bearer,
+            const char *json_body, char *resp, size_t resp_n, int *status, int timeout_ms);
+/* Extract a simple (escape-free) JSON string value: "key":"value". 1 if found and fits, else 0. */
+int dw_json_str(const char *json, const char *key, char *out, size_t n);
+/* Parse http://host[:port][/...] -> host/port. 0 ok. */
+int dw_parse_url(const char *url, char *host, size_t hn, int *port);
+#endif

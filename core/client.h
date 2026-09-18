@@ -5,7 +5,7 @@
 #include "protocol.h"
 #include "policy.h"
 
-typedef struct { dw_sock fd; uint8_t in[1024]; size_t n; } DwClient;
+typedef struct { dw_sock fd; uint8_t in[2048]; size_t n; } DwClient;
 
 int dwc_connect(DwClient *c, const char *host, int port);      /* 0 ok */
 int dwc_send(DwClient *c, const DwMsg *m);                     /* 0 ok */
@@ -14,6 +14,7 @@ void dwc_close(DwClient *c);
 
 typedef struct {
     const char *name; int kind;            /* DW_KIND_* */
+    const char *token;                     /* optional IDUNA token; sent as AUTH after HELLO (needed when the server requires auth) */
     int policy; uint32_t seed;
     long target_matches;                   /* stop after this many completed matches (<=0: forever) */
     int think_ms;                          /* artificial delay before each play */

@@ -6,12 +6,13 @@
 #include <stdint.h>
 
 #define DW_PROTO_VERSION 1
-#define DW_MAX_FRAME_LEN 256      /* max value of the u16 len field */
+#define DW_MAX_FRAME_LEN 1024     /* max value of the u16 len field (only AUTH exceeds 256) */
+#define DW_MAX_AUTH_TOKEN 900     /* IDUNA ES256 JWTs are ~400-500 bytes: too big for HELLO's 200-byte token */
 #define DW_MAX_TOKEN 200
 #define DW_NAME_LEN 16
 
 enum {
-    DW_C_HELLO = 0x01, DW_C_QUEUE = 0x02, DW_C_PLAY = 0x03, DW_C_LEAVE = 0x04, DW_C_PING = 0x05,
+    DW_C_HELLO = 0x01, DW_C_QUEUE = 0x02, DW_C_PLAY = 0x03, DW_C_LEAVE = 0x04, DW_C_PING = 0x05, DW_C_AUTH = 0x06,
     DW_S_WELCOME = 0x81, DW_S_QUEUED = 0x82, DW_S_MATCH_FOUND = 0x83, DW_S_ROUND_START = 0x84,
     DW_S_PLAY_ACK = 0x85, DW_S_PLAY_REJECT = 0x86, DW_S_ROUND_RESULT = 0x87, DW_S_MATCH_END = 0x88,
     DW_S_PONG = 0x89, DW_S_ERROR = 0x8F
@@ -28,6 +29,7 @@ typedef struct {
     uint8_t type;
     union {
         struct { uint8_t proto, mode, kind; char name[DW_NAME_LEN + 1]; uint8_t token_len; uint8_t token[DW_MAX_TOKEN]; } hello;
+        struct { uint16_t token_len; uint8_t token[DW_MAX_AUTH_TOKEN]; } auth;
         struct { uint32_t match_id; uint8_t round; int8_t slot; } play;
         struct { uint32_t nonce; } ping;             /* PING and PONG */
         struct { uint32_t session_id; uint8_t flags; } welcome;

@@ -24,11 +24,11 @@ gcc $CFLAGS_BASE -g -fsanitize=address,undefined -fno-sanitize-recover=all \
 ./build/test_match
 
 echo "== C: server + client =="
-SERVER_SRC="apps/server/main.c core/match.c core/protocol.c core/card_rules.c"
-CLIENT_SRC="apps/client/main.c core/client.c core/policy.c core/protocol.c core/card_rules.c"
-gcc $CFLAGS_BASE -O2 $SERVER_SRC -o build/dw_server
+SERVER_SRC="apps/server/main.c core/match.c core/protocol.c core/card_rules.c core/iduna.c core/http.c"
+CLIENT_SRC="apps/client/main.c core/client.c core/policy.c core/protocol.c core/card_rules.c core/iduna.c core/http.c"
+gcc $CFLAGS_BASE -O2 -pthread $SERVER_SRC -o build/dw_server
 gcc $CFLAGS_BASE -O2 $CLIENT_SRC -o build/dw_client
-BOT_SRC="apps/bot/main.c core/client.c core/policy.c core/protocol.c core/card_rules.c"
+BOT_SRC="apps/bot/main.c core/client.c core/policy.c core/protocol.c core/card_rules.c core/iduna.c core/http.c"
 gcc $CFLAGS_BASE -O2 $BOT_SRC -o build/dw_bot
 ./build/dw_bot --version
 ./build/dw_server --version
@@ -42,7 +42,7 @@ tests/test_server_e2e.sh
 if [[ "$ARGS" == *" --windows "* || "$ARGS" == *" --all "* ]]; then
   echo "== Windows cross-build (mingw) =="
   x86_64-w64-mingw32-gcc $CFLAGS_BASE -O2 $CLIENT_SRC -o build/dw_client.exe -lws2_32
-  x86_64-w64-mingw32-gcc $CFLAGS_BASE -O2 $SERVER_SRC -o build/dw_server.exe -lws2_32
+  x86_64-w64-mingw32-gcc $CFLAGS_BASE -O2 -pthread $SERVER_SRC -o build/dw_server.exe -lws2_32
   x86_64-w64-mingw32-gcc $CFLAGS_BASE -O2 $BOT_SRC -o build/dw_bot.exe -lws2_32
   file build/dw_client.exe | grep -q PE32 
 fi

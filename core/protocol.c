@@ -32,6 +32,11 @@ int dw_encode(const DwMsg *m, uint8_t *buf, size_t cap) {
         for (unsigned i = 0; i < m->u.hello.token_len; i++) w8(&w, m->u.hello.token[i]);
         break;
     case DW_C_QUEUE: case DW_C_LEAVE: break;
+    case DW_C_AUTH:
+        if (m->u.auth.token_len > DW_MAX_AUTH_TOKEN) return -1;
+        w16(&w, m->u.auth.token_len);
+        for (unsigned i = 0; i < m->u.auth.token_len; i++) w8(&w, m->u.auth.token[i]);
+        break;
     case DW_C_PLAY: w32(&w, m->u.play.match_id); w8(&w, m->u.play.round); w8(&w, (uint8_t)m->u.play.slot); break;
     case DW_C_PING: case DW_S_PONG: w32(&w, m->u.ping.nonce); break;
     case DW_S_WELCOME: w32(&w, m->u.welcome.session_id); w8(&w, m->u.welcome.flags); break;
@@ -62,7 +67,7 @@ int dw_encode(const DwMsg *m, uint8_t *buf, size_t cap) {
 /* Fixed payload sizes (bytes after the type byte); HELLO is variable (>= 20). */
 static int payload_size(uint8_t t) {
     switch (t) {
-    case DW_C_HELLO: return -2; case DW_C_QUEUE: case DW_C_LEAVE: return 0; case DW_C_PLAY: return 6;
+    case DW_C_HELLO: return -2; case DW_C_AUTH: return -3; case DW_C_QUEUE: case DW_C_LEAVE: return 0; case DW_C_PLAY: return 6;
     case DW_C_PING: case DW_S_PONG: return 4; case DW_S_WELCOME: return 5; case DW_S_QUEUED: return 2;
     case DW_S_MATCH_FOUND: return 26; case DW_S_ROUND_START: return 12; case DW_S_PLAY_ACK: return 5;
     case DW_S_PLAY_REJECT: return 6; case DW_S_ROUND_RESULT: return 7; case DW_S_MATCH_END: return 6;
@@ -81,6 +86,7 @@ int dw_decode(const uint8_t *buf, size_t len, DwMsg *out, size_t *consumed) {
     if (ps == -1) return -1;
     if (ps >= 0 && (size_t)ps != plen) return -1;
     if (ps == -2 && plen < 20) return -1;
+    if (ps == -3 && plen < 2) return -1;
     R r = { buf + 3, plen, 0 };
     memset(out, 0, sizeof *out);
     out->type = type;
@@ -92,6 +98,11 @@ int dw_decode(const uint8_t *buf, size_t len, DwMsg *out, size_t *consumed) {
         memcpy(out->u.hello.token, r.p + r.n, out->u.hello.token_len);
         break;
     case DW_C_QUEUE: case DW_C_LEAVE: break;
+    case DW_C_AUTH:
+        out->u.auth.token_len = (uint16_t)r16(&r);
+        if (out->u.auth.token_len > DW_MAX_AUTH_TOKEN || (size_t)out->u.auth.token_len != plen - 2) return -1;
+        memcpy(out->u.auth.token, r.p + r.n, out->u.auth.token_len);
+        break;
     case DW_C_PLAY: out->u.play.match_id = r32(&r); out->u.play.round = (uint8_t)r8(&r); out->u.play.slot = (int8_t)r8(&r); break;
     case DW_C_PING: case DW_S_PONG: out->u.ping.nonce = r32(&r); break;
     case DW_S_WELCOME: out->u.welcome.session_id = r32(&r); out->u.welcome.flags = (uint8_t)r8(&r); break;

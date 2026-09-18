@@ -5,24 +5,29 @@
 #include <stdarg.h>
 #include <stdlib.h>
 #include "card_rules.h"
+#include "iduna.h"
 #include "match.h"
 #include "protocol.h"
 #include "version.h"
+#ifndef _WIN32
+#include <pthread.h>
+#define DW_HAVE_WORKER 1
+#endif
 
 #define MAX_CONNS 512
 #define MAX_MATCHES 256
-#define INBUF 1024
+#define INBUF 2048
 #define OUTBUF 8192
 #define ROUND_MS_DEFAULT 20000
 #define HELLO_TIMEOUT_MS 10000
 
-enum { S_FREE = 0, S_CONNECTED, S_READY, S_QUEUED, S_IN_MATCH };
+enum { S_FREE = 0, S_CONNECTED, S_READY, S_QUEUED, S_IN_MATCH, S_NEEDAUTH, S_VERIFYING };
 
 typedef struct {
     dw_sock fd; int state; uint32_t session_id;
     uint8_t in[INBUF]; size_t in_n;
     uint8_t out[OUTBUF]; size_t out_n;
-    char name[DW_NAME_LEN + 1]; uint8_t kind, mode;
+    char name[DW_NAME_LEN + 1]; uint8_t kind, mode; char player_id[48];
     int match, seat; uint64_t queued_seq, connect_ms; int close_after_flush;
 } Conn;
 
@@ -36,11 +41,72 @@ static Match matches[MAX_MATCHES];
 static volatile sig_atomic_t stop_flag = 0;
 static int opt_ff = 0, opt_noauth = 1, opt_verbose = 0;
 static long opt_max_matches = -1;
+static int opt_iduna = 0, opt_fail_open = 0, opt_noauth_explicit = 0;
+static DwIduna iduna;
 static int opt_round_ms = ROUND_MS_DEFAULT;
 static const char *opt_log_dir = NULL;
 static uint32_t next_session = 1, next_match = 1, seed_state = 0x9E3779B9u;
 static uint64_t queue_seq = 0;
 static long st_matches = 0, st_bot_bot = 0, st_human_bot = 0, st_human_human = 0, st_forfeits = 0;
+
+/* ---- IDUNA worker thread: verify + match-result HTTP never runs on the poll() loop ---- */
+enum { J_VERIFY = 1, J_REPORT };
+typedef struct { int type; int conn; uint32_t gen; char token[DW_MAX_AUTH_TOKEN + 1]; char name[DW_NAME_LEN + 1]; DwMatchReport rep; } Job;
+typedef struct { int conn; uint32_t gen; int rc; DwIdentity id; } VResult;
+#ifdef DW_HAVE_WORKER
+#define JQ 256
+static Job jq[JQ]; static int jq_n = 0, jq_head = 0;
+static VResult rq[JQ]; static int rq_n = 0;
+static pthread_mutex_t jm = PTHREAD_MUTEX_INITIALIZER; static pthread_cond_t jc = PTHREAD_COND_INITIALIZER;
+static pthread_t worker_tid; static int worker_started = 0, worker_stop = 0, wake_fd[2] = { -1, -1 };
+
+static void *worker_main(void *arg) {
+    (void)arg;
+    for (;;) {
+        pthread_mutex_lock(&jm);
+        while (jq_n == 0 && !worker_stop) pthread_cond_wait(&jc, &jm);
+        if (jq_n == 0 && worker_stop) { pthread_mutex_unlock(&jm); return NULL; }
+        Job *j = malloc(sizeof *j);
+        if (!j) { pthread_mutex_unlock(&jm); return NULL; }
+        *j = jq[jq_head]; jq_head = (jq_head + 1) % JQ; jq_n--;
+        pthread_mutex_unlock(&jm);
+        if (j->type == J_VERIFY) {
+            VResult r; memset(&r, 0, sizeof r); r.conn = j->conn; r.gen = j->gen;
+            r.rc = dwi_verify(&iduna, j->token, j->name, &r.id);
+            pthread_mutex_lock(&jm);
+            if (rq_n < JQ) rq[rq_n++] = r;
+            pthread_mutex_unlock(&jm);
+            if (write(wake_fd[1], "x", 1) < 0) { /* wake pipe full: the loop is already awake */ }
+        } else {
+            if (dwi_report(&iduna, &j->rep) != 0)
+                fprintf(stderr, "dw_server: IDUNA match-result report failed for match %u (see match log; continuing)\n", j->rep.match_id);
+        }
+        free(j);
+    }
+}
+static int enqueue_job(const Job *j) {
+    int ok = 0;
+    pthread_mutex_lock(&jm);
+    if (jq_n < JQ) { jq[(jq_head + jq_n) % JQ] = *j; jq_n++; ok = 1; pthread_cond_signal(&jc); }
+    pthread_mutex_unlock(&jm);
+    return ok;
+}
+static int start_worker(void) {
+    if (pipe(wake_fd) != 0) return -1;
+    dw_nonblock(wake_fd[0]); dw_nonblock(wake_fd[1]);
+    if (pthread_create(&worker_tid, NULL, worker_main, NULL) != 0) return -1;
+    worker_started = 1; return 0;
+}
+static void stop_worker(void) {
+    if (!worker_started) return;
+    pthread_mutex_lock(&jm); worker_stop = 1; pthread_cond_signal(&jc); pthread_mutex_unlock(&jm);
+    pthread_join(worker_tid, NULL); worker_started = 0;
+}
+#else
+static int enqueue_job(const Job *j) { (void)j; return 0; }
+static int start_worker(void) { return -1; }
+static void stop_worker(void) {}
+#endif
 
 static void on_signal(int s) { (void)s; stop_flag = 1; }
 static void vlog(const char *fmt, ...) __attribute__((format(printf, 1, 2)));
@@ -117,6 +183,14 @@ static void end_match(int mi) {
     int kb = conns[mt->conn[0]].kind + conns[mt->conn[1]].kind;
     st_matches++; if (kb == 2) st_bot_bot++; else if (kb == 1) st_human_bot++; else st_human_human++;
     if (mt->m.reason == DW_END_FORFEIT) st_forfeits++;
+    if (opt_iduna && mt->m.reason != DW_END_SERVER && conns[mt->conn[0]].player_id[0] && conns[mt->conn[1]].player_id[0]) {
+        Job j; memset(&j, 0, sizeof j); j.type = J_REPORT;
+        j.rep.match_id = mt->id; j.rep.seed = mt->m.seed; j.rep.rounds = mt->m.round; j.rep.reason = mt->m.reason;
+        j.rep.winner = mt->m.result[0] == DW_RES_WIN ? 0 : mt->m.result[1] == DW_RES_WIN ? 1 : 2;
+        snprintf(j.rep.seat_pid[0], sizeof j.rep.seat_pid[0], "%s", conns[mt->conn[0]].player_id);
+        snprintf(j.rep.seat_pid[1], sizeof j.rep.seat_pid[1], "%s", conns[mt->conn[1]].player_id);
+        if (!enqueue_job(&j)) fprintf(stderr, "dw_server: IDUNA job queue full, match %u result not reported (see match log)\n", mt->id);
+    }
     write_match_log(mt);
     vlog("match %u ended: result=[%d,%d] reason=%d rounds=%d", mt->id, mt->m.result[0], mt->m.result[1], mt->m.reason, mt->m.round);
     mt->active = 0;
@@ -207,6 +281,68 @@ static void conn_close(int ci) {
     memset(c, 0, sizeof *c); c->fd = DW_BAD_SOCK; c->state = S_FREE; c->match = -1;
 }
 
+static void become_ready(int ci) {
+    Conn *c = &conns[ci];
+    DwMsg r; memset(&r, 0, sizeof r);
+    c->state = S_READY;
+    r.type = DW_S_WELCOME; r.u.welcome.session_id = c->session_id;
+    r.u.welcome.flags = (uint8_t)((opt_ff ? DW_FLAG_FAST_FORWARD : 0) | (opt_noauth ? 0 : DW_FLAG_AUTH_REQUIRED));
+    send_msg(ci, &r);
+}
+
+/* Tokens go into an HTTP header and bot names into a JSON body: allow only the characters real ones contain, so a
+ * hostile client can't inject headers/JSON. */
+static int token_ok(const uint8_t *t, unsigned n) {
+    if (n == 0) return 0;
+    for (unsigned i = 0; i < n; i++) if (!((t[i] >= 'A' && t[i] <= 'Z') || (t[i] >= 'a' && t[i] <= 'z') || (t[i] >= '0' && t[i] <= '9') || t[i] == '.' || t[i] == '-' || t[i] == '_')) return 0;
+    return 1;
+}
+
+static void start_verify(int ci, const uint8_t *tok, unsigned n) {
+    Conn *c = &conns[ci];
+    Job j; memset(&j, 0, sizeof j); j.type = J_VERIFY; j.conn = ci; j.gen = c->session_id;
+    if (!token_ok(tok, n)) { send_error(ci, DW_ERR_AUTH); return; }
+    memcpy(j.token, tok, n);
+    if (c->kind == DW_KIND_BOT) {
+        for (const char *q = c->name; *q; q++) if (!((*q >= 'A' && *q <= 'Z') || (*q >= 'a' && *q <= 'z') || (*q >= '0' && *q <= '9') || *q == '_' || *q == '-')) { send_error(ci, DW_ERR_AUTH); return; }
+        snprintf(j.name, sizeof j.name, "%s", c->name);
+    }
+    c->state = S_VERIFYING;
+    if (!enqueue_job(&j)) { vlog("IDUNA queue unavailable, refusing conn %d", ci); send_error(ci, DW_ERR_AUTH); }
+}
+
+static __attribute__((unused)) void verify_done(const VResult *r) {
+    if (r->conn < 0 || r->conn >= MAX_CONNS) return;
+    Conn *c = &conns[r->conn];
+    if (c->state != S_VERIFYING || c->session_id != r->gen) return;   /* connection went away meanwhile */
+    if (r->rc == 0) {
+        if ((int)c->kind != r->id.kind) { vlog("conn %d: token kind mismatch", r->conn); send_error(r->conn, DW_ERR_AUTH); return; }
+        snprintf(c->player_id, sizeof c->player_id, "%s", r->id.player_id);
+        if (c->kind == DW_KIND_HUMAN && r->id.display_name[0]) snprintf(c->name, sizeof c->name, "%.16s", r->id.display_name);
+        become_ready(r->conn);
+    } else if (r->rc == -1 && opt_fail_open) {
+        fprintf(stderr, "dw_server: IDUNA unreachable; --auth-fail-open admits %s unverified (no stats)\n", c->name);
+        become_ready(r->conn);
+    } else {
+        vlog("conn %d: IDUNA %s", r->conn, r->rc == -1 ? "unreachable (failing closed)" : "rejected the token");
+        send_error(r->conn, DW_ERR_AUTH);
+    }
+}
+
+static void drain_results(void) {
+#ifdef DW_HAVE_WORKER
+    char b[64]; while (read(wake_fd[0], b, sizeof b) > 0) {}
+    for (;;) {
+        VResult r; int have = 0;
+        pthread_mutex_lock(&jm);
+        if (rq_n > 0) { r = rq[0]; memmove(rq, rq + 1, (size_t)(rq_n - 1) * sizeof rq[0]); rq_n--; have = 1; }
+        pthread_mutex_unlock(&jm);
+        if (!have) break;
+        verify_done(&r);
+    }
+#endif
+}
+
 static void handle_msg(int ci, const DwMsg *m) {
     Conn *c = &conns[ci];
     DwMsg r; memset(&r, 0, sizeof r);
@@ -217,12 +353,17 @@ static void handle_msg(int ci, const DwMsg *m) {
         if (m->u.hello.proto != DW_PROTO_VERSION) { send_error(ci, DW_ERR_BAD_PROTO); return; }
         if (m->u.hello.mode != DW_MODE_CARD) { send_error(ci, DW_ERR_BAD_STATE); return; } /* backpack = VS1 */
         if (m->u.hello.kind > DW_KIND_BOT) { send_error(ci, DW_ERR_BAD_FRAME); return; }
-        if (!opt_noauth) { send_error(ci, DW_ERR_AUTH); return; } /* IDUNA verification: S503-04 item 8 */
         memcpy(c->name, m->u.hello.name, sizeof c->name); c->kind = m->u.hello.kind; c->mode = m->u.hello.mode;
-        c->state = S_READY; c->session_id = next_session++;
-        r.type = DW_S_WELCOME; r.u.welcome.session_id = c->session_id;
-        r.u.welcome.flags = (uint8_t)((opt_ff ? DW_FLAG_FAST_FORWARD : 0) | (opt_noauth ? 0 : DW_FLAG_AUTH_REQUIRED));
-        send_msg(ci, &r);
+        for (char *q = c->name; *q; q++) if ((unsigned char)*q < 32 || *q == '"' || *q == '\\' || *q == 127) *q = '_';
+        c->session_id = next_session++;
+        if (opt_noauth) { become_ready(ci); return; }
+        if (m->u.hello.token_len > 0) { start_verify(ci, m->u.hello.token, m->u.hello.token_len); return; }
+        c->state = S_NEEDAUTH;
+        return;
+    case DW_C_AUTH:
+        if (c->state == S_NEEDAUTH) { start_verify(ci, m->u.auth.token, m->u.auth.token_len); return; }
+        if (c->state == S_READY && opt_noauth) return;   /* clients may send AUTH unconditionally */
+        send_error(ci, DW_ERR_BAD_STATE);
         return;
     case DW_C_QUEUE:
         if (c->state != S_READY) { send_error(ci, DW_ERR_BAD_STATE); return; }
@@ -246,7 +387,7 @@ static void handle_msg(int ci, const DwMsg *m) {
         return;
     }
     case DW_C_LEAVE:
-        if (c->state == S_CONNECTED) { send_error(ci, DW_ERR_BAD_STATE); return; }
+        if (c->state == S_CONNECTED || c->state == S_NEEDAUTH || c->state == S_VERIFYING) { send_error(ci, DW_ERR_BAD_STATE); return; }
         leave_match_or_queue(ci);
         return;
     default: send_error(ci, DW_ERR_BAD_STATE); return;
@@ -290,7 +431,7 @@ static void accept_conns(dw_sock ls) {
 static void expire_timers(void) {
     uint64_t now = dw_now_ms();
     for (int i = 0; i < MAX_CONNS; i++)
-        if (conns[i].state == S_CONNECTED && now - conns[i].connect_ms > HELLO_TIMEOUT_MS) conn_close(i);
+        if ((conns[i].state == S_CONNECTED || conns[i].state == S_NEEDAUTH || conns[i].state == S_VERIFYING) && now - conns[i].connect_ms > HELLO_TIMEOUT_MS) conn_close(i);
     if (opt_ff) return;
     for (int i = 0; i < MAX_MATCHES; i++) {
         Match *mt = &matches[i];
@@ -301,23 +442,38 @@ static void expire_timers(void) {
 }
 
 int main(int argc, char **argv) {
-    int port = 7700; const char *bind_addr = "0.0.0.0";
+    int port = 7700; const char *bind_addr = "0.0.0.0", *iduna_url = NULL, *secret_file = NULL, *agent_name = "DEADWEIGHT-SERVER";
     for (int i = 1; i < argc; i++) {
         if (!strcmp(argv[i], "--version")) { printf("dw_server %s (rules: %d cards, hull %d)\n", DW_VERSION, num_cards(), start_hull()); return 0; }
         else if (!strcmp(argv[i], "--port") && i + 1 < argc) port = atoi(argv[++i]);
         else if (!strcmp(argv[i], "--bind") && i + 1 < argc) bind_addr = argv[++i];
         else if (!strcmp(argv[i], "--fast-forward")) opt_ff = 1;
-        else if (!strcmp(argv[i], "--no-auth")) opt_noauth = 1;
+        else if (!strcmp(argv[i], "--no-auth")) { opt_noauth = 1; opt_noauth_explicit = 1; }
+        else if (!strcmp(argv[i], "--iduna-url") && i + 1 < argc) iduna_url = argv[++i];
+        else if (!strcmp(argv[i], "--agent-secret-file") && i + 1 < argc) secret_file = argv[++i];
+        else if (!strcmp(argv[i], "--agent-name") && i + 1 < argc) agent_name = argv[++i];
+        else if (!strcmp(argv[i], "--auth-fail-open")) opt_fail_open = 1;
         else if (!strcmp(argv[i], "--match-log") && i + 1 < argc) opt_log_dir = argv[++i];
         else if (!strcmp(argv[i], "--max-matches") && i + 1 < argc) opt_max_matches = atol(argv[++i]);
         else if (!strcmp(argv[i], "--round-ms") && i + 1 < argc) { opt_round_ms = atoi(argv[++i]); if (opt_round_ms < 50 || opt_round_ms > 60000) { fprintf(stderr, "--round-ms must be 50..60000\n"); return 2; } }
         else if (!strcmp(argv[i], "--verbose")) opt_verbose = 1;
         else {
-            fprintf(stderr, "usage: dw_server [--port N] [--bind ADDR] [--fast-forward] [--no-auth] [--match-log DIR] [--max-matches N] [--round-ms N] [--verbose] [--version]\n");
+            fprintf(stderr, "usage: dw_server [--port N] [--bind ADDR] [--fast-forward] [--no-auth] [--iduna-url URL --agent-secret-file F [--agent-name N] [--auth-fail-open]] [--match-log DIR] [--max-matches N] [--round-ms N] [--verbose] [--version]\n");
             return 2;
         }
     }
+    if (iduna_url) {
+#ifndef DW_HAVE_WORKER
+        fprintf(stderr, "dw_server: --iduna-url is not supported in this (Windows) build; use --no-auth\n"); return 2;
+#endif
+        int rc = dwi_configure(&iduna, iduna_url, agent_name, secret_file);
+        if (rc == -1) { fprintf(stderr, "dw_server: bad --iduna-url %s\n", iduna_url); return 2; }
+        if (rc != 0) { fprintf(stderr, "dw_server: cannot read agent secret for %s from %s (rc %d)\n", agent_name, secret_file ? secret_file : "(no --agent-secret-file)", rc); return 1; }
+        opt_iduna = 1;
+        if (!opt_noauth_explicit) opt_noauth = 0;
+    }
     if (dw_net_init() != 0) { fprintf(stderr, "dw_server: net init failed\n"); return 1; }
+    if (opt_iduna && start_worker() != 0) { fprintf(stderr, "dw_server: cannot start IDUNA worker\n"); return 1; }
     signal(SIGINT, on_signal); signal(SIGTERM, on_signal);
     for (int i = 0; i < MAX_CONNS; i++) { conns[i].fd = DW_BAD_SOCK; conns[i].match = -1; }
     dw_sock ls = socket(AF_INET, SOCK_STREAM, 0);
@@ -330,11 +486,14 @@ int main(int argc, char **argv) {
     if (port == 0) { socklen_t sl = sizeof sa; getsockname(ls, (struct sockaddr *)&sa, &sl); port = ntohs(sa.sin_port); }
     dw_nonblock(ls);
     seed_state ^= (uint32_t)dw_now_ms() | 1u;
-    printf("dw_server %s listening on %s:%d%s\n", DW_VERSION, bind_addr, port, opt_ff ? " (fast-forward)" : ""); fflush(stdout);
+    printf("dw_server %s listening on %s:%d%s%s\n", DW_VERSION, bind_addr, port, opt_ff ? " (fast-forward)" : "", opt_noauth ? " (no-auth)" : " (IDUNA auth required)"); fflush(stdout);
 
     while (!stop_flag && !(opt_max_matches >= 0 && st_matches >= opt_max_matches)) {
-        struct pollfd pf[MAX_CONNS + 1]; int map[MAX_CONNS + 1]; unsigned n = 0;
+        struct pollfd pf[MAX_CONNS + 2]; int map[MAX_CONNS + 2]; unsigned n = 0;
         pf[n].fd = ls; pf[n].events = POLLIN; pf[n].revents = 0; map[n++] = -1;
+#ifdef DW_HAVE_WORKER
+        if (opt_iduna) { pf[n].fd = wake_fd[0]; pf[n].events = POLLIN; pf[n].revents = 0; map[n++] = -2; }
+#endif
         for (int i = 0; i < MAX_CONNS; i++) if (conns[i].state != S_FREE) {
             pf[n].fd = conns[i].fd; pf[n].events = (short)(POLLIN | (conns[i].out_n ? POLLOUT : 0)); pf[n].revents = 0; map[n++] = i;
         }
@@ -342,7 +501,8 @@ int main(int argc, char **argv) {
         if (rc > 0) {
             for (unsigned k = 0; k < n; k++) {
                 if (!pf[k].revents) continue;
-                if (map[k] < 0) { accept_conns(ls); continue; }
+                if (map[k] == -1) { accept_conns(ls); continue; }
+                if (map[k] == -2) { drain_results(); continue; }
                 int ci = map[k];
                 if (conns[ci].state == S_FREE) continue;
                 if (pf[k].revents & POLLOUT) flush_conn(ci);
@@ -353,6 +513,7 @@ int main(int argc, char **argv) {
             flush_conn(i); conn_close(i);
         }
         expire_timers();
+        if (opt_iduna) drain_results();
     }
     for (int i = 0; i < MAX_MATCHES; i++) if (matches[i].active) {
         dw_match_forfeit(&matches[i].m, 0); matches[i].m.result[0] = matches[i].m.result[1] = DW_RES_DRAW; matches[i].m.reason = DW_END_SERVER;
@@ -360,6 +521,7 @@ int main(int argc, char **argv) {
     }
     for (int i = 0; i < MAX_CONNS; i++) if (conns[i].state != S_FREE) { flush_conn(i); conn_close(i); }
     dw_close(ls);
+    stop_worker();
     fprintf(stderr, "dw_server: shutdown matches=%ld bot_bot=%ld human_bot=%ld human_human=%ld forfeits=%ld\n",
             st_matches, st_bot_bot, st_human_bot, st_human_human, st_forfeits);
     return 0;

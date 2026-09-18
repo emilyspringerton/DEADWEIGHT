@@ -1,6 +1,6 @@
 # DEADWEIGHT wire protocol v1 (TCP)
 
-Little-endian. Frame = `u16 len` (bytes after this field) + `u8 type` + payload. Max frame 256 bytes; longer =
+Little-endian. Frame = `u16 len` (bytes after this field) + `u8 type` + payload. Max `len` 1024 (only AUTH is ever larger than 256); longer =
 protocol violation, server closes. Strings are fixed 16-byte NUL-padded UTF-8 (`name16`).
 One TCP connection = one session. Server sends nothing before HELLO. `proto` = 1.
 
@@ -13,6 +13,7 @@ One TCP connection = one session. Server sends nothing before HELLO. `proto` = 1
 | 0x03 | PLAY | `u32 match_id`, `u8 round`, `i8 slot` (0–3, −1 = pass) |
 | 0x04 | LEAVE | — (leaves queue or forfeits the current match) |
 | 0x05 | PING | `u32 nonce` |
+| 0x06 | AUTH | `u16 token_len` (≤ 900), `token[token_len]` — the IDUNA token (guest player JWT, or DEADWEIGHT-BOTS agent JWT for bots). **Real IDUNA ES256 JWTs are ~400–500 bytes, far above HELLO's 200-byte `token` field**, so with auth required the client sends HELLO with `token_len = 0` and then AUTH; the server replies WELCOME only after IDUNA verification. HELLO's inline token (≤200) is still accepted for short tokens. With `--no-auth` the server sends WELCOME straight after HELLO and ignores a later AUTH. |
 
 ## Server → client
 
@@ -31,7 +32,7 @@ One TCP connection = one session. Server sends nothing before HELLO. `proto` = 1
 
 ## Session state machine
 
-`CONNECTED --HELLO--> READY --QUEUE--> QUEUED --MATCH_FOUND--> IN_MATCH --MATCH_END--> READY`.
+`CONNECTED --HELLO--> (auth required: --AUTH--> VERIFYING, ERROR 2 on rejection) READY --QUEUE--> QUEUED --MATCH_FOUND--> IN_MATCH --MATCH_END--> READY`.
 Inside a match the server loops `ROUND_START` → collect locks → `ROUND_RESULT`, up to round 8, then `MATCH_END`.
 `ROUND_START` for round *n*+1 follows `ROUND_RESULT` *n* immediately. Both clients get every message; opponent
 hand contents are never sent.

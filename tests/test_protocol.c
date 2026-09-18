@@ -12,7 +12,7 @@ static uint32_t rng = 12345;
 static uint32_t rnd(void) { rng ^= rng << 13; rng ^= rng >> 17; rng ^= rng << 5; return rng; }
 
 static void roundtrip(const DwMsg *m) {
-    uint8_t b[512]; DwMsg d; size_t used = 0;
+    uint8_t b[1200]; DwMsg d; size_t used = 0;
     int n = dw_encode(m, b, sizeof b);
     CHECK(n > 2);
     if (n <= 2) return;
@@ -20,18 +20,18 @@ static void roundtrip(const DwMsg *m) {
     for (int k = 0; k < n; k++) { int r = dw_decode(b, (size_t)k, &d, &used); CHECK(r == 0); }
     CHECK(dw_decode(b, (size_t)n, &d, &used) == 1);
     CHECK(used == (size_t)n);
-    uint8_t b2[512];
+    uint8_t b2[1200];
     int n2 = dw_encode(&d, b2, sizeof b2);
     CHECK(n2 == n && memcmp(b, b2, (size_t)n) == 0);
     /* trailing bytes of the next frame are not consumed */
-    uint8_t b3[600]; memcpy(b3, b, (size_t)n); memcpy(b3 + n, b, (size_t)n);
+    uint8_t b3[2400]; memcpy(b3, b, (size_t)n); memcpy(b3 + n, b, (size_t)n);
     CHECK(dw_decode(b3, (size_t)n * 2, &d, &used) == 1 && used == (size_t)n);
     /* undersized output buffer is rejected, not overrun */
     CHECK(dw_encode(m, b2, (size_t)n - 1) == -1);
 }
 
 int main(void) {
-    DwMsg m; uint8_t b[512]; DwMsg d; size_t used;
+    DwMsg m; uint8_t b[1200]; DwMsg d; size_t used;
     memset(&m, 0, sizeof m); m.type = DW_C_HELLO; m.u.hello.proto = 1; m.u.hello.mode = 0; m.u.hello.kind = 1;
     strcpy(m.u.hello.name, "Ripper"); m.u.hello.token_len = 3; memcpy(m.u.hello.token, "abc", 3);
     roundtrip(&m);
@@ -48,6 +48,12 @@ int main(void) {
     m.type = DW_C_PLAY; m.u.play.match_id = 0xDEADBEEF; m.u.play.round = 7; m.u.play.slot = -1; roundtrip(&m);
     n = dw_encode(&m, b, sizeof b);
     CHECK(n == 9 && b[0] == 7 && b[2] == 3 && b[3] == 0xEF && b[6] == 0xDE && b[7] == 7 && b[8] == 0xFF);
+    m.type = DW_C_AUTH; m.u.auth.token_len = 0; roundtrip(&m);
+    m.u.auth.token_len = 5; memcpy(m.u.auth.token, "eyJhb", 5); roundtrip(&m);
+    n = dw_encode(&m, b, sizeof b); CHECK(n == 2 + 1 + 2 + 5 && b[0] == 8 && b[2] == DW_C_AUTH && b[3] == 5 && b[4] == 0 && b[5] == 'e');
+    m.u.auth.token_len = DW_MAX_AUTH_TOKEN; memset(m.u.auth.token, 'x', DW_MAX_AUTH_TOKEN);
+    { uint8_t big[1100]; DwMsg dd; size_t uu; int nn = dw_encode(&m, big, sizeof big); CHECK(nn == 2 + 1 + 2 + DW_MAX_AUTH_TOKEN); CHECK(dw_decode(big, (size_t)nn, &dd, &uu) == 1 && dd.u.auth.token_len == DW_MAX_AUTH_TOKEN); }
+    m.u.auth.token_len = DW_MAX_AUTH_TOKEN + 1; CHECK(dw_encode(&m, b, sizeof b) == -1);
     m.type = DW_C_PING; m.u.ping.nonce = 0x01020304; roundtrip(&m);
     m.type = DW_S_PONG; roundtrip(&m);
     m.type = DW_S_WELCOME; m.u.welcome.session_id = 99; m.u.welcome.flags = 3; roundtrip(&m);
@@ -68,7 +74,9 @@ int main(void) {
 
     /* malformed frames */
     uint8_t bad1[] = { 0, 0 };                    CHECK(dw_decode(bad1, 2, &d, &used) == -1);   /* len 0 */
-    uint8_t bad2[] = { 0x01, 0x01, 0x02 };        CHECK(dw_decode(bad2, 3, &d, &used) == -1);   /* len 257 > max */
+    uint8_t bad2[] = { 0x01, 0x04, 0x02 };        CHECK(dw_decode(bad2, 3, &d, &used) == -1);   /* len 1025 > max */
+    uint8_t bad9[] = { 2, 0, DW_C_AUTH, 0 };      CHECK(dw_decode(bad9, 4, &d, &used) == -1);   /* AUTH shorter than its length field */
+    uint8_t bad10[] = { 4, 0, DW_C_AUTH, 5, 0, 'a' }; CHECK(dw_decode(bad10, 6, &d, &used) == -1);   /* AUTH len/payload mismatch */
     uint8_t bad3[] = { 1, 0, 0x77 };              CHECK(dw_decode(bad3, 3, &d, &used) == -1);   /* unknown type */
     uint8_t bad4[] = { 2, 0, DW_C_QUEUE, 0 };     CHECK(dw_decode(bad4, 4, &d, &used) == -1);   /* QUEUE with payload */
     uint8_t bad5[] = { 3, 0, DW_C_PLAY, 0, 0 };   CHECK(dw_decode(bad5, 5, &d, &used) == -1);   /* short PLAY */
@@ -81,18 +89,20 @@ int main(void) {
 
     /* fuzz: random bytes, random truncations of valid frames, single-bit flips of valid frames */
     for (int i = 0; i < 200000; i++) {
-        uint8_t f[300]; size_t l = rnd() % 300;
+        uint8_t f[1100]; size_t l = rnd() % 1100;
         for (size_t k = 0; k < l; k++) f[k] = (uint8_t)rnd();
         if (l >= 2 && (rnd() & 1)) { f[0] = (uint8_t)(rnd() % 40); f[1] = 0; if (l > 2) f[2] = (uint8_t)((rnd() & 1) ? (0x80 | (rnd() % 16)) : (rnd() % 8)); }
+        if (l >= 5 && (rnd() % 4) == 0) { f[2] = DW_C_AUTH; f[0] = (uint8_t)(rnd() % 60); f[1] = 0; f[3] = (uint8_t)(f[0] >= 3 ? f[0] - 3 : 0); f[4] = 0; }
         int r = dw_decode(f, l, &d, &used);
         CHECK(r >= -1 && r <= 1);
-        if (r == 1) { CHECK(used >= 3 && used <= l); uint8_t o[512]; CHECK(dw_encode(&d, o, sizeof o) >= 3); }
+        if (r == 1) { CHECK(used >= 3 && used <= l); uint8_t o[1200]; CHECK(dw_encode(&d, o, sizeof o) >= 3); }
     }
     for (int i = 0; i < 20000; i++) {
         memset(&m, 0, sizeof m);
-        static const uint8_t types[] = { DW_C_HELLO, DW_C_PLAY, DW_S_MATCH_FOUND, DW_S_ROUND_START, DW_S_ROUND_RESULT, DW_S_MATCH_END };
-        m.type = types[rnd() % 6];
+        static const uint8_t types[] = { DW_C_HELLO, DW_C_AUTH, DW_C_PLAY, DW_S_MATCH_FOUND, DW_S_ROUND_START, DW_S_ROUND_RESULT, DW_S_MATCH_END };
+        m.type = types[rnd() % 7];
         for (size_t k = 0; k < sizeof m.u; k++) ((uint8_t *)&m.u)[k] = (uint8_t)rnd();
+        if (m.type == DW_C_AUTH) m.u.auth.token_len = (uint16_t)(rnd() % 901);
         if (m.type == DW_C_HELLO) { m.u.hello.token_len = (uint8_t)(rnd() % 201); m.u.hello.name[DW_NAME_LEN] = 0; }
         if (m.type == DW_S_MATCH_FOUND) m.u.match_found.opp_name[DW_NAME_LEN] = 0;
         int en = dw_encode(&m, b, sizeof b);
