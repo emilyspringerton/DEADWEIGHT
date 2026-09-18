@@ -81,13 +81,16 @@ jobs:
           bazelisk-cache: true
           disk-cache: ${{ github.workflow }}
           repository-cache: true
-      - uses: android-actions/setup-android@v3
+      # android-actions/setup-android@v3 currently dies on `Failed to find package 'tools'` (first CI run, 2026-09-18).
+      # ubuntu-latest already ships an Android SDK ($ANDROID_HOME) with cmdline-tools, so use its sdkmanager directly.
       # `yes | sdkmanager` under pipefail fails on yes's SIGPIPE even when sdkmanager succeeds (KARAMBIT, 2026-09-10).
       - name: Install Android SDK platform + build-tools
         run: |
           set -eu
+          SDKM="$(ls -d "$ANDROID_HOME"/cmdline-tools/*/bin/sdkmanager | sort -V | tail -1)"
+          echo "sdkmanager: $SDKM"
           set +o pipefail
-          yes | sdkmanager --sdk_root="$ANDROID_HOME" "platform-tools" "platforms;android-34" "build-tools;35.0.0"
+          yes | "$SDKM" --sdk_root="$ANDROID_HOME" "platform-tools" "platforms;android-34" "build-tools;35.0.0"
       - name: Stamp version
         if: needs.version.outputs.tag != ''
         run: |
