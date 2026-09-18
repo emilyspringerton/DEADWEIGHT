@@ -7,6 +7,13 @@ on:
 permissions:
   contents: write
 
+# Serialize runs per ref: parallel pushes all computed the same next tag (v0.1.0) at start and all but one lost the
+# release race (run 2, 2026-09-18). Queued (not cancelled) so each run sees the previous run's tag; GitHub keeps only
+# the newest pending run, which is fine because it builds the newest commit.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: false
+
 # Every push builds + tests everything. Every green push to main auto-bumps the MINOR version, tags, and cuts a
 # non-prerelease GitHub Release (non-prerelease so marcosnils/bin can install it) with the server, Windows client
 # and APK attached. Same scheme as PARENA/KARAMBIT/BRAWLPIT ("i will handle big bumps to signify human verified
