@@ -107,6 +107,8 @@ jobs:
             android/BUILD.bazel
       - name: Cross-target parity test (plain JVM)
         run: bazel run //android:core_test -- "$PWD/tests/parity_vectors.txt"
+      - name: Session/protocol tests (plain JVM)
+        run: bazel run //android:session_test
       - name: Build APK
         run: bazel build //android:deadweight
       - run: cp bazel-bin/android/deadweight.apk deadweight.apk
