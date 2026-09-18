@@ -19,9 +19,16 @@ java_binary(
     deps = [":core_lib"],
 )
 
+java_binary(
+    name = "session_test",
+    srcs = ["src/test/java/industrial/einhorn/deadweight/CoreTest.java"],
+    main_class = "industrial.einhorn.deadweight.CoreTest",
+    deps = [":core_lib"],
+)
+
 android_library(
     name = "deadweight_lib",
-    srcs = ["src/main/java/industrial/einhorn/deadweight/MainActivity.java"],
+    srcs = glob(["src/main/java/industrial/einhorn/deadweight/*.java"]),
     manifest = "src/main/AndroidManifest.xml",
     resource_files = glob(["src/main/res/**"]),
     deps = [":core_lib"],
