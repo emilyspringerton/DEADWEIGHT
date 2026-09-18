@@ -1,0 +1,20 @@
+# One standing DEADWEIGHT bot per instance: dw-bot@ripper, dw-bot@wall, dw-bot@mirror (user unit template).
+# FILES ONLY -- not installed/enabled by this repo. Heuristic archetype bots, not learned policies.
+# EnvironmentFile is REQUIRED (see dw-server.service header for why); shares ops/systemd/dw.env.example's file.
+[Unit]
+Description=DEADWEIGHT bot %i (dw_bot)
+After=network-online.target dw-server.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+EnvironmentFile=%h/.config/deadweight/dw.env
+ExecStartPre=/usr/bin/test -x %h/DEADWEIGHT/build/dw_bot
+ExecStart=%h/DEADWEIGHT/build/dw_bot --archetype %i --name bot-%i --host ${DW_HOST} --port ${DW_PORT} --think-ms ${DW_BOT_THINK_MS} $DW_BOT_ARGS
+Restart=always
+RestartSec=3
+KillSignal=SIGTERM
+TimeoutStopSec=10
+
+[Install]
+WantedBy=default.target

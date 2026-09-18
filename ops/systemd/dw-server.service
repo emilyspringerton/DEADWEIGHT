@@ -1,0 +1,26 @@
+# DEADWEIGHT match server (user unit). FILES ONLY -- not installed/enabled by this repo. See ops/systemd/README.md.
+#
+# LOAD-BEARING: EnvironmentFile below is REQUIRED (no leading "-"). If it is missing the unit must fail LOUDLY at
+# start (ExecStartPre), not sit silently dead -- `ecowar-matchmaker.service` was dead for 5 days behind a missing
+# EnvironmentFile. Create it from ops/systemd/dw.env.example before enabling.
+[Unit]
+Description=DEADWEIGHT match server (dw_server)
+After=network-online.target
+Wants=network-online.target
+StartLimitIntervalSec=300
+StartLimitBurst=10
+
+[Service]
+Type=simple
+EnvironmentFile=%h/.config/deadweight/dw.env
+ExecStartPre=/usr/bin/test -x %h/DEADWEIGHT/build/dw_server
+ExecStartPre=/usr/bin/mkdir -p ${DW_MATCH_LOG_DIR}
+ExecStart=%h/DEADWEIGHT/build/dw_server --port ${DW_PORT} --match-log ${DW_MATCH_LOG_DIR} $DW_SERVER_ARGS
+Restart=always
+RestartSec=3
+# dw_server shuts down cleanly on SIGTERM (ends active matches with reason=server).
+KillSignal=SIGTERM
+TimeoutStopSec=10
+
+[Install]
+WantedBy=default.target
