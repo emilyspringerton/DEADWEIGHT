@@ -142,6 +142,7 @@ jobs:
           cp artifacts/windows-*/dw_client.exe out/dw_client.exe
           cp artifacts/windows-*/dw_server.exe out/dw_server.exe
           cp artifacts/android-*/deadweight.apk "out/deadweight-${TAG}.apk"
-          git tag "$TAG"
-          git push origin "$TAG"
-          gh release create "$TAG" out/* --title "$TAG" --generate-notes
+          # Create the tag server-side via the release API (--target). A plain `git push origin $TAG` from the runner is
+          # rejected ("refusing to allow a GitHub App to create or update workflow ... without `workflows`
+          # permission") because the GITHUB_TOKEN treats the workflow file in history as part of the new ref.
+          gh release create "$TAG" out/* --target "$GITHUB_SHA" --title "$TAG" --generate-notes
