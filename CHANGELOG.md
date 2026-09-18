@@ -1,6 +1,7 @@
 # CHANGELOG
 
 ## 2026-09-18
+- training/: PFSP 3-role league (ported), game-scoped registry client, wire-protocol env + fake server, dw_train dry-run, Colab stub (S503-08) (sess-20260918-1725-497f394f)
 - Android VS0: plain-JVM core (codec/transport/session/model), programmatic card UI, IDUNA guest auth hook, 118-check CoreTest; APK builds clean (S503-07) (sess-20260918-1725-497f394f)
 - VS0 scoping pass (`docs/VS0_SCOPING.md`, `CARD_MODE_RULES.md`, `WIRE_PROTOCOL.md`): card mode first, Android-first,
   bots + multiplayer from day one, backpack battler = VS1. (S503-01)
