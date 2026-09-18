@@ -1,0 +1,39 @@
+load("@rules_android//android:rules.bzl", "android_binary", "android_library")
+load("@rules_java//java:defs.bzl", "java_binary", "java_library")
+
+# core_lib: Android-free Java (PARENA-generated CardRules today; protocol codec + session state machine next).
+# Plain java_library so it builds and tests on a bare JVM with no Android SDK (KARAMBIT convention).
+java_library(
+    name = "core_lib",
+    srcs = glob(["src/main/java/industrial/einhorn/deadweight/core/**/*.java"], allow_empty = True) + [
+        "src/main/java/industrial/einhorn/deadweight/generated/CardRules.java",
+    ],
+    visibility = ["//visibility:public"],
+)
+
+# core_test: plain-JVM cross-target parity check. Run: bazel run //android:core_test -- $PWD/tests/parity_vectors.txt
+java_binary(
+    name = "core_test",
+    srcs = ["src/test/java/industrial/einhorn/deadweight/ParityTest.java"],
+    main_class = "industrial.einhorn.deadweight.ParityTest",
+    deps = [":core_lib"],
+)
+
+android_library(
+    name = "deadweight_lib",
+    srcs = ["src/main/java/industrial/einhorn/deadweight/MainActivity.java"],
+    manifest = "src/main/AndroidManifest.xml",
+    resource_files = glob(["src/main/res/**"]),
+    deps = [":core_lib"],
+)
+
+# versionCode/versionName are dev placeholders; the CI release job sed-patches them (KARAMBIT scheme).
+android_binary(
+    name = "deadweight",
+    manifest = "src/main/AndroidManifest.xml",
+    manifest_values = {
+        "versionCode": "1",
+        "versionName": "0.0.0-dev",
+    },
+    deps = [":deadweight_lib"],
+)

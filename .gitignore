@@ -1,0 +1,8 @@
+bazel-*
+build/
+*.class
+*.jar
+local.properties
+dist/
+*.o
+__pycache__/

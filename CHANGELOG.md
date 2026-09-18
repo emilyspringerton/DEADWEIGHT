@@ -1,0 +1,8 @@
+# CHANGELOG
+
+## 2026-09-18
+- VS0 scoping pass (`docs/VS0_SCOPING.md`, `CARD_MODE_RULES.md`, `WIRE_PROTOCOL.md`): card mode first, Android-first,
+  bots + multiplayer from day one, backpack battler = VS1. (S503-01)
+- Clean-build skeleton: PARENA-generated `card_rules` (C + Java from one `.prn`), 1610 cross-target parity vectors +
+  hand-typed oracle test, `dw_server`/`dw_client` stubs, Windows mingw cross-build, Bazel APK, CI with auto minor
+  releases. Local `scripts/build.sh --all` clean. (S503-02/03)

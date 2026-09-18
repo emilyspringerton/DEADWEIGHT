@@ -1,0 +1,137 @@
+name: DEADWEIGHT CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: write
+
+# Every push builds + tests everything. Every green push to main auto-bumps the MINOR version, tags, and cuts a
+# non-prerelease GitHub Release (non-prerelease so marcosnils/bin can install it) with the server, Windows client
+# and APK attached. Same scheme as PARENA/KARAMBIT/BRAWLPIT ("i will handle big bumps to signify human verified
+# releases"). Artifacts are built ONCE, already version-stamped, and the release job only publishes them.
+jobs:
+  version:
+    name: Compute version
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.v.outputs.version }}
+      tag: ${{ steps.v.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - id: v
+        run: |
+          set -euo pipefail
+          if [ "${GITHUB_REF}" = "refs/heads/main" ] && [ "${GITHUB_EVENT_NAME}" = "push" ]; then
+            latest="$(git tag -l 'v[0-9]*.[0-9]*.[0-9]*' --sort=-v:refname | head -n1)"
+            if [ -z "$latest" ]; then major=0; minor=0; else
+              ver="${latest#v}"; major="$(echo "$ver" | cut -d. -f1)"; minor="$(echo "$ver" | cut -d. -f2)"; fi
+            tag="v${major}.$((minor + 1)).0"
+            echo "version=${tag#v}" >> "$GITHUB_OUTPUT"
+            echo "tag=${tag}" >> "$GITHUB_OUTPUT"
+          else
+            echo "version=0.0.0-dev" >> "$GITHUB_OUTPUT"
+            echo "tag=" >> "$GITHUB_OUTPUT"
+          fi
+
+  core:
+    name: C core (ASan+UBSan tests, server, client)
+    needs: version
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build + test
+        run: DW_VERSION=${{ needs.version.outputs.version }} scripts/build.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux-${{ github.run_number }}
+          path: |
+            build/dw_server
+            build/dw_client
+          if-no-files-found: error
+
+  windows:
+    name: Windows cross-build (mingw)
+    needs: version
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: sudo apt-get update && sudo apt-get install -y mingw-w64 file
+      - name: Build
+        run: DW_VERSION=${{ needs.version.outputs.version }} scripts/build.sh --windows
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows-${{ github.run_number }}
+          path: |
+            build/dw_client.exe
+            build/dw_server.exe
+          if-no-files-found: error
+
+  android:
+    name: Android (JVM parity test + APK)
+    needs: version
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: bazel-contrib/setup-bazel@0.15.0
+        with:
+          bazelisk-cache: true
+          disk-cache: ${{ github.workflow }}
+          repository-cache: true
+      - uses: android-actions/setup-android@v3
+      # `yes | sdkmanager` under pipefail fails on yes's SIGPIPE even when sdkmanager succeeds (KARAMBIT, 2026-09-10).
+      - name: Install Android SDK platform + build-tools
+        run: |
+          set -eu
+          set +o pipefail
+          yes | sdkmanager --sdk_root="$ANDROID_HOME" "platform-tools" "platforms;android-34" "build-tools;35.0.0"
+      - name: Stamp version
+        if: needs.version.outputs.tag != ''
+        run: |
+          sed -i \
+            -e 's/"versionCode": "1"/"versionCode": "${{ github.run_number }}"/' \
+            -e 's/"versionName": "0.0.0-dev"/"versionName": "${{ needs.version.outputs.version }}"/' \
+            android/BUILD.bazel
+      - name: Cross-target parity test (plain JVM)
+        run: bazel run //android:core_test -- "$PWD/tests/parity_vectors.txt"
+      - name: Build APK
+        run: bazel build //android:deadweight
+      - run: cp bazel-bin/android/deadweight.apk deadweight.apk
+      - uses: actions/upload-artifact@v4
+        with:
+          name: android-${{ github.run_number }}
+          path: deadweight.apk
+          if-no-files-found: error
+
+  release:
+    name: Tag & Release
+    needs: [version, core, windows, android]
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+      - name: Tag and release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.version.outputs.tag }}
+        run: |
+          set -euo pipefail
+          mkdir out
+          cp artifacts/linux-*/dw_server "out/dw_server_linux_x86_64"
+          cp artifacts/linux-*/dw_client "out/dw_client_linux_x86_64"
+          cp artifacts/windows-*/dw_client.exe out/dw_client.exe
+          cp artifacts/windows-*/dw_server.exe out/dw_server.exe
+          cp artifacts/android-*/deadweight.apk "out/deadweight-${TAG}.apk"
+          git tag "$TAG"
+          git push origin "$TAG"
+          gh release create "$TAG" out/* --title "$TAG" --generate-notes
