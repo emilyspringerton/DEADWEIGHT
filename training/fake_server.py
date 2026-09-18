@@ -51,6 +51,7 @@ class FakeServer:
             while True:
                 t, p = self._frame(c)
                 if t == W.C_QUEUE: self._match(c)
+                elif t == W.C_AUTH: pass  # fake server: no auth required; ignore like --no-auth
                 elif t == W.C_PING: c.sendall(W.frame(W.S_PONG, p[:4]))
                 elif t == W.C_LEAVE: return
         except (ConnectionError, OSError, AssertionError):

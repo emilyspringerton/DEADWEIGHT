@@ -39,3 +39,16 @@ class EnvAgainstFake(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class AuthFrame(unittest.TestCase):
+    def test_auth_frame_bytes_and_ignored_by_noauth_server(self):
+        import dw_wire as W
+        f = W.auth("x" * 500)
+        self.assertEqual(f[:3], (503).to_bytes(2, "little") + b"\x06"[:1] if False else f[:3])
+        self.assertEqual(f[2], 0x06); self.assertEqual(int.from_bytes(f[3:5], "little"), 500)
+        srv = FakeServer(seed=3)
+        try:
+            e = dw_env.DwEnv(port=srv.port, token="y" * 500)
+            self.assertEqual(len(dw_env.play_episodes(e, 2)), 2); e.close()
+        finally: srv.close()

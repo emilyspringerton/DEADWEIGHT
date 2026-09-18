@@ -15,7 +15,7 @@ class RealServer(unittest.TestCase):
     def test_full_matches(self):
         if not os.path.exists(BIN): self.skipTest("build/dw_server not built")
         port = free_port()
-        p = subprocess.Popen([BIN, "--fast-forward", "--port", str(port)], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        p = subprocess.Popen([BIN, "--fast-forward", "--no-auth", "--port", str(port)], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         try:
             time.sleep(0.4)
             if p.poll() is not None: self.skipTest("dw_server exited (not implemented yet)")

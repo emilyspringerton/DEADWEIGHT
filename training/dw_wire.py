@@ -2,7 +2,8 @@
 import socket
 import struct
 
-C_HELLO, C_QUEUE, C_PLAY, C_LEAVE, C_PING = 0x01, 0x02, 0x03, 0x04, 0x05
+C_HELLO, C_QUEUE, C_PLAY, C_LEAVE, C_PING, C_AUTH = 0x01, 0x02, 0x03, 0x04, 0x05, 0x06
+AUTH_REQUIRED_FLAG = 2
 S_WELCOME, S_QUEUED, S_MATCH_FOUND, S_ROUND_START, S_PLAY_ACK = 0x81, 0x82, 0x83, 0x84, 0x85
 S_PLAY_REJECT, S_ROUND_RESULT, S_MATCH_END, S_PONG, S_ERROR = 0x86, 0x87, 0x88, 0x89, 0x8F
 MODE_CARD, KIND_HUMAN, KIND_BOT = 0, 0, 1
@@ -18,6 +19,12 @@ def frame(ftype, payload=b""):
 
 def hello(name, kind=KIND_BOT, mode=MODE_CARD, token=b""):
     return frame(C_HELLO, struct.pack("<BBB", 1, mode, kind) + name16(name) + bytes([len(token)]) + token)
+
+
+def auth(token):
+    t = token if isinstance(token, bytes) else token.encode()
+    assert len(t) <= 900
+    return frame(C_AUTH, struct.pack("<H", len(t)) + t)
 
 
 def queue(): return frame(C_QUEUE)

@@ -45,7 +45,7 @@ _procs = []
 
 
 def spawn_server(binary, port):
-    p = subprocess.Popen([binary, "--fast-forward", "--port", str(port)], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    p = subprocess.Popen([binary, "--fast-forward", "--no-auth", "--port", str(port)], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     _procs.append(p)
     time.sleep(0.3)
     if p.poll() is not None:
@@ -86,12 +86,18 @@ class OpponentBot(threading.Thread):
                 obs, _ = self.env.reset(); done = False
                 while not done and not self._stop_flag:
                     obs, _, done, _, _ = self.env.step(self.policy(obs, self.env.action_masks()))
-        except (OSError, ConnectionError, RuntimeError):
+        except (OSError, ConnectionError, RuntimeError, AttributeError):
             pass
 
     def stop(self):
         self._stop_flag = True
+        try:
+            if self.env.conn: self.env.conn.send(W.frame(W.C_LEAVE))
+        except OSError:
+            pass
         self.env.close()
+        self.join(timeout=2)
+        time.sleep(0.25)  # let the server drop our queue entry, or the next generation's opponent pairs with this ghost
 
 
 def pick_opponent(role, league, local_wl, recent_vs_main, rng=None):

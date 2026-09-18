@@ -49,7 +49,8 @@ def build_observation(rs, opp_kinds):
 
 
 class DwEnv(_Base):
-    def __init__(self, host="127.0.0.1", port=7000, name="dw-trainee", kind=W.KIND_BOT, timeout=30.0):
+    def __init__(self, host="127.0.0.1", port=7000, name="dw-trainee", kind=W.KIND_BOT, timeout=30.0, token=None):
+        self.token = token
         self.host, self.port, self.name, self.kind, self.timeout = host, port, name, kind, timeout
         self.conn = None; self.rs = None; self.match = None; self.opp_kinds = [3, 3, 3]
         if gym is not None:
@@ -61,8 +62,10 @@ class DwEnv(_Base):
     def _connect(self):
         self.conn = W.Conn(self.host, self.port, self.timeout)
         self.conn.send(W.hello(self.name, self.kind))
-        t, _ = self.conn.recv()
-        if t != W.S_WELCOME: raise RuntimeError(f"expected WELCOME, got {t:#x}")
+        if self.token:  # server started without --no-auth: HELLO carries no token, AUTH follows
+            self.conn.send(W.auth(self.token))
+        t, d = self.conn.recv()
+        if t != W.S_WELCOME: raise RuntimeError(f"expected WELCOME, got {t:#x} {d}")
 
     def _next(self, want):
         while True:
