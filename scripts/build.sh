@@ -18,6 +18,11 @@ gcc $CFLAGS_BASE -g -fsanitize=address,undefined -fno-sanitize-recover=all \
     tests/test_protocol.c core/protocol.c -o build/test_protocol
 ./build/test_protocol
 
+echo "== C: match core tests (ASan+UBSan) =="
+gcc $CFLAGS_BASE -g -fsanitize=address,undefined -fno-sanitize-recover=all \
+    tests/test_match.c core/match.c core/card_rules.c -o build/test_match
+./build/test_match
+
 echo "== C: server + client =="
 gcc $CFLAGS_BASE -O2 apps/server/main.c core/card_rules.c -o build/dw_server
 gcc $CFLAGS_BASE -O2 apps/client/main.c core/card_rules.c -o build/dw_client
