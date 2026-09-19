@@ -144,6 +144,32 @@ def fresh_model(env, ent_coef):
     return MaskablePPO("MlpPolicy", env, ent_coef=ent_coef, verbose=0, device="cpu")
 
 
+def resume_from_registry(registry, league, ckpt_dir, models, dry):
+    """Warm-start each role from its NEWEST registry checkpoint (real PPO weights, not just an Elo number) so a recycled
+    Colab runtime continues the SAME league instead of three fresh random networks (BRAWLPIT S459-70/71 precedent: when
+    pushing to the registry this is unconditional). If all three roles have a checkpoint they are also registered as the
+    local league's starting snapshot so PFSP has real opponents. Registry trouble never kills training: any failure prints
+    and falls back to a fresh start. Returns the newest generation found (0 = none)."""
+    paths, gens = {}, []
+    for role in ALL_ROLES:
+        try:
+            recs = registry.list(role.value)
+            if not recs: continue
+            rec = max(recs, key=lambda r: r["generation"])
+            dest = os.path.join(ckpt_dir, f"resume_{role.value}_g{rec['generation']}." + ("json" if dry else "zip"))
+            registry.download(rec, dest)
+            if not dry: models[role] = MaskablePPO.load(dest, device="cpu")
+        except Exception as e:  # registry down / route not deployed / bad file: train fresh, loudly
+            print(f"resume: {role.value}: could not resume from the registry ({e}); starting this role fresh", flush=True)
+            continue
+        paths[role] = dest; gens.append(rec["generation"])
+        print(f"resume: {role.value} <- registry id={rec.get('id')} gen={rec['generation']} elo={rec.get('elo')}", flush=True)
+    if len(paths) == len(ALL_ROLES):
+        register_generation_snapshot(league, max(gens), paths)
+    if not paths: print("resume: nothing in the registry yet -- starting a fresh league", flush=True)
+    return max(gens) if gens else 0
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--dry-run", action="store_true", help="random policy; no sb3/gymnasium needed")
@@ -159,6 +185,8 @@ def main(argv=None):
     ap.add_argument("--registry-url", help="IDUNA base URL; omit for local-only")
     ap.add_argument("--agent-secret", default=os.environ.get("IDUNA_AGENT_SECRET"))
     ap.add_argument("--source-location", default="local")
+    ap.add_argument("--resume-from-registry", action="store_true",
+                    help="warm-start each role from its newest registry checkpoint (Colab: always on when a registry is configured)")
     ap.add_argument("--seed", type=int, default=0)
     a = ap.parse_args(argv)
 
@@ -182,7 +210,8 @@ def main(argv=None):
     models = {r: None for r in ALL_ROLES}
     local_wl = {r: {} for r in ALL_ROLES}
     recent_vs_main = []
-    start_gen = 1 + max([m.generation for m in league.all_members()] or [0])
+    resumed_gen = resume_from_registry(registry, league, ckpt_dir, models, a.dry_run) if a.resume_from_registry else 0
+    start_gen = max(1 + max([m.generation for m in league.all_members()] or [0]), resumed_gen + 1)
     try:
         for gen in range(start_gen, start_gen + a.generations):
             reset_roles = set()
@@ -216,7 +245,10 @@ def main(argv=None):
                     paths[role] = p
                 members = register_generation_snapshot(league, gen, paths, reset_roles=reset_roles)
                 for role, m in members.items():
-                    registry.push(role.value, gen, league.get_elo(m.id), a.source_location, paths[role])
+                    try:
+                        registry.push(role.value, gen, league.get_elo(m.id), a.source_location, paths[role])
+                    except Exception as e:  # never lose a training run to a registry hiccup: the checkpoint is safe on disk
+                        print(f"gen {gen}: registry push FAILED for {role.value} ({e}); checkpoint kept at {paths[role]}", flush=True)
                 print(f"gen {gen}: registered snapshot ({', '.join(f'{r.value}={league.get_elo(m.id):.0f}' for r, m in members.items())})", flush=True)
     finally:
         cleanup_servers()

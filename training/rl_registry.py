@@ -162,6 +162,11 @@ class LocalRegistry:
             f.write(json.dumps(rec) + "\n")
         return rec
 
+    def download(self, rec, dest):
+        import shutil
+        shutil.copyfile(rec["path"], dest)
+        return dest
+
     def list(self, role=None):
         if not os.path.exists(self.index):
             return []
@@ -188,6 +193,9 @@ class RemoteRegistry:
 
     def list(self, role=None):
         return list_checkpoints(self.base_url, role)
+
+    def download(self, rec, dest):
+        return download_checkpoint(self.base_url, rec["id"], dest)
 
 
 def make_registry(base_url=None, agent_secret=None, local_dir=None):

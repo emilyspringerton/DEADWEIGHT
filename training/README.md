@@ -14,7 +14,7 @@ snapshot cycle registers all three, Elo per checkpoint, checkpoints pushed to ID
 | `dw_env.py` | gymnasium-style env; obs/action/reward spec in its header; `--smoke-test --port N` needs no gymnasium |
 | `fake_server.py` | in-process pure-Python server (scripted opponent) so tests need no C binary |
 | `dw_train.py` | 3-role orchestrator (MaskablePPO, explicit `ent_coef`), `--dry-run` |
-| `notebooks/dw_league.ipynb` | Colab stub |
+| `colab_train.py` (+ `notebooks/dw_league.ipynb`) | one-cell Colab bootstrap (BRAWLPIT's shape): clone, `scripts/build_training.sh`, pip deps, resume from the IDUNA registry, train, push |
 
 ## Run
 
@@ -33,12 +33,24 @@ Same `dw_server` binary, different deployment: training runs three private `--fa
 public server. Per role, an `OpponentBot` (kind=human, so the server's "last waiting bot is reserved for a human" rule
 can't stall the pair) plays the PFSP-sampled league member against the trainee (kind=bot).
 
+## Colab
+
+Paste `colab_train.py` into one cell (or run the notebook). It asks for a GitHub token (repo read) and, optionally, the
+`DEADWEIGHT-RL` agent secret; with a secret it lists the registry, resumes each role from its newest checkpoint (always,
+like BRAWLPIT) and pushes every generation back. `dw_train.py --resume-from-registry` is the flag it uses; registry
+listing/push failures print loudly and never stop training (checkpoints stay in `league_data/`).
+
 ## Honest status / not done
 
-- **Real PPO training has not been run** (sb3-contrib/gymnasium not installable in the sandbox). Code follows their
-  documented APIs (`MaskablePPO`, `action_masks()`); expect first-run fixes on Colab.
-- `--dry-run` uses the fake server's built-in scripted opponent, so its Elo attribution is nominal; real Elo
-  attribution needs the real server + `OpponentBot` path.
-- Next: export learned weights to a tiny C/Java-runnable blob (BRAWLPIT `export_policy_weights.py` precedent) so
-  learned bots join the live pool; live pool drawing all generations from the registry (`rl_bot_pool.py` precedent);
-  parallel envs per role; IDUNA `match-result`-style Elo through the registry's `/match-result` route.
+- **Real PPO training has now run** (2026-09-19, CPU, sb3-contrib 2.9 / torch 2.14): a 2-generation 3-role league against
+  the real `dw_server`, checkpoints registered, Elo moving, and a resume-from-registry warm start of all three roles from
+  real weights. It was a smoke run (512 timesteps/role), not a trained policy, and has never run *on Colab* itself.
+- **Live IDUNA does not serve `/api/v1/game-checkpoints/deadweight` yet** (404 at okemily.com) and the `DEADWEIGHT-RL`
+  agent secret is not provisioned there, so the shared registry is untested against the real service; the local-directory
+  registry is what was exercised. The migrations are in `IDUNA/migrations/truestore/` awaiting a deploy + bootstrap.
+- The observation folds the 64 Guild cards into the 9 base-card buckets and the action space is still 5 slots/pass, so a
+  trained policy learns Guild cards only by kind/cost tier (a richer observation would change the wire-independent env
+  contract and the bot weight blob).
+- `--dry-run` uses the fake server (base cards only, scripted opponent), so its Elo attribution is nominal.
+- Next: export learned weights to a C-runnable blob (BRAWLPIT `export_policy_weights.py` precedent) so learned bots join
+  the live pool; live pool drawing generations from the registry (`rl_bot_pool.py` precedent); parallel envs per role.
