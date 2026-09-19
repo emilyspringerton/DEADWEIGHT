@@ -382,6 +382,22 @@ static void drain_results(void) {
 #endif
 }
 
+/* Deck ids must stay unique across server restarts (decks.ndjson is append-only and WOTAN keys on deck_id): continue after the
+ * highest id already logged. */
+static void resume_deck_ids(void) {
+    if (!opt_log_dir) return;
+    char path[512]; snprintf(path, sizeof path, "%s/decks.ndjson", opt_log_dir);
+    FILE *f = fopen(path, "r"); if (!f) return;
+    static char line[4096]; unsigned long best = 0;
+    while (fgets(line, sizeof line, f)) {
+        if (!strstr(line, "\"event\":\"draft\"")) continue;
+        char *p = strstr(line, "\"deck_id\":"); if (!p) continue;
+        unsigned long v = strtoul(p + 10, NULL, 10); if (v > best) best = v;
+    }
+    fclose(f);
+    if (best >= next_deck) next_deck = (uint32_t)best + 1;
+}
+
 static void send_offer(int ci) {
     Conn *c = &conns[ci]; DwMsg r; memset(&r, 0, sizeof r);
     r.type = DW_S_DRAFT_OFFER; r.u.draft_offer.pick_no = c->draft.pick_no; r.u.draft_offer.total = DW_DRAFT_PICKS;
@@ -576,6 +592,7 @@ int main(int argc, char **argv) {
     if (bind(ls, (struct sockaddr *)&sa, sizeof sa) != 0 || listen(ls, 64) != 0) { fprintf(stderr, "dw_server: bind/listen on %s:%d failed\n", bind_addr, port); return 1; }
     if (port == 0) { socklen_t sl = sizeof sa; getsockname(ls, (struct sockaddr *)&sa, &sl); port = ntohs(sa.sin_port); }
     dw_nonblock(ls);
+    resume_deck_ids();
     seed_state ^= (uint32_t)dw_now_ms() | 1u;
     printf("dw_server %s listening on %s:%d%s%s\n", DW_VERSION, bind_addr, port, opt_ff ? " (fast-forward)" : "", opt_noauth ? " (no-auth)" : " (IDUNA auth required)"); fflush(stdout);
 
