@@ -29,6 +29,8 @@ static const char *KIND_NAME[3] = {"BURST", "TANK", "SHIELD"};
 /* ---------- 5x7 bitmap font (classic column-major glyphs; lowercase renders as uppercase) ---------- */
 typedef struct { char c; uint8_t col[5]; } Glyph;
 static const Glyph FONT[] = {
+    {'&', {0x36,0x49,0x55,0x22,0x50}}, {'\'', {0x00,0x05,0x03,0x00,0x00}}, {';', {0x00,0x56,0x36,0x00,0x00}},
+    {'$', {0x24,0x2A,0x7F,0x2A,0x12}}, {'=', {0x14,0x14,0x14,0x14,0x14}},
     {' ', {0x00,0x00,0x00,0x00,0x00}}, {'!', {0x00,0x00,0x5F,0x00,0x00}}, {'%', {0x23,0x13,0x08,0x64,0x62}},
     {'+', {0x08,0x08,0x3E,0x08,0x08}}, {'-', {0x08,0x08,0x08,0x08,0x08}}, {'.', {0x00,0x60,0x60,0x00,0x00}},
     {'/', {0x20,0x10,0x08,0x04,0x02}}, {':', {0x00,0x36,0x36,0x00,0x00}}, {'>', {0x00,0x41,0x22,0x14,0x08}},
@@ -256,8 +258,22 @@ static void draw_match(int mx, int my) {
         card_box(50, 222, 140, 130, A.rv_you, 0, 0); card_box(290, 222, 140, 130, A.rv_opp, 0, 0);
         text_c(120, 360, 2, A.rv_dy ? C_BAD : C_DIM, "TOOK %d", A.rv_dy); text_c(360, 360, 2, A.rv_do ? C_GOOD : C_DIM, "TOOK %d", A.rv_do);
     } else text_c(W / 2, 260, 2, C_DIM, "PICK A CARD OR PASS");
-    for (int i = 0; i < A.nlog; i++) text(20, 400 + i * 22, 2, C_DIM, "%s", A.log[i]);
-    if (A.sel >= 0 && A.hand[A.sel] >= 0) text(20, 534, 1, C_TEXT, "%s: %s", dw_card_name(A.hand[A.sel]), dw_card_text(A.hand[A.sel]));
+    if (!(A.sel >= 0 && A.hand[A.sel] >= 0)) for (int i = 0; i < A.nlog; i++) text(20, 400 + i * 22, 2, C_DIM, "%s", A.log[i]);
+    if (A.sel >= 0 && A.hand[A.sel] >= 0) {
+        int id = A.hand[A.sel]; const char *t = dw_card_text(id);
+        rect(10, 392, W - 20, 152, C_PANEL); frame(10, 392, W - 20, 152, KIND_COL[card_kind(id)], 2);
+        text(20, 400, 2, C_TEXT, "%s", dw_card_name(id));
+        int y = 424, per = (W - 40) / 12;
+        if (!*t) t = "BASE CARD: NO SPECIAL RULES.";
+        while (*t && y < 536) {
+            int n = (int)strlen(t);
+            if (n > per) { n = per; while (n > 0 && t[n] != ' ') n--; if (n == 0) n = per; }
+            char ln[64]; snprintf(ln, sizeof ln, "%.*s", n, t);
+            text(20, y, 2, C_TEXT, "%s", ln);
+            t += n; while (*t == ' ') t++;
+            y += 18;
+        }
+    }
     hull_bar(552, A.hull_you, "YOU", A.armor_you, A.vault_you); pips(588, A.energy_you, "ENERGY");
     for (int i = 0; i < 4; i++) {
         int st = A.hand[i] < 0 ? 2 : !slot_legal(i) ? 2 : (A.sel == i ? (A.locked ? 3 : 1) : 0);
