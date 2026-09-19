@@ -1,6 +1,7 @@
 # CHANGELOG
 
 ## 2026-09-19
+- feat: round limit 8 -> 100, round timer 20s -> 40s; server play-log buffer sized for 100 rounds (was fixed 8) (sess-20260918-1725-497f394f)
 
 - feat(card-mode): 64 new cards (73 total) -- armor, credits, statuses, hand locks, cancel/copy/swap control, Dark Pool; wire protocol v2; data-driven effect engine in PARENA; C==Java==Python parity over ~14.7k vectors; PARENA Java emitter truncation bug fixed (PARENA 8141f8f). Draft/deckbuilding is next (not in this ship) (sess-20260918-1725-497f394f)
 
