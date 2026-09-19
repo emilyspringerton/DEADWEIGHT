@@ -20,7 +20,7 @@ where any of them that turn out to be wrong in practice get caught earliest and 
   `SPEC_REVIEW.md` §1 — data, not code, so tuning doesn't require a rebuild.
 - Placement, rotation (the resolved port-bit convention from `SPEC_REVIEW.md` §7), and the Panic
   Cut (fracture-on-demand) interaction.
-- Energy routing: generators → conductors/splitters → weapons/shields, one-to-many only
+- Energy routing: generators → conductors/splitters → weapons/defenses, one-to-many only
   (`SPEC_REVIEW.md` §3), the Back-EMF closed-loop meltdown as the real, only failure mode for
   bad wiring (no separate "illegal wiring" error state needed — a closed loop already self-
   punishes, matching the transcript's own design there, which this review found no fault with).

@@ -64,7 +64,7 @@ void dwb_free(DwBrain *b) { if (b->loaded) { arena_free_all(&b->arena); memset(b
 
 /* Observation layout == training/dw_env.py build_observation():
  * [0..4] hull_you/20 hull_opp/20 energy_you/6 energy_opp/6 min(round,8)/8; [5..44] 4 hand slots x 10 one-hot (bucket kind*3+tier, 9 = empty; Guild cards fold into their kind/cost-tier bucket);
- * [45] opp_hand_size/4; [46..57] opp's last 3 kinds (oldest first) x 4 one-hot (BURST, TANK, SHIELD, none/pass). */
+ * [45] opp_hand_size/4; [46..57] opp's last 3 kinds (oldest first) x 4 one-hot (Offense, Operations, Defense, none/pass). */
 void dwb_build_obs(double o[DW_OBS_DIM], const DwPolicyCtx *c, const int8_t hand[4], int energy_you, int round) {
     memset(o, 0, sizeof(double) * DW_OBS_DIM);
     o[0] = c->hull_you / 20.0; o[1] = c->hull_opp / 20.0; o[2] = energy_you / 6.0; o[3] = c->energy_opp / 6.0; o[4] = (round > 8 ? 8 : round) / 8.0;   /* the distilled net was trained on 8-round matches: clamp */

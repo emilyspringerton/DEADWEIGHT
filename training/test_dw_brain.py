@@ -35,9 +35,9 @@ class TestBrain(unittest.TestCase):
 
     def test_teacher_prefers_counter(self):
         rs = {"hull_you": 20, "hull_opp": 20, "energy_you": 6, "energy_opp": 4, "round": 3, "hand": [0, 3, 6, 8], "opp_hand_size": 4}
-        t = B.teacher(rs, [3, 3, 0])   # opponent just played BURST, will likely repeat: SHIELD (6..8) counters it
+        t = B.teacher(rs, [3, 3, 0])   # opponent just played Offense, will likely repeat: Defense (6..8) counters it
         best = max(range(4), key=lambda i: t[i])
-        self.assertEqual(R.card_kind(rs["hand"][best]), 2)   # a SHIELD (either tier) is the counter
+        self.assertEqual(R.card_kind(rs["hand"][best]), 2)   # a Defense card (either tier) is the counter
 
     @unittest.skipUnless(os.path.exists(DUMP), "build/brain_dump not built (scripts/build.sh builds it)")
     def test_c_parity_obs_and_logits(self):

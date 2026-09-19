@@ -7,14 +7,14 @@
 #include <stdint.h>
 
 #define DW_HAND 4
-#define DW_DECK 80                /* capacity; the live catalog is num_cards() (73) */
+#define DW_DECK 128               /* capacity; random mode deals the whole catalog, num_cards() must stay <= this */
 #define DW_ARMOR_MAX 12
 
 /* effect channels (must match the table at the top of PARENA/stdlib/deadweight/card_rules.prn) */
 enum {
     DW_CH_BONUS = 1, DW_CH_PIERCE, DW_CH_BYPASS, DW_CH_IMMUNE, DW_CH_LIFELINE, DW_CH_REFLECT, DW_CH_CANCEL, DW_CH_COPY, DW_CH_HALVE,
     DW_CH_HEAL = 20, DW_CH_SELFDMG, DW_CH_TRUE, DW_CH_ENERGY, DW_CH_OENERGY, DW_CH_NEXTE, DW_CH_NEXTL, DW_CH_ONEXTL, DW_CH_ARMOR,
-    DW_CH_VAULT, DW_CH_SPEND, DW_CH_OSPEND, DW_CH_BURN, DW_CH_REGEN, DW_CH_LOCK, DW_CH_BLIND, DW_CH_SWAP, DW_CH_REDRAW,
+    DW_CH_VAULT, DW_CH_SPEND, DW_CH_OSPEND, DW_CH_BURN, DW_CH_REGEN, DW_CH_DISABLE, DW_CH_BLIND, DW_CH_SWAP, DW_CH_REDRAW,
     DW_CH_DISCARD, DW_CH_EQUALIZE, DW_CH_CHRONO, DW_CH_CONVERT, DW_CH_CLEANSE, DW_CH_DEBTFREE
 };
 /* ROUND_RESULT per-seat flag bits */

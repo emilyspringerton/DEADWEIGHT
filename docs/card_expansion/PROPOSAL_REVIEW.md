@@ -1,5 +1,8 @@
 # Review: Haiku's card-expansion proposal (v1)
 
+> **Terminology note (2026-09-19):** the game's three card kinds are now Offense (Red), Operations (Yellow) and Defense (Blue). This historical document has been mechanically re-worded to those names; its analysis predates the retheme (the middle kind was then a heavy/defensive one) and is kept as written otherwise.
+
+
 Reviewed: `HAIKU_PROPOSAL_v1.md` (kept verbatim beside this file), checked line-by-line against
 `docs/CARD_MODE_RULES.md`, `PARENA/stdlib/deadweight/card_rules.prn`, `docs/WIRE_PROTOCOL.md`, and the
 C/Java hosts (`core/match.h`, `core/brain.c`, `core/protocol.h`, `android/.../MainActivity.java`).
@@ -23,13 +26,13 @@ magnitude. Salvageable as a *menu of mechanic ideas*, not as a plan.
 
 ## Blocking defects (would ship broken)
 
-1. **The triangle is misapplied.** Proposal says Gambit (BURST) "beats SHIELD, ties TANK/BURST".
-   Actual: `kind-beats(a,b)` is true iff `b = a+1 mod 3` → **BURST beats TANK; SHIELD beats BURST**.
-   Gambit loses to SHIELD (and SHIELD deals its own power back) and beats TANK. The whole risk/reward
+1. **The triangle is misapplied.** Proposal says Gambit (OFFENSE) "beats DEFENSE, ties OPERATIONS/OFFENSE".
+   Actual: `kind-beats(a,b)` is true iff `b = a+1 mod 3` → **OFFENSE beats OPERATIONS; DEFENSE beats OFFENSE**.
+   Gambit loses to DEFENSE (and DEFENSE deals its own power back) and beats OPERATIONS. The whole risk/reward
    analysis of Gambit is inverted. (The v1 meta prompt inherits and repeats similar slips.)
 
 2. **`id = kind*3 + tier` breaks at id 9.** `card-kind(9) = 3`, `card-kind(12) = 4`; `kind-beats` on kind 3/4 is
-   nonsense. "Siphon is a BURST variant" is not expressible with the current id scheme: new cards need a
+   nonsense. "Siphon is a OFFENSE variant" is not expressible with the current id scheme: new cards need a
    table-driven kind (a scalar `if`-ladder, still Java-emittable) and `is-legal-play`'s hard-coded `<= 8`
    must change. The proposal never notices.
 
@@ -46,9 +49,9 @@ magnitude. Salvageable as a *menu of mechanic ideas*, not as a plan.
    cap (lock at 7)" describes nothing the rules can do. Either the card is just "cost 5, power 14" (fine, say
    that) or it needs a cap change (huge blast radius, unmentioned).
 
-6. **Spark strictly dominates.** Power `3 + energy/2`, cost 1. Tier-0 Burst is power 3, cost 1. Spark ≥ that
-   at every energy value and hits 6 (a Tier-1 Burst's power at half the cost) at energy 6. There is no state in
-   which Tier-0 Burst is the better card. Its own "pick rate ~5%" prediction is therefore fiction.
+6. **Spark strictly dominates.** Power `3 + energy/2`, cost 1. Tier-0 Offense is power 3, cost 1. Spark ≥ that
+   at every energy value and hits 6 (a Tier-1 Offense's power at half the cost) at energy 6. There is no state in
+   which Tier-0 Offense is the better card. Its own "pick rate ~5%" prediction is therefore fiction.
 
 7. **Effects can't be returned by `damage-dealt`.** Heal, self-damage, and energy drain are multiple outputs;
    the rules module is single-expression scalar `defn`s. The proposal's "expand `damage-dealt` to take

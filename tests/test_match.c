@@ -22,7 +22,7 @@ static void set_hand(DwMatch *m, int s, int a, int b, int c, int d) { m->hand[s]
 static int deck_ok_both(const DwMatch *m) {
     int seen[DW_DECK] = {0}, total = 0;
     for (int s = 0; s < 2; s++) {
-        for (int i = 0; i < DW_HAND; i++) if (m->hand[s][i] >= 0) { if (m->hand[s][i] >= DW_DECK) return 0; seen[(int)m->hand[s][i]]++; total++; }
+        for (int i = 0; i < DW_HAND; i++) if (m->hand[s][i] >= 0) { if (m->hand[s][i] >= num_cards()) return 0; seen[(int)m->hand[s][i]]++; total++; }
         for (int i = 0; i < m->draw_n[s]; i++) { seen[(int)m->draw[s][i]]++; total++; }
         for (int i = 0; i < m->discard_n[s]; i++) { seen[(int)m->discard[s][i]]++; total++; }
     }
@@ -40,7 +40,7 @@ static void scripted_a(void) {
     m.draw_n[0] = 3; m.draw[0][0] = 1; m.draw[0][1] = 4; m.draw[0][2] = 7;   /* top = 7 */
     m.draw_n[1] = 3; m.draw[1][0] = 8; m.draw[1][1] = 6; m.draw[1][2] = 1;   /* top = 1 */
     m.discard_n[0] = m.discard_n[1] = 0;
-    /* round 1: energy 2+2=4 each. burst t2 (cost 4, power 10) vs burst t2: both take 10 */
+    /* round 1: energy 2+2=4 each. offense t2 (cost 4, power 10) vs offense t2: both take 10 */
     dw_match_begin_round(&m);
     EQ(m.round, 1); EQ(m.energy[0], 4); EQ(m.energy[1], 4);
     EQ(dw_match_lock(&m, 0, 0), 0); EQ(dw_match_lock(&m, 0, 1), DW_REJ_ALREADY_LOCKED);
@@ -50,7 +50,7 @@ static void scripted_a(void) {
     EQ(o.card[0], 2); EQ(o.card[1], 2); EQ(o.dmg_to[0], 10); EQ(o.dmg_to[1], 10);
     EQ(m.hull[0], 10); EQ(m.hull[1], 10); EQ(m.energy[0], 0); EQ(m.energy[1], 0); EQ(m.done, 0);
     EQ(m.hand[0][0], 7); EQ(m.hand[1][1], 1);
-    /* round 2: energy 2. p1 tries tank t2 (cost 4): illegal; passes. p0 burst t0 (cost 1) unopposed: 3 dmg */
+    /* round 2: energy 2. p1 tries operations t2 (cost 4): illegal; passes. p0 offense t0 (cost 1) unopposed: 3 dmg */
     dw_match_begin_round(&m);
     EQ(m.energy[0], 2); EQ(m.energy[1], 2);
     EQ(dw_match_lock(&m, 1, 0), DW_REJ_ILLEGAL_CARD);
@@ -58,24 +58,24 @@ static void scripted_a(void) {
     dw_match_resolve(&m, &o);
     EQ(o.card[0], 0); EQ(o.card[1], -1); EQ(o.dmg_to[1], 3); EQ(o.dmg_to[0], 0);
     EQ(m.hull[0], 10); EQ(m.hull[1], 7); EQ(m.energy[0], 1); EQ(m.energy[1], 3); EQ(m.hand[0][3], 4);
-    /* round 3: energy 3 / 5. p0 shield t1 (cost 2) vs p1 tank t0 (cost 1): tank beats shield, 3 dmg to p0 */
+    /* round 3: energy 3 / 5. p0 defense t1 (cost 2) vs p1 operations t0 (cost 1): operations beats defense, 3 + 1 (Flank vs Defense) dmg to p0 */
     dw_match_begin_round(&m);
     EQ(m.energy[0], 3); EQ(m.energy[1], 5);
     EQ(dw_match_lock(&m, 0, 0), 0); EQ(dw_match_lock(&m, 1, 3), 0);
     dw_match_resolve(&m, &o);
-    EQ(o.card[0], 7); EQ(o.card[1], 3); EQ(o.dmg_to[0], 3); EQ(o.dmg_to[1], 0);
-    EQ(m.hull[0], 7); EQ(m.hull[1], 7); EQ(m.energy[0], 1); EQ(m.energy[1], 4);
+    EQ(o.card[0], 7); EQ(o.card[1], 3); EQ(o.dmg_to[0], 4); EQ(o.dmg_to[1], 0);
+    EQ(m.hull[0], 6); EQ(m.hull[1], 7); EQ(m.energy[0], 1); EQ(m.energy[1], 4);
     EQ(m.discard_n[0], 3); EQ(m.discard_n[1], 2);
 }
 
 static void scripted_end(void) {
     DwMatch m; DwOutcome o;
-    /* p0 passes at hull 3 vs unopposed burst t0 (3): p1 wins by hull */
+    /* p0 passes at hull 3 vs unopposed offense t0 (3): p1 wins by hull */
     dw_match_init(&m, 2); set_hand(&m, 1, 0, 1, 2, 3); m.hull[0] = 3;
     dw_match_begin_round(&m); dw_match_lock(&m, 0, -1); dw_match_lock(&m, 1, 0); dw_match_resolve(&m, &o);
     EQ(m.done, 1); EQ(m.reason, DW_END_HULL); EQ(m.result[0], DW_RES_LOSS); EQ(m.result[1], DW_RES_WIN);
     EQ(dw_match_lock(&m, 0, -1), DW_REJ_NO_MATCH);
-    /* burst t0 vs burst t0 at hull 3/3: both die = draw */
+    /* offense t0 vs offense t0 at hull 3/3: both die = draw */
     dw_match_init(&m, 3); set_hand(&m, 0, 0, 1, 2, 3); set_hand(&m, 1, 0, 1, 2, 3); m.hull[0] = m.hull[1] = 3;
     dw_match_begin_round(&m); dw_match_lock(&m, 0, 0); dw_match_lock(&m, 1, 0); dw_match_resolve(&m, &o);
     EQ(m.done, 1); EQ(m.result[0], DW_RES_DRAW); EQ(m.result[1], DW_RES_DRAW);
@@ -110,17 +110,20 @@ static DwOutcome go(DwMatch *m, int s0, int s1) {
 
 static void guild_cards(void) {
     DwMatch m; DwOutcome o;
-    /* Iron Dwarf (28: burst 2 energy, power 6, +2) vs pass: 8 damage; vs Barrier (7, shield): countered, bonus lost, takes 6 */
+    /* Iron Dwarf (28: offense, 2 energy, power 6, +2) vs pass: 8 damage; vs Barrier (7, defense): countered, bonus lost, takes 6 */
     start(&m, 11, 28, 0, 0, 0, 7, 0, 0, 0);
     o = go(&m, 0, -1); EQ(m.hull[1], 12); EQ(m.energy[0], 4); EQ(o.dmg_to[1], 8);
     start(&m, 12, 28, 0, 0, 0, 7, 0, 0, 0);
     o = go(&m, 0, 0); EQ(m.hull[0], 14); EQ(m.hull[1], 20); EQ(o.dmg_to[0], 6);
-    /* Infinity Edge (11) vs Barrier (7): at least 4 lands and the shield can't reflect */
+    /* Infinity Edge (11, Lock, operations 8) vs Barrier (7, defense): operations beats defense, full 8 */
     start(&m, 13, 11, 0, 0, 0, 7, 0, 0, 0);
-    o = go(&m, 0, 0); EQ(m.hull[0], 20); EQ(m.hull[1], 16);
-    /* Thornmail (32, tank 4) vs Railgun (2, burst 10): burst beats tank, seat 0 takes 10 and reflects half (5) */
-    start(&m, 14, 32, 0, 0, 0, 2, 0, 0, 0);
-    o = go(&m, 0, 0); EQ(m.hull[0], 10); EQ(m.hull[1], 15);
+    o = go(&m, 0, 0); EQ(m.hull[0], 20); EQ(m.hull[1], 12);
+    /* ... vs Railgun (offense beats operations): Edge is countered but at least 4 still lands (Lock), seat 0 takes 10 */
+    start(&m, 131, 11, 0, 0, 0, 2, 0, 0, 0);
+    o = go(&m, 0, 0); EQ(m.hull[0], 10); EQ(m.hull[1], 16);
+    /* Thornmail (32, defense 4) vs Stormwing (5, operations 10, Flank +3 vs Defense): operations beats defense, seat 0 takes 13; Thornmail reflects half of the 10 base exchange (5) */
+    start(&m, 14, 32, 0, 0, 0, 5, 0, 0, 0);
+    o = go(&m, 0, 0); EQ(m.hull[0], 7); EQ(m.hull[1], 15);
     /* Hostile Takeover (36, 5 energy): cancels Railgun, then plays it: seat 1 takes 10, seat 0 nothing; both pay their declared cost */
     start(&m, 15, 36, 0, 0, 0, 2, 0, 0, 0);
     o = go(&m, 0, 0); EQ(m.hull[0], 20); EQ(m.hull[1], 10); EQ(m.energy[0], 1); EQ(m.energy[1], 2);
@@ -128,7 +131,7 @@ static void guild_cards(void) {
     /* Stasis Frame (53) at hull 5 is immune to Railgun and still reflects its own power (3) */
     start(&m, 16, 53, 0, 0, 0, 2, 0, 0, 0); m.hull[0] = 5;
     o = go(&m, 0, 0); EQ(m.hull[0], 5); EQ(m.hull[1], 17); EQ((o.flags[0] & DW_FX_IMMUNE) != 0, 1);
-    /* Immortal Shieldbow (59, costs 2 credits) vs Fortress (5): tank beats shield for 10, lifeline keeps seat 0 at 1 hull */
+    /* Immortal Aegisbow (59, defense, costs 2 credits) vs Stormwing (5, operations 10 +3 Flank): lifeline keeps seat 0 at 1 hull */
     start(&m, 17, 59, 0, 0, 0, 5, 0, 0, 0); m.hull[0] = 3;
     EQ(m.vault[0], 4); o = go(&m, 0, 0); EQ(m.hull[0], 1); EQ(m.vault[0], 2); EQ((o.flags[0] & DW_FX_LIFELINE) != 0, 1);
     /* Total Blackout (50, 6 energy) vs Railgun: cancelled, and the opponent's energy is drained to 0 */
@@ -151,9 +154,9 @@ static void guild_cards(void) {
     /* Dark Pool (34) with roll 10 becomes Naked Short (35): +3 energy; unhurt, so no default */
     start(&m, 23, 34, 0, 0, 0, 0, 0, 0, 0); m.roll[0] = 10;
     o = go(&m, 0, -1); EQ(o.eff[0], 35); EQ(m.energy[0], 6); EQ(m.hull[0], 20);
-    /* ... and if you are hit the default costs 5 more: Dark Pool(roll 10 -> Naked Short) vs Railgun burst: 10 + 5 */
-    start(&m, 24, 34, 0, 0, 0, 2, 0, 0, 0); m.roll[0] = 10;
-    o = go(&m, 0, 0); EQ(m.hull[0], 5);
+    /* ... and if you are hit the default costs 5 more: Dark Pool(roll 10 -> Naked Short, now a defense card) vs Interceptor (4, operations 6 +2 Flank): 8 + 5 */
+    start(&m, 24, 34, 0, 0, 0, 4, 0, 0, 0); m.roll[0] = 10;
+    o = go(&m, 0, 0); EQ(m.hull[0], 7);
     /* Realm Warp (51: 4 energy + 3 credits) swaps hands after refills */
     start(&m, 25, 51, 1, 2, 3, 4, 5, 6, 7); m.draw_n[0] = 1; m.draw[0][0] = 60;
     o = go(&m, 0, -1);
@@ -166,10 +169,10 @@ static void guild_cards(void) {
       EQ(bits, 1); EQ(m.lock_mask[0], 0); m.energy[1] = 6; EQ(dw_match_lock(&m, 1, slot), DW_REJ_ILLEGAL_CARD); }
     /* Dead Squares (62) armor soaks: 2 armor eats 2 of Railgun's 10; Piercing Round (25) ignores armor */
     start(&m, 27, 62, 0, 0, 0, 2, 0, 0, 0);
-    o = go(&m, 0, 0); EQ(m.armor[0], 2);                             /* shield counters burst: takes 0, gains armor */
-    start(&m, 28, 3, 0, 0, 0, 25, 0, 0, 0); m.armor[0] = 5;          /* Plating (tank) vs Piercing Round (burst 5, pierce) */
+    o = go(&m, 0, 0); EQ(m.armor[0], 2);                             /* defense counters offense: takes 0, gains armor */
+    start(&m, 28, 6, 0, 0, 0, 25, 0, 0, 0); m.armor[0] = 5;          /* Buckler (defense) vs Piercing Round (Lock, operations 5, pierce) */
     o = go(&m, 0, 0); EQ(m.armor[0], 5); EQ(m.hull[0], 15);
-    start(&m, 29, 3, 0, 0, 0, 0, 0, 0, 0); m.armor[0] = 5;           /* Plating vs Spark (burst 3): armor soaks all 3 */
+    start(&m, 29, 3, 0, 0, 0, 0, 0, 0, 0); m.armor[0] = 5;           /* Sidewinder (operations) vs Spark (offense 3): armor soaks all 3 */
     o = go(&m, 0, 0); EQ(m.armor[0], 2); EQ(m.hull[0], 20);
     /* Bribe (30: 1 energy + 2 credits) hits for 6; after paying, seat 0 has 4-2 = 2 credits */
     start(&m, 30, 30, 0, 0, 0, 0, 0, 0, 0);

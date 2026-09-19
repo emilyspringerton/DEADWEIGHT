@@ -1,4 +1,7 @@
 <!--
+
+> **Terminology note (2026-09-19):** the game's three card kinds are now Offense (Red), Operations (Yellow) and Defense (Blue). This historical document has been mechanically re-worded to those names; its analysis predates the retheme (the middle kind was then a heavy/defensive one) and is kept as written otherwise.
+
 DEADWEIGHT card-expansion meta prompt, v2. Paste everything below the line into the designer model.
 Harness fills the {{PLACEHOLDERS}}; do NOT let the model recall them from memory (v1's rules paraphrase
 contained errors). Rationale for every change: METAPROMPT_ENGINEERING_PASS.md.
@@ -40,8 +43,8 @@ Rules source (verbatim):
 {{RULES_SOURCE}}
 
 Facts derived from it, and the mistakes people make most often:
-- Card id = kind*3 + tier for ids 0-8. Kinds: 0 BURST, 1 TANK, 2 SHIELD. Tiers 0/1/2 cost 1/2/4, power 3/6/10.
-- **BURST beats TANK, TANK beats SHIELD, SHIELD beats BURST.** (A SHIELD *loses* to TANK and *beats* BURST.)
+- Card id = kind*3 + tier for ids 0-8. Kinds: 0 OFFENSE, 1 OPERATIONS, 2 DEFENSE. Tiers 0/1/2 cost 1/2/4, power 3/6/10.
+- **OFFENSE beats OPERATIONS, OPERATIONS beats DEFENSE, DEFENSE beats OFFENSE.** (A DEFENSE *loses* to OPERATIONS and *beats* OFFENSE.)
 - Energy is an **integer**. Start 2; +2 at each round start; hard cap 6; pass banks +1 (also capped). No fractions.
 - Hull 20, 8 rounds, hand of 4, 9-card catalog, action = one of 5 (slot 0-3 or pass). Hidden hands.
 - Damage matrix, current 9 cards (row = your card, column = theirs, cell = hull damage YOU deal):
@@ -92,7 +95,7 @@ rejected candidate give one line saying which constraint or dominance concern ki
 Emit each card as exactly this block (the human will diff and parse it):
 
 ```
-id: <int>                 kind: BURST|TANK|SHIELD      tier-tag: <free label>
+id: <int>                 kind: OFFENSE|OPERATIONS|DEFENSE      tier-tag: <free label>
 cost: <int 1-5>           power: <int, or a scalar expression of named inputs>
 inputs: <every integer the rules functions need beyond the card ids, e.g. own-hull, own-energy, round>
 effects (one scalar function each; state the exact expression):
@@ -102,7 +105,7 @@ effects (one scalar function each; state the exact expression):
   energy-delta(...) = <expr or 0>          # to self / to opponent, integers, result still capped 0..6
 resolution_order: <e.g. "damage and self-damage apply simultaneously; heal applies after; lethal check last">
 lethality: <"if hull reaches <=0 the same round, does heal still save you? Answer explicitly.">
-triangle: <how it behaves vs BURST / TANK / SHIELD / pass, as a 4-number row for a fixed state you name>
+triangle: <how it behaves vs OFFENSE / OPERATIONS / DEFENSE / pass, as a 4-number row for a fixed state you name>
 blast_tier: A|B|C            wire/UI impact: <one line>
 dominance_check: <name the existing card it is closest to and show a concrete (cost,power,state) where the
                   OLD card is strictly better. If you cannot, the new card is dominant: fix or drop it.>
@@ -117,7 +120,7 @@ hypothesis: <one falsifiable claim about play, e.g. "makes banking to 6 riskier"
 2. Integers only. Show the arithmetic (integer division truncates).
 3. Every card must be **implementable as pure scalar functions** per <ground_truth>. If you catch yourself
    writing "remember", "next round", "history", or "while active", it needs host state: mark it Tier B.
-4. Preserve BURST>TANK>SHIELD>BURST for existing cards. New cards belong to an existing kind unless you mark
+4. Preserve OFFENSE>OPERATIONS>DEFENSE>OFFENSE for existing cards. New cards belong to an existing kind unless you mark
    Tier C.
 5. Do not change hand size, energy cap, hull, rounds, or the pass rule unless the round goal says so.
 6. Do NOT invent metrics. No predicted win rates, pick rates, or "expected 40-60%". You have no simulator. Give

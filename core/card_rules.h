@@ -10,6 +10,7 @@ int hand_size(void);
 int num_cards(void);
 int energy_cap(int);
 int card_kind(int);
+int card_keyword(int);   /* Operations keyword: 0 none, 1 Lock, 2 Sabotage, 3 Flank, 4 Scan, 5 Siphon */
 int card_tier(int);
 int card_cost(int);
 int card_power(int);

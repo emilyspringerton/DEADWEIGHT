@@ -14,7 +14,7 @@ import industrial.einhorn.deadweight.generated.CardRules;
 /** Card face: NOCK-generated art (res/drawable-nodpi/card_<id>.png) with power/cost overlaid; falls back to a coloured
  *  rounded rect + tier pips if the resource is missing. id < 0 = empty. */
 final class CardView extends View {
-    private static final int[] KIND_COLOR = {0xFFD9534F, 0xFF5B8DEF, 0xFF43A967}; // burst, tank, shield
+    private static final int[] KIND_COLOR = {0xFFD9534F, 0xFFE0A030, 0xFF4A86E8}; // Offense (red), Operations (yellow), Defense (blue)
     private final Paint p = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final RectF r = new RectF();
     private static final Bitmap[] ART = new Bitmap[9];
@@ -82,7 +82,7 @@ final class CardView extends View {
         if (selected) { p.setStyle(Paint.Style.STROKE); p.setStrokeWidth(8); p.setColor(0xFFFFFFFF); cv.drawRoundRect(r, 18, 18, p); }
         p.setStyle(Paint.Style.FILL);
         p.setColor(0xFFFFFFFF); p.setTextAlign(Paint.Align.CENTER);
-        if (cardId < 9) {
+        if (cardId < 9 && CardText.text(cardId).isEmpty()) {   // vanilla base cards; the Operations base line has a Flank rider and uses the text layout
             p.setTextSize(h * 0.36f); cv.drawText(String.valueOf(CardRules.cardPower(cardId)), w / 2, h * 0.58f, p);
             p.setTextSize(h * 0.14f);
             cv.drawText(CardText.name(cardId), w / 2, h * 0.86f, p);

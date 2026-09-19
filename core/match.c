@@ -191,7 +191,7 @@ void dw_match_resolve(DwMatch *m, DwOutcome *out) {
             case DW_CH_ARMOR: a[s].armor += amt; break;       case DW_CH_VAULT: a[s].vault += amt; break;
             case DW_CH_SPEND: a[s].spend += amt; break;       case DW_CH_OSPEND: a[s].ospend += amt; break;
             case DW_CH_BURN: a[s].burn = amt; break;          case DW_CH_REGEN: a[s].regen = amt; break;
-            case DW_CH_LOCK: a[s].lock += amt; break;         case DW_CH_BLIND: if (amt > a[s].blind) a[s].blind = amt; break;
+            case DW_CH_DISABLE: a[s].lock += amt; break;         case DW_CH_BLIND: if (amt > a[s].blind) a[s].blind = amt; break;
             case DW_CH_SWAP: a[s].swap = 1; break;            case DW_CH_REDRAW: a[s].redraw = 1; break;
             case DW_CH_DISCARD: a[s].discard += amt; break;   case DW_CH_EQUALIZE: a[s].equalize = 1; break;
             case DW_CH_CHRONO: a[s].chrono = 1; break;        case DW_CH_CONVERT: a[s].convert += amt; break;

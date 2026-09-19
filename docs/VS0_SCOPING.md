@@ -21,7 +21,7 @@ cut stand). Contracts: `CARD_MODE_RULES.md`, `WIRE_PROTOCOL.md`.
 
 Why card mode first: no inventory/placement UI to build on a phone, discrete per-round actions (small
 action space → trivial to mask for RL, trivial to fast-forward, trivial for a heuristic bot), and it shares
-the item triangle (Burst / Tank / Shield) with the backpack mode so the cards become the backpack items'
+the item triangle (Offense / Operations / Defense) with the backpack mode so the cards become the backpack items'
 stat block later instead of a throwaway.
 
 ## 2. Architecture
@@ -58,8 +58,8 @@ Key calls (each is a decision, not a question — veto any of them):
    a few hundred bytes of state, so a single `poll()` loop is simpler and lets the 3-bot pool + humans share
    one queue. `--fast-forward` disables round timers so training/bot-vs-bot runs at CPU speed; `--port` lets
    the training league run several isolated servers (separate league, same binary).
-5. **Bot pool = 3 standing `dw_bot` processes** playing the archetype triangle (Ripper=Burst-heavy,
-   Wall=Tank-heavy, Mirror=Shield/counter). They queue into the same matchmaker as humans. Pairing rule
+5. **Bot pool = 3 standing `dw_bot` processes** playing the archetype triangle (Ripper=Offense-heavy,
+   Wall=Operations-first control (historical name), Mirror=counter). They queue into the same matchmaker as humans. Pairing rule
    (server): *never pair the last waiting bot with another bot*, so ≥1 bot is always available for a human
    (founder manual testing) while the other two fight and exercise the server 24/7. Live-pool bots later pull
    league checkpoints from the registry (BRAWLPIT `rl_bot_pool.py` precedent); VS0 ships heuristics honestly

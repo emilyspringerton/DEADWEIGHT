@@ -6,7 +6,7 @@ New repo (2026-09-11); VS0 (card mode, Android-first) build started 2026-09-18 (
 a 1v1 real-time PvP spatial-knapsack auto-battler: players pack polyomino cargo items (some
 splittable, at a real fragmentation-tax cost) into a 6x6 grid under a Black-Market draft phase,
 then the same grid becomes their ship's combat layout — item shape/orientation routes energy from
-generators to perimeter weapons/shields, and the wasted "Dead Squares" from cutting an item
+generators to perimeter weapons/defenses, and the wasted "Dead Squares" from cutting an item
 become armor. Source is a captured Gemini chat transcript (`DEADWEIGHT/LeetCode Skills Course
 Curriculum.pdf` — misleadingly named; it starts as an actual LeetCode teaching curriculum and
 spirals into the full game spec from "write a simple game that uses the first 6" onward), same

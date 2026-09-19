@@ -31,7 +31,7 @@ evolved with **splittable item classes** (unsplittable / halvable / quarterable)
 **fragmentation tax** (a cut item's fragments cost more total space than the whole item did) —
 so packing efficiently is a genuine, non-trivial spatial puzzle, not a spreadsheet a player solves
 once and repeats forever. The same grid then **becomes the combat board**: item shape/orientation
-+ position determines energy-routing paths from generators to perimeter weapons/shields, and the
++ position determines energy-routing paths from generators to perimeter weapons/defenses, and the
 "waste" from a Panic Cut (Dead Squares) becomes armor. This dual-purpose mechanic — build a
 container, then fight with the container you built — is the real, shippable idea.
 
@@ -145,10 +145,10 @@ fork named explicitly" precedent every other scoping doc in this monorepo alread
 **Keep** (the real, shippable, genuinely novel core):
 - 6x6 grid, polyomino items, three split classes (unsplittable/halvable/quarterable) with a real
   fragmentation tax.
-- Energy-routing combat: generators → conductors → weapons/shields, Dead Squares as armor,
+- Energy-routing combat: generators → conductors → weapons/defenses, Dead Squares as armor,
   real-time auto-resolve once both players lock their grid.
-- A small, fixed item catalog for V0 — **6-9 items**, not 24 (one clean Burst/Tank/Shield triangle
-  member each, e.g. Infinity Edge / Thornmail / Zhonya's Hourglass plus 3-6 more), enough to prove
+- A small, fixed item catalog for V0 — **6-9 items**, not 24 (one clean Offense/Operations/Defense triangle
+  member each, e.g. Iron Dwarf / Corrosion / Zhonya's Hourglass plus 3-6 more), enough to prove
   the rock-paper-scissors identity without needing years of live-service balancing before launch.
 - A small, fixed set of **2-3 simple one-shot Ultimates** (not 16 abilities × 3 Flow tiers = 48
   effect descriptions) — earn one Flow-gated ability per match, keep the "why would anyone pick
@@ -205,7 +205,7 @@ short index; see each doc for concrete tasks and acceptance criteria.
   NORTH` in `EMILY/context/golden-docs-index.md`, add a `DEADWEIGHT` row to the root
   `/home/fatbaby/CLAUDE.md` repo table (every repo in this monorepo gets one).
 - [ ] **D1: the core loop, single-player/local only** — `docs/PHASE_D1_CORE_LOOP.md`. Grid,
-  polyomino placement, split mechanics +tax, energy routing, one weapon type, one shield type —
+  polyomino placement, split mechanics +tax, energy routing, one weapon type, one defense type —
   playable against a fixed dummy grid, no networking yet. Proves the mechanical core is actually
   fun before a single line of server code exists.
 - [ ] **D2: server-authoritative 1v1** — `docs/PHASE_D2_SERVER_AND_ACCOUNTS.md`. New

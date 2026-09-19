@@ -24,8 +24,8 @@
 typedef struct { uint8_t r, g, b; } Col;
 static const Col C_BG = {18, 20, 28}, C_PANEL = {32, 36, 50}, C_TEXT = {235, 235, 240}, C_DIM = {130, 135, 150},
     C_GOOD = {80, 200, 120}, C_BAD = {225, 80, 70}, C_SEL = {255, 255, 255}, C_LOCK = {90, 90, 105};
-static const Col KIND_COL[3] = {{215, 70, 60}, {225, 160, 40}, {70, 140, 230}};   /* BURST, TANK, SHIELD */
-static const char *KIND_NAME[3] = {"BURST", "TANK", "SHIELD"};
+static const Col KIND_COL[3] = {{215, 70, 60}, {225, 160, 40}, {70, 140, 230}};   /* Offense (red), Operations (yellow), Defense (blue) */
+static const char *KIND_NAME[3] = {"OFFENSE", "OPERATIONS", "DEFENSE"};
 
 /* ---------- 5x7 bitmap font (classic column-major glyphs; lowercase renders as uppercase) ---------- */
 typedef struct { char c; uint8_t col[5]; } Glyph;
@@ -255,11 +255,11 @@ static void card_box(int x, int y, int w, int h, int id, int num, int state /*0 
     int ty;
     if (big) {
         text_c(x + w / 2, y + 36, 2, tc, "COST %d  PWR %d", card_cost(id), card_power(id));
-        text_c(x + w / 2, y + 54, 1, C_DIM, "%s%s", KIND_NAME[card_kind(id)], card_credit(id) ? " $" : "");
+        text_c(x + w / 2, y + 54, 1, C_DIM, "%s%s%s%s", KIND_NAME[card_kind(id)], card_keyword(id) ? " / " : "", dw_keyword_name(card_keyword(id)), card_credit(id) ? " $" : "");
         ty = y + 68;
     } else {
         text_c(x + w / 2, y + 36, 1, tc, "COST %d  PWR %d", card_cost(id), card_power(id));
-        text_c(x + w / 2, y + 48, 1, C_DIM, "%s%s", KIND_NAME[card_kind(id)], card_credit(id) ? " $" : "");
+        text_c(x + w / 2, y + 48, 1, C_DIM, "%s%s%s%s", KIND_NAME[card_kind(id)], card_keyword(id) ? " / " : "", dw_keyword_name(card_keyword(id)), card_credit(id) ? " $" : "");
         ty = y + 64;
     }
     const char *t = dw_card_text(id);

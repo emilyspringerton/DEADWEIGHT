@@ -87,8 +87,8 @@ public final class MainActivity extends Activity implements Session.Listener {
         StringBuilder b = new StringBuilder();
         if ((r.flagsYou & 1) != 0) b.append("\nYour card was cancelled.");
         if ((r.flagsOpp & 1) != 0) b.append("\nTheir card was cancelled.");
-        if ((r.flagsYou & 4) != 0) b.append("\nShieldbow saved you at 1 hull.");
-        if ((r.flagsOpp & 4) != 0) b.append("\nTheir Shieldbow saved them at 1 hull.");
+        if ((r.flagsYou & 4) != 0) b.append("\nAegisbow saved you at 1 hull.");
+        if ((r.flagsOpp & 4) != 0) b.append("\nTheir Aegisbow saved them at 1 hull.");
         if ((r.flagsYou & 16) != 0) b.append("\nHands were swapped!");
         if ((r.flagsYou & 8) != 0) b.append("\nYou locked one of their cards.");
         if ((r.flagsOpp & 8) != 0) b.append("\nOne of your cards is locked next round.");

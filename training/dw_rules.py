@@ -1,15 +1,15 @@
 """Python port of PARENA/stdlib/deadweight/card_rules.prn (see docs/CARD_MODE_RULES.md). Kept honest by
 test_dw_rules.py, which replays every vector in tests/parity_vectors.txt (generated from the C build).
 
-The per-card DATA tables (kind/tier/cost/power/credit/effect words for the 73 cards) are loaded from that same vector
+The per-card DATA tables (kind/tier/cost/power/credit/effect words for the 105 cards) are loaded from that same vector
 file at import instead of being retyped here, so they cannot drift from the PARENA source; every FUNCTION (damage,
 legality, the effect engine's conditions/amounts, economy, end conditions) is an independent port that the replay test
 then checks against the C build's outputs."""
 import os
 
-START_HULL, START_ENERGY, START_VAULT, MAX_ROUNDS, HAND_SIZE, NUM_CARDS = 20, 2, 3, 100, 4, 73
+START_HULL, START_ENERGY, START_VAULT, MAX_ROUNDS, HAND_SIZE, NUM_CARDS = 20, 2, 3, 100, 4, 105
 _VEC = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "tests", "parity_vectors.txt")
-_TABLES = {"card_kind": {}, "card_tier": {}, "card_cost": {}, "card_power": {}, "card_credit": {}, "card_fx_a": {}, "card_fx_b": {}}
+_TABLES = {"card_kind": {}, "card_tier": {}, "card_cost": {}, "card_power": {}, "card_credit": {}, "card_fx_a": {}, "card_fx_b": {}, "card_keyword": {}}
 
 
 def _load():
@@ -35,8 +35,9 @@ def card_tier(i): return _TABLES["card_tier"][i]
 def card_cost(i): return 0 if i < 0 else _TABLES["card_cost"][i]
 def card_power(i): return 0 if i < 0 else _TABLES["card_power"][i]
 def card_credit(i): return _TABLES["card_credit"][i]
-def card_fx_a(i): return 0 if i < 9 else _TABLES["card_fx_a"][i]
-def card_fx_b(i): return 0 if i < 9 else _TABLES["card_fx_b"][i]
+def card_fx_a(i): return 0 if i < 0 else _TABLES["card_fx_a"][i]
+def card_fx_b(i): return 0 if i < 0 else _TABLES["card_fx_b"][i]
+def card_keyword(i): return 0 if i < 0 else _TABLES["card_keyword"][i]
 def kind_beats(a, b): return b == (0 if a == 2 else a + 1)
 def is_legal_play(i, energy, vault): return 0 <= i < NUM_CARDS and card_cost(i) <= energy and (card_credit(i) == 0 or card_credit(i) <= vault)
 

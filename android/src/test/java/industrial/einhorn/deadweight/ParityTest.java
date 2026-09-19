@@ -30,6 +30,7 @@ public final class ParityTest {
             case "card_credit": return CardRules.cardCredit(a[0]);
             case "card_fx_a": return CardRules.cardFxA(a[0]);
             case "card_fx_b": return CardRules.cardFxB(a[0]);
+            case "card_keyword": return CardRules.cardKeyword(a[0]);
             case "card_substitute": return CardRules.cardSubstitute(a[0], a[1]);
             case "kind_beats": return b(CardRules.kindBeats(a[0], a[1]));
             case "is_legal_play": return b(CardRules.isLegalPlay(a[0], a[1], a[2]));

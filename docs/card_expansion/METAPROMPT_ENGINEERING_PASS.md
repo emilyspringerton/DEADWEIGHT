@@ -1,5 +1,8 @@
 # Metaprompt engineering pass: v1 (Haiku) -> v2
 
+> **Terminology note (2026-09-19):** the game's three card kinds are now Offense (Red), Operations (Yellow) and Defense (Blue). This historical document has been mechanically re-worded to those names; its analysis predates the retheme (the middle kind was then a heavy/defensive one) and is kept as written otherwise.
+
+
 Subject: `HAIKU_METAPROMPT_v1.md` (420 lines, kept verbatim). Result: `METAPROMPT_v2.md`.
 Method: read v1 as the *model receiving it* would, then test each claim in it against the real rules/code
 (see `PROPOSAL_REVIEW.md`), then rewrite around what an LLM designer can and cannot reliably do.

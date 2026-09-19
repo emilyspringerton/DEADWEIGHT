@@ -8,7 +8,7 @@ OBSERVATION (58 floats, OBS_DIM):
   [5..44]  hand: 4 slots x 10 one-hot (bucket kind*3+tier -- the 9 base cards exactly, Guild cards folded into their
            kind/cost-tier bucket; index 9 = empty slot)
   [45] opp_hand_size/4
-  [46..57] opponent's last 3 played kinds, oldest first: 3 x 4 one-hot (BURST, TANK, SHIELD, none/pass)
+  [46..57] opponent's last 3 played kinds, oldest first: 3 x 4 one-hot (Offense, Operations, Defense, none/pass)
 ACTION: Discrete(5): 0..3 = play hand slot, 4 = pass. ACTION MASK (action_masks()) = dw_rules.legal_mask (port of
   PARENA card_rules; parity-checked against tests/parity_vectors.txt). An illegal action sent anyway is converted to
   pass locally (never sent to the server), so a masked-out choice can't wedge an episode.

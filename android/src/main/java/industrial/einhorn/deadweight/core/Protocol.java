@@ -2,11 +2,11 @@ package industrial.einhorn.deadweight.core;
 
 import java.nio.charset.StandardCharsets;
 
-/** Wire protocol v2 codec (docs/WIRE_PROTOCOL.md). Little-endian; frame = u16 len + u8 type + payload. */
+/** Wire protocol v3 codec (docs/WIRE_PROTOCOL.md). Little-endian; frame = u16 len + u8 type + payload. */
 public final class Protocol {
     private Protocol() {}
 
-    public static final int PROTO = 2;
+    public static final int PROTO = 3;
     public static final int MAX_FRAME = 1024; // only AUTH exceeds 256
 
     public static final int C_HELLO = 0x01, C_QUEUE = 0x02, C_PLAY = 0x03, C_LEAVE = 0x04, C_PING = 0x05, C_AUTH = 0x06, C_DRAFT_PICK = 0x07;

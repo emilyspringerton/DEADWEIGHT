@@ -12,7 +12,14 @@ int max_rounds();
 int hand_size();
 int num_cards();
 int energy_cap(int);
+int pow3(int);
+int kind_chunk(int);
+int mod3(int);
 int card_kind(int);
+int pow6(int);
+int kw_chunk(int);
+int mod6(int);
+int card_keyword(int);
 int tier_of_cost(int);
 int card_tier(int);
 int cost_lo(int);
@@ -46,6 +53,15 @@ int fxa_hi(int);
 int fxb_hi(int);
 int fxa_top(int);
 int fxb_top(int);
+int cost_n1(int);
+int cost_n2(int);
+int power_n1(int);
+int power_n2(int);
+int fxa_n1(int);
+int fxa_n2(int);
+int fxb_n1(int);
+int fxb_n2(int);
+int base_fx(int);
 int card_fx_a(int);
 int card_fx_b(int);
 int fx_ch(int);
@@ -79,7 +95,7 @@ int hand_size(void) {
 }
 
 int num_cards(void) {
-    return 73;
+    return 105;
 }
 
 int energy_cap(int e __attribute__((unused))) {
@@ -90,19 +106,211 @@ int energy_cap(int e __attribute__((unused))) {
     }
 }
 
+int pow3(int n __attribute__((unused))) {
+    if ((n == 0)) {
+    return 1;
+    } else {
+    if ((n == 1)) {
+    return 3;
+    } else {
+    if ((n == 2)) {
+    return 9;
+    } else {
+    if ((n == 3)) {
+    return 27;
+    } else {
+    if ((n == 4)) {
+    return 81;
+    } else {
+    if ((n == 5)) {
+    return 243;
+    } else {
+    if ((n == 6)) {
+    return 729;
+    } else {
+    if ((n == 7)) {
+    return 2187;
+    } else {
+    if ((n == 8)) {
+    return 6561;
+    } else {
+    if ((n == 9)) {
+    return 19683;
+    } else {
+    if ((n == 10)) {
+    return 59049;
+    } else {
+    if ((n == 11)) {
+    return 177147;
+    } else {
+    if ((n == 12)) {
+    return 531441;
+    } else {
+    if ((n == 13)) {
+    return 1594323;
+    } else {
+    if ((n == 14)) {
+    return 4782969;
+    } else {
+    return 14348907;
+    }
+    }
+    }
+    }
+    }
+    }
+    }
+    }
+    }
+    }
+    }
+    }
+    }
+    }
+    }
+}
+
+int kind_chunk(int c __attribute__((unused))) {
+    if ((c == 0)) {
+    return 14545359;
+    } else {
+    if ((c == 1)) {
+    return 30373336;
+    } else {
+    if ((c == 2)) {
+    return 38256857;
+    } else {
+    if ((c == 3)) {
+    return 43046683;
+    } else {
+    if ((c == 4)) {
+    return 21525884;
+    } else {
+    if ((c == 5)) {
+    return 202;
+    } else {
+    if ((c == 6)) {
+    return 0;
+    } else {
+    return 0;
+    }
+    }
+    }
+    }
+    }
+    }
+    }
+}
+
+int mod3(int x __attribute__((unused))) {
+    return (x - ((x / 3) * 3));
+}
+
 int card_kind(int id __attribute__((unused))) {
     if ((id < 9)) {
     return (id / 3);
     } else {
-    if ((id < 31)) {
-    return 0;
-    } else {
-    if ((id < 52)) {
+    return mod3((kind_chunk((id / 16)) / pow3((id - ((id / 16) * 16)))));
+    }
+}
+
+int pow6(int n __attribute__((unused))) {
+    if ((n == 0)) {
     return 1;
     } else {
-    return 2;
+    if ((n == 1)) {
+    return 6;
+    } else {
+    if ((n == 2)) {
+    return 36;
+    } else {
+    if ((n == 3)) {
+    return 216;
+    } else {
+    if ((n == 4)) {
+    return 1296;
+    } else {
+    if ((n == 5)) {
+    return 7776;
+    } else {
+    if ((n == 6)) {
+    return 46656;
+    } else {
+    if ((n == 7)) {
+    return 279936;
+    } else {
+    if ((n == 8)) {
+    return 1679616;
+    } else {
+    return 10077696;
     }
     }
+    }
+    }
+    }
+    }
+    }
+    }
+    }
+}
+
+int kw_chunk(int c __attribute__((unused))) {
+    if ((c == 0)) {
+    return 27864;
+    } else {
+    if ((c == 1)) {
+    return 47231430;
+    } else {
+    if ((c == 2)) {
+    return 50583558;
+    } else {
+    if ((c == 3)) {
+    return 1215648;
+    } else {
+    if ((c == 4)) {
+    return 3592514;
+    } else {
+    if ((c == 5)) {
+    return 29;
+    } else {
+    if ((c == 6)) {
+    return 1399680;
+    } else {
+    if ((c == 7)) {
+    return 35607998;
+    } else {
+    if ((c == 8)) {
+    return 1179;
+    } else {
+    if ((c == 9)) {
+    return 0;
+    } else {
+    if ((c == 10)) {
+    return 0;
+    } else {
+    return 0;
+    }
+    }
+    }
+    }
+    }
+    }
+    }
+    }
+    }
+    }
+    }
+}
+
+int mod6(int x __attribute__((unused))) {
+    return (x - ((x / 6) * 6));
+}
+
+int card_keyword(int id __attribute__((unused))) {
+    if ((id < 0)) {
+    return 0;
+    } else {
+    return mod6((kw_chunk((id / 10)) / pow6((id - ((id / 10) * 10)))));
     }
 }
 
@@ -422,7 +630,15 @@ int card_cost(int id __attribute__((unused))) {
     if ((id < 57)) {
     return cost_hi(id);
     } else {
+    if ((id < 73)) {
     return cost_top(id);
+    } else {
+    if ((id < 89)) {
+    return cost_n1(id);
+    } else {
+    return cost_n2(id);
+    }
+    }
     }
     }
     }
@@ -726,7 +942,15 @@ int card_power(int id __attribute__((unused))) {
     if ((id < 57)) {
     return power_hi(id);
     } else {
+    if ((id < 73)) {
     return power_top(id);
+    } else {
+    if ((id < 89)) {
+    return power_n1(id);
+    } else {
+    return power_n2(id);
+    }
+    }
     }
     }
     }
@@ -747,7 +971,11 @@ int card_credit(int id __attribute__((unused))) {
     if ((id == 59)) {
     return 2;
     } else {
+    if ((id == 100)) {
+    return 3;
+    } else {
     return 0;
+    }
     }
     }
     }
@@ -759,7 +987,7 @@ int kind_beats(int a __attribute__((unused)), int b __attribute__((unused))) {
 }
 
 int is_legal_play(int id __attribute__((unused)), int energy __attribute__((unused)), int vault __attribute__((unused))) {
-    return ((id >= 0) && ((id < 73) && ((card_cost(id) <= energy) && ((card_credit(id) == 0) || (card_credit(id) <= vault)))));
+    return ((id >= 0) && ((id < num_cards()) && ((card_cost(id) <= energy) && ((card_credit(id) == 0) || (card_credit(id) <= vault)))));
 }
 
 int damage_dealt(int a __attribute__((unused)), int b __attribute__((unused))) {
@@ -1202,9 +1430,569 @@ int fxb_top(int id __attribute__((unused))) {
     }
 }
 
+int cost_n1(int id __attribute__((unused))) {
+    if ((id == 73)) {
+    return 1;
+    } else {
+    if ((id == 74)) {
+    return 3;
+    } else {
+    if ((id == 75)) {
+    return 4;
+    } else {
+    if ((id == 76)) {
+    return 2;
+    } else {
+    if ((id == 77)) {
+    return 5;
+    } else {
+    if ((id == 78)) {
+    return 2;
+    } else {
+    if ((id == 79)) {
+    return 3;
+    } else {
+    if ((id == 80)) {
+    return 1;
+    } else {
+    if ((id == 81)) {
+    return 2;
+    } else {
+    if ((id == 82)) {
+    return 3;
+    } else {
+    if ((id == 83)) {
+    return 2;
+    } else {
+    if ((id == 84)) {
+    return 3;
+    } else {
+    if ((id == 85)) {
+    return 3;
+    } else {
+    if ((id == 86)) {
+    return 2;
+    } else {
+    if ((id == 87)) {
+    return 4;
+    } else {
+    if ((id == 88)) {
+    return 3;
+    } else {
+    return 0;
+    }
+    }
+    }
+    }
+    }
+    }
+    }
+    }
+    }
+    }
+    }
+    }
+    }
+    }
+    }
+    }
+}
+
+int cost_n2(int id __attribute__((unused))) {
+    if ((id == 89)) {
+    return 1;
+    } else {
+    if ((id == 90)) {
+    return 2;
+    } else {
+    if ((id == 91)) {
+    return 2;
+    } else {
+    if ((id == 92)) {
+    return 2;
+    } else {
+    if ((id == 93)) {
+    return 6;
+    } else {
+    if ((id == 94)) {
+    return 2;
+    } else {
+    if ((id == 95)) {
+    return 3;
+    } else {
+    if ((id == 96)) {
+    return 1;
+    } else {
+    if ((id == 97)) {
+    return 1;
+    } else {
+    if ((id == 98)) {
+    return 3;
+    } else {
+    if ((id == 99)) {
+    return 4;
+    } else {
+    if ((id == 100)) {
+    return 5;
+    } else {
+    if ((id == 101)) {
+    return 3;
+    } else {
+    if ((id == 102)) {
+    return 1;
+    } else {
+    if ((id == 103)) {
+    return 3;
+    } else {
+    if ((id == 104)) {
+    return 2;
+    } else {
+    return 0;
+    }
+    }
+    }
+    }
+    }
+    }
+    }
+    }
+    }
+    }
+    }
+    }
+    }
+    }
+    }
+    }
+}
+
+int power_n1(int id __attribute__((unused))) {
+    if ((id == 73)) {
+    return 3;
+    } else {
+    if ((id == 74)) {
+    return 6;
+    } else {
+    if ((id == 75)) {
+    return 7;
+    } else {
+    if ((id == 76)) {
+    return 4;
+    } else {
+    if ((id == 77)) {
+    return 9;
+    } else {
+    if ((id == 78)) {
+    return 3;
+    } else {
+    if ((id == 79)) {
+    return 5;
+    } else {
+    if ((id == 80)) {
+    return 1;
+    } else {
+    if ((id == 81)) {
+    return 1;
+    } else {
+    if ((id == 82)) {
+    return 2;
+    } else {
+    if ((id == 83)) {
+    return 2;
+    } else {
+    if ((id == 84)) {
+    return 4;
+    } else {
+    if ((id == 85)) {
+    return 4;
+    } else {
+    if ((id == 86)) {
+    return 2;
+    } else {
+    if ((id == 87)) {
+    return 8;
+    } else {
+    if ((id == 88)) {
+    return 8;
+    } else {
+    return 0;
+    }
+    }
+    }
+    }
+    }
+    }
+    }
+    }
+    }
+    }
+    }
+    }
+    }
+    }
+    }
+    }
+}
+
+int power_n2(int id __attribute__((unused))) {
+    if ((id == 89)) {
+    return 6;
+    } else {
+    if ((id == 90)) {
+    return 3;
+    } else {
+    if ((id == 91)) {
+    return 4;
+    } else {
+    if ((id == 92)) {
+    return 3;
+    } else {
+    if ((id == 93)) {
+    return 14;
+    } else {
+    if ((id == 94)) {
+    return 3;
+    } else {
+    if ((id == 95)) {
+    return 5;
+    } else {
+    if ((id == 96)) {
+    return 3;
+    } else {
+    if ((id == 97)) {
+    return 3;
+    } else {
+    if ((id == 98)) {
+    return 8;
+    } else {
+    if ((id == 99)) {
+    return 8;
+    } else {
+    if ((id == 100)) {
+    return 10;
+    } else {
+    if ((id == 101)) {
+    return 9;
+    } else {
+    if ((id == 102)) {
+    return 1;
+    } else {
+    if ((id == 103)) {
+    return 6;
+    } else {
+    if ((id == 104)) {
+    return 5;
+    } else {
+    return 0;
+    }
+    }
+    }
+    }
+    }
+    }
+    }
+    }
+    }
+    }
+    }
+    }
+    }
+    }
+    }
+    }
+}
+
+int fxa_n1(int id __attribute__((unused))) {
+    if ((id == 73)) {
+    return 20000001;
+    } else {
+    if ((id == 74)) {
+    return 10602004;
+    } else {
+    if ((id == 75)) {
+    return 20000001;
+    } else {
+    if ((id == 76)) {
+    return 10703003;
+    } else {
+    if ((id == 77)) {
+    return 20000001;
+    } else {
+    if ((id == 78)) {
+    return 10500005;
+    } else {
+    if ((id == 79)) {
+    return 30000004;
+    } else {
+    if ((id == 80)) {
+    return 10602006;
+    } else {
+    if ((id == 81)) {
+    return 10400202;
+    } else {
+    if ((id == 82)) {
+    return 320100050;
+    } else {
+    if ((id == 83)) {
+    return 240100002;
+    } else {
+    if ((id == 84)) {
+    return 60000603;
+    } else {
+    if ((id == 85)) {
+    return 10000401;
+    } else {
+    if ((id == 86)) {
+    return 220100003;
+    } else {
+    if ((id == 87)) {
+    return 220100004;
+    } else {
+    if ((id == 88)) {
+    return 210000002;
+    } else {
+    return 0;
+    }
+    }
+    }
+    }
+    }
+    }
+    }
+    }
+    }
+    }
+    }
+    }
+    }
+    }
+    }
+    }
+}
+
+int fxa_n2(int id __attribute__((unused))) {
+    if ((id == 89)) {
+    return 210000003;
+    } else {
+    if ((id == 90)) {
+    return 10400003;
+    } else {
+    if ((id == 91)) {
+    return 290100001;
+    } else {
+    if ((id == 92)) {
+    return 11104003;
+    } else {
+    if ((id == 93)) {
+    return 220100006;
+    } else {
+    if ((id == 94)) {
+    return 11840007;
+    } else {
+    if ((id == 95)) {
+    return 10000901;
+    } else {
+    if ((id == 96)) {
+    return 11003004;
+    } else {
+    if ((id == 97)) {
+    return 11702004;
+    } else {
+    if ((id == 98)) {
+    return 230000001;
+    } else {
+    if ((id == 99)) {
+    return 10601004;
+    } else {
+    if ((id == 100)) {
+    return 10100008;
+    } else {
+    if ((id == 101)) {
+    return 210200003;
+    } else {
+    if ((id == 102)) {
+    return 11850005;
+    } else {
+    if ((id == 103)) {
+    return 10500003;
+    } else {
+    if ((id == 104)) {
+    return 210000001;
+    } else {
+    return 0;
+    }
+    }
+    }
+    }
+    }
+    }
+    }
+    }
+    }
+    }
+    }
+    }
+    }
+    }
+    }
+    }
+}
+
+int fxb_n1(int id __attribute__((unused))) {
+    if ((id == 73)) {
+    return 0;
+    } else {
+    if ((id == 74)) {
+    return 0;
+    } else {
+    if ((id == 75)) {
+    return 30000003;
+    } else {
+    if ((id == 76)) {
+    return 0;
+    } else {
+    if ((id == 77)) {
+    return 10910005;
+    } else {
+    if ((id == 78)) {
+    return 10602002;
+    } else {
+    if ((id == 79)) {
+    return 0;
+    } else {
+    if ((id == 80)) {
+    return 0;
+    } else {
+    if ((id == 81)) {
+    return 0;
+    } else {
+    if ((id == 82)) {
+    return 0;
+    } else {
+    if ((id == 83)) {
+    return 230100002;
+    } else {
+    if ((id == 84)) {
+    return 280000003;
+    } else {
+    if ((id == 85)) {
+    return 0;
+    } else {
+    if ((id == 86)) {
+    return 0;
+    } else {
+    if ((id == 87)) {
+    return 0;
+    } else {
+    if ((id == 88)) {
+    return 0;
+    } else {
+    return 0;
+    }
+    }
+    }
+    }
+    }
+    }
+    }
+    }
+    }
+    }
+    }
+    }
+    }
+    }
+    }
+    }
+}
+
+int fxb_n2(int id __attribute__((unused))) {
+    if ((id == 89)) {
+    return 0;
+    } else {
+    if ((id == 90)) {
+    return 0;
+    } else {
+    if ((id == 91)) {
+    return 0;
+    } else {
+    if ((id == 92)) {
+    return 0;
+    } else {
+    if ((id == 93)) {
+    return 0;
+    } else {
+    if ((id == 94)) {
+    return 12140001;
+    } else {
+    if ((id == 95)) {
+    return 0;
+    } else {
+    if ((id == 96)) {
+    return 0;
+    } else {
+    if ((id == 97)) {
+    return 0;
+    } else {
+    if ((id == 98)) {
+    return 0;
+    } else {
+    if ((id == 99)) {
+    return 0;
+    } else {
+    if ((id == 100)) {
+    return 0;
+    } else {
+    if ((id == 101)) {
+    return 0;
+    } else {
+    if ((id == 102)) {
+    return 0;
+    } else {
+    if ((id == 103)) {
+    return 0;
+    } else {
+    if ((id == 104)) {
+    return 0;
+    } else {
+    return 0;
+    }
+    }
+    }
+    }
+    }
+    }
+    }
+    }
+    }
+    }
+    }
+    }
+    }
+    }
+    }
+    }
+}
+
+int base_fx(int id __attribute__((unused))) {
+    if ((id == 3)) {
+    return fx(1, 6, 2, 0, 1);
+    } else {
+    if ((id == 4)) {
+    return fx(1, 6, 2, 0, 2);
+    } else {
+    if ((id == 5)) {
+    return fx(1, 6, 2, 0, 3);
+    } else {
+    return 0;
+    }
+    }
+    }
+}
+
 int card_fx_a(int id __attribute__((unused))) {
     if ((id < 9)) {
-    return 0;
+    return base_fx(id);
     } else {
     if ((id < 25)) {
     return fxa_lo(id);
@@ -1215,7 +2003,15 @@ int card_fx_a(int id __attribute__((unused))) {
     if ((id < 57)) {
     return fxa_hi(id);
     } else {
+    if ((id < 73)) {
     return fxa_top(id);
+    } else {
+    if ((id < 89)) {
+    return fxa_n1(id);
+    } else {
+    return fxa_n2(id);
+    }
+    }
     }
     }
     }
@@ -1235,7 +2031,15 @@ int card_fx_b(int id __attribute__((unused))) {
     if ((id < 57)) {
     return fxb_hi(id);
     } else {
+    if ((id < 73)) {
     return fxb_top(id);
+    } else {
+    if ((id < 89)) {
+    return fxb_n1(id);
+    } else {
+    return fxb_n2(id);
+    }
+    }
     }
     }
     }

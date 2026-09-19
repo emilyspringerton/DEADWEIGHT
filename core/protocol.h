@@ -1,11 +1,11 @@
-/* DEADWEIGHT wire protocol v2 codec (docs/WIRE_PROTOCOL.md). Little-endian, explicit byte ops (no struct
+/* DEADWEIGHT wire protocol v3 codec (docs/WIRE_PROTOCOL.md). Little-endian, explicit byte ops (no struct
  * punning, no alignment assumptions). Frame = u16 len (bytes after this field) + u8 type + payload. */
 #ifndef DW_PROTOCOL_H
 #define DW_PROTOCOL_H
 #include <stddef.h>
 #include <stdint.h>
 
-#define DW_PROTO_VERSION 2
+#define DW_PROTO_VERSION 3   /* v3 = the 105-card Offense/Operations/Defense catalog (wire format unchanged from v2; old clients can't play the new cards) */
 #define DW_MAX_FRAME_LEN 1024     /* max value of the u16 len field (only AUTH exceeds 256) */
 #define DW_MAX_AUTH_TOKEN 900     /* IDUNA ES256 JWTs are ~400-500 bytes: too big for HELLO's 200-byte token */
 #define DW_MAX_TOKEN 200

@@ -69,6 +69,6 @@ public final class MatchModel {
 
     public static String kindName(int cardId) {
         if (cardId < 0) return "PASS";
-        switch (CardRules.cardKind(cardId)) { case 0: return "BURST"; case 1: return "TANK"; default: return "SHIELD"; }
+        switch (CardRules.cardKind(cardId)) { case 0: return "OFFENSE"; case 1: return "OPERATIONS"; default: return "DEFENSE"; }
     }
 }

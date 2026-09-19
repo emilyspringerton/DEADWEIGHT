@@ -59,7 +59,7 @@ int dw_policy_choose(int policy, DwPolicyCtx *c, const int8_t hand[4], int energ
         for (i = 0; i < 4; i++) if (legal(c, hand, i, energy)) return i;
         return -1;
     case DW_POL_RIPPER: {
-        /* Burst-heavy. Banks energy for a tier-2 Burst (cost 4) when holding one it can't yet afford. */
+        /* Offense-heavy. Banks energy for a tier-2 Offense card (cost 4) when holding one it can't yet afford. */
         int holds_big = 0;
         for (i = 0; i < 4; i++) if (hand[i] == 2) holds_big = 1;
         if (holds_big && energy < card_cost(2)) return -1;
@@ -67,7 +67,7 @@ int dw_policy_choose(int policy, DwPolicyCtx *c, const int8_t hand[4], int energ
         return b >= 0 ? b : best_of_kind(c, hand, energy, -1);
     }
     case DW_POL_WALL: {
-        /* Tank-heavy, Shield as the answer to Burst-happy openers, Burst only as a last resort. */
+        /* Operations-first control (the archetype keeps its historical name), Defense as the answer to Offense-happy openers, Offense only as a last resort. */
         int t = best_of_kind(c, hand, energy, 1);
         if (t >= 0) return t;
         int s = best_of_kind(c, hand, energy, 2);

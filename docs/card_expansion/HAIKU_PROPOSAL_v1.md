@@ -1,24 +1,27 @@
 # DEADWEIGHT Card Expansion Proposal
 
+> **Terminology note (2026-09-19):** the game's three card kinds are now Offense (Red), Operations (Yellow) and Defense (Blue). This historical document has been mechanically re-worded to those names; its analysis predates the retheme (the middle kind was then a heavy/defensive one) and is kept as written otherwise.
+
+
 ## Executive Summary
 
-DEADWEIGHT VS0 (card mode) ships with a proven, tight design: 9 cards in a 3×3 Burst/Tank/Shield × tier 0/1/2 matrix, clean RPS triangle, 8-round decision trees. This proposal adds strategic depth without breaking the core economy — six new special-purpose cards introducing conditional mechanics, energy manipulation, and risk/reward trades while preserving the triangle's integrity and the hand-decision space.
+DEADWEIGHT VS0 (card mode) ships with a proven, tight design: 9 cards in a 3×3 Offense/Operations/Defense × tier 0/1/2 matrix, clean RPS triangle, 8-round decision trees. This proposal adds strategic depth without breaking the core economy — six new special-purpose cards introducing conditional mechanics, energy manipulation, and risk/reward trades while preserving the triangle's integrity and the hand-decision space.
 
 ## Current State (VS0 Baseline)
 
 | Metric | Value | Notes |
 |--------|-------|-------|
-| Cards | 9 (ids 0–8) | BURST/TANK/SHIELD, tiers 0/1/2 |
+| Cards | 9 (ids 0–8) | OFFENSE/OPERATIONS/DEFENSE, tiers 0/1/2 |
 | Hand size | 4 | Drawn without replacement |
 | Hull | 20 start | Simultaneous damage, draw at ≤0 both |
 | Energy | 2 start, +2/round, cap 6 | Pass banks +1 (capped) |
 | Rounds | 8 fixed | Round-based resolution |
-| Triangle | BURST > TANK > SHIELD > BURST | Equal kind: BURST/BURST full, TANK/TANK half, SHIELD/SHIELD 0 |
-| Pass vs. card | BURST/TANK deal full; SHIELD deals 0 | Energy banking incentive |
+| Triangle | OFFENSE > OPERATIONS > DEFENSE > OFFENSE | Equal kind: OFFENSE/OFFENSE full, OPERATIONS/OPERATIONS half, DEFENSE/DEFENSE 0 |
+| Pass vs. card | OFFENSE/OPERATIONS deal full; DEFENSE deals 0 | Energy banking incentive |
 
 **Balance health indicators:**
 - RPS triangle constrains best play; tier-2 cards cost 4 (66% energy), forcing timing
-- 8 rounds limits snowball; hull economy is tight (tier-2 Burst deals 10 from 20 hull)
+- 8 rounds limits snowball; hull economy is tight (tier-2 Offense deals 10 from 20 hull)
 - Hidden hands + energy banking create readable tells (saving 4 energy for a big play)
 
 ## Proposed Additions
@@ -61,7 +64,7 @@ No state persistence across rounds; all calculations are immediate.
 
 **Card: Leech Tier 2 (id 12)**
 - Cost: 3, Power: 7, Heal: 3
-- Strong comeback tool; ties up energy but cheaper than tier-2 BURST
+- Strong comeback tool; ties up energy but cheaper than tier-2 OFFENSE
 
 ### 3. Gambit Card (new mechanic: damage + self-damage, high risk/reward)
 
@@ -69,7 +72,7 @@ No state persistence across rounds; all calculations are immediate.
 
 **Card: Gambit Tier 2 (id 13)**
 - Cost: 3, Power: 12, Backlash: 4
-- Damage to opponent: 12 (beats SHIELD, ties TANK/BURST)
+- Damage to opponent: 12 (beats DEFENSE, ties OPERATIONS/OFFENSE)
 - **Backlash:** You take 4 damage (regardless of outcome)
 - Strategic: Win-condition finisher if opponent is at 5-12 hull; suicide play if you're low
 
@@ -92,7 +95,7 @@ No state persistence across rounds; all calculations are immediate.
 - Cost: 1, Power scales: 3 + (energy before play / 2)
 - If you have 6 energy, Spark deals 6 (3 + 3)
 - If you have 2 energy, Spark deals 4 (3 + 1)
-- Strategic: Soft counter to Burst plays; rewards defensive banking
+- Strategic: Soft counter to Offense plays; rewards defensive banking
 
 ### Hand Size and Distribution
 
@@ -110,12 +113,12 @@ No state persistence across rounds; all calculations are immediate.
 
 - Core 9 cards (0-8) unchanged; triangle holds
 - New cards are **variants on the triangle**, not orthogonal to it
-  - Siphon Burst: Still BURST (beats TANK), but with energy-denial upside
-  - Leech TANK: Still TANK (halves damage vs TANK), heals on play
-  - Gambit is a BURST variant (high power, high risk)
-  - Overcharge is a BURST variant (highest power, highest cost, breaks cap)
-  - Spark is a BURST variant (scales with restraint, beats passivity)
-- Triangle still holds: BURST > TANK > SHIELD in damage, just with side effects
+  - Siphon Offense: Still OFFENSE (beats OPERATIONS), but with energy-denial upside
+  - Leech OPERATIONS: Still OPERATIONS (halves damage vs OPERATIONS), heals on play
+  - Gambit is a OFFENSE variant (high power, high risk)
+  - Overcharge is a OFFENSE variant (highest power, highest cost, breaks cap)
+  - Spark is a OFFENSE variant (scales with restraint, beats passivity)
+- Triangle still holds: OFFENSE > OPERATIONS > DEFENSE in damage, just with side effects
 
 ### Energy Economy
 
@@ -132,7 +135,7 @@ No state persistence across rounds; all calculations are immediate.
 
 ### Hull Economy
 
-**Current:** 20 hp, tier-2 Burst = 10 damage, two tier-2s = one player death
+**Current:** 20 hp, tier-2 Offense = 10 damage, two tier-2s = one player death
 - New Leech cards delay death (3 hull swing per play)
 - Gambit forces a 4-hp tax upfront (real cost)
 - Siphon doesn't change damage, just board state
@@ -180,7 +183,7 @@ All (a, b) ∈ (0..14)² combinations:
 ```
 100 bot-vs-bot matches, random seeding:
   - No card combo appears >40% of optimal (no runaway best card)
-  - Siphon win rate vs. equal-tier BURST: 45-55% (slightly worse, energy cost)
+  - Siphon win rate vs. equal-tier OFFENSE: 45-55% (slightly worse, energy cost)
   - Leech win rate: balanced (trades damage for hull, wash in aggregate)
   - Gambit pick rate: ~10-15% (high-risk, situational)
   - Spark pick rate: ~5% (niche energy-bank play)
@@ -243,13 +246,13 @@ Verify:
 
 | Card | ID | Type | Cost | Power | Effect | Rationale |
 |------|----|----|------|-------|--------|-----------|
-| Siphon T1 | 9 | BURST | 2 | 5 | On-beat steal 1 energy | Board control, tight economy |
-| Siphon T2 | 10 | BURST | 3 | 8 | On-beat steal 2 energy | Scaling version |
-| Leech T1 | 11 | TANK | 2 | 4 | Heal 2 | Comeback window |
-| Leech T2 | 12 | TANK | 3 | 7 | Heal 3 | Stronger recovery |
-| Gambit T2 | 13 | BURST | 3 | 12 | Take 4 damage | Risk/reward finisher |
-| Overcharge T2 | 14 | BURST | 5 | 14 | Exceed cap | Round-8 hail-mary |
-| Spark T1 | 15 | BURST | 1 | 3 + energy/2 | Scaling | Reward restraint |
+| Siphon T1 | 9 | OFFENSE | 2 | 5 | On-beat steal 1 energy | Board control, tight economy |
+| Siphon T2 | 10 | OFFENSE | 3 | 8 | On-beat steal 2 energy | Scaling version |
+| Leech T1 | 11 | OPERATIONS | 2 | 4 | Heal 2 | Comeback window |
+| Leech T2 | 12 | OPERATIONS | 3 | 7 | Heal 3 | Stronger recovery |
+| Gambit T2 | 13 | OFFENSE | 3 | 12 | Take 4 damage | Risk/reward finisher |
+| Overcharge T2 | 14 | OFFENSE | 5 | 14 | Exceed cap | Round-8 hail-mary |
+| Spark T1 | 15 | OFFENSE | 1 | 3 + energy/2 | Scaling | Reward restraint |
 
 **Total cards:** 15 (ids 0-14)
 **Hand size:** 5

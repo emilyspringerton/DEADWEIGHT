@@ -24,15 +24,43 @@ public final class CardRules {
     }
 
     public static int numCards() {
-        return 73;
+        return 105;
     }
 
     public static int energyCap(int e) {
         return ((e > 6) ? 6 : e);
     }
 
+    public static int pow3(int n) {
+        return ((n == 0) ? 1 : ((n == 1) ? 3 : ((n == 2) ? 9 : ((n == 3) ? 27 : ((n == 4) ? 81 : ((n == 5) ? 243 : ((n == 6) ? 729 : ((n == 7) ? 2187 : ((n == 8) ? 6561 : ((n == 9) ? 19683 : ((n == 10) ? 59049 : ((n == 11) ? 177147 : ((n == 12) ? 531441 : ((n == 13) ? 1594323 : ((n == 14) ? 4782969 : 14348907)))))))))))))));
+    }
+
+    public static int kindChunk(int c) {
+        return ((c == 0) ? 14545359 : ((c == 1) ? 30373336 : ((c == 2) ? 38256857 : ((c == 3) ? 43046683 : ((c == 4) ? 21525884 : ((c == 5) ? 202 : ((c == 6) ? 0 : 0)))))));
+    }
+
+    public static int mod3(int x) {
+        return (x - ((x / 3) * 3));
+    }
+
     public static int cardKind(int id) {
-        return ((id < 9) ? (id / 3) : ((id < 31) ? 0 : ((id < 52) ? 1 : 2)));
+        return ((id < 9) ? (id / 3) : mod3((kindChunk((id / 16)) / pow3((id - ((id / 16) * 16))))));
+    }
+
+    public static int pow6(int n) {
+        return ((n == 0) ? 1 : ((n == 1) ? 6 : ((n == 2) ? 36 : ((n == 3) ? 216 : ((n == 4) ? 1296 : ((n == 5) ? 7776 : ((n == 6) ? 46656 : ((n == 7) ? 279936 : ((n == 8) ? 1679616 : 10077696)))))))));
+    }
+
+    public static int kwChunk(int c) {
+        return ((c == 0) ? 27864 : ((c == 1) ? 47231430 : ((c == 2) ? 50583558 : ((c == 3) ? 1215648 : ((c == 4) ? 3592514 : ((c == 5) ? 29 : ((c == 6) ? 1399680 : ((c == 7) ? 35607998 : ((c == 8) ? 1179 : ((c == 9) ? 0 : ((c == 10) ? 0 : 0)))))))))));
+    }
+
+    public static int mod6(int x) {
+        return (x - ((x / 6) * 6));
+    }
+
+    public static int cardKeyword(int id) {
+        return ((id < 0) ? 0 : mod6((kwChunk((id / 10)) / pow6((id - ((id / 10) * 10))))));
     }
 
     public static int tierOfCost(int c) {
@@ -60,7 +88,7 @@ public final class CardRules {
     }
 
     public static int cardCost(int id) {
-        return ((id < 0) ? 0 : ((id < 9) ? ((cardTier(id) == 0) ? 1 : ((cardTier(id) == 1) ? 2 : 4)) : ((id < 25) ? costLo(id) : ((id < 41) ? costMid(id) : ((id < 57) ? costHi(id) : costTop(id))))));
+        return ((id < 0) ? 0 : ((id < 9) ? ((cardTier(id) == 0) ? 1 : ((cardTier(id) == 1) ? 2 : 4)) : ((id < 25) ? costLo(id) : ((id < 41) ? costMid(id) : ((id < 57) ? costHi(id) : ((id < 73) ? costTop(id) : ((id < 89) ? costN1(id) : costN2(id))))))));
     }
 
     public static int powerLo(int id) {
@@ -80,11 +108,11 @@ public final class CardRules {
     }
 
     public static int cardPower(int id) {
-        return ((id < 0) ? 0 : ((id < 9) ? ((cardTier(id) == 0) ? 3 : ((cardTier(id) == 1) ? 6 : 10)) : ((id < 25) ? powerLo(id) : ((id < 41) ? powerMid(id) : ((id < 57) ? powerHi(id) : powerTop(id))))));
+        return ((id < 0) ? 0 : ((id < 9) ? ((cardTier(id) == 0) ? 3 : ((cardTier(id) == 1) ? 6 : 10)) : ((id < 25) ? powerLo(id) : ((id < 41) ? powerMid(id) : ((id < 57) ? powerHi(id) : ((id < 73) ? powerTop(id) : ((id < 89) ? powerN1(id) : powerN2(id))))))));
     }
 
     public static int cardCredit(int id) {
-        return ((id == 13) ? 2 : ((id == 30) ? 2 : ((id == 51) ? 3 : ((id == 59) ? 2 : 0))));
+        return ((id == 13) ? 2 : ((id == 30) ? 2 : ((id == 51) ? 3 : ((id == 59) ? 2 : ((id == 100) ? 3 : 0)))));
     }
 
     public static boolean kindBeats(int a, int b) {
@@ -92,7 +120,7 @@ public final class CardRules {
     }
 
     public static boolean isLegalPlay(int id, int energy, int vault) {
-        return ((id >= 0) && ((id < 73) && ((cardCost(id) <= energy) && ((cardCredit(id) == 0) || (cardCredit(id) <= vault)))));
+        return ((id >= 0) && ((id < numCards()) && ((cardCost(id) <= energy) && ((cardCredit(id) == 0) || (cardCredit(id) <= vault)))));
     }
 
     public static int damageDealt(int a, int b) {
@@ -167,12 +195,48 @@ public final class CardRules {
         return ((id == 57) ? fx(29, 6, 0, 0, 1) : ((id == 58) ? fx(26, 0, 0, 0, 2) : ((id == 60) ? fx(26, 0, 0, 0, 1) : ((id == 64) ? fx(42, 0, 0, 0, 1) : ((id == 66) ? fx(43, 0, 0, 0, 1) : ((id == 72) ? fx(31, 0, 0, 0, 2) : 0))))));
     }
 
+    public static int costN1(int id) {
+        return ((id == 73) ? 1 : ((id == 74) ? 3 : ((id == 75) ? 4 : ((id == 76) ? 2 : ((id == 77) ? 5 : ((id == 78) ? 2 : ((id == 79) ? 3 : ((id == 80) ? 1 : ((id == 81) ? 2 : ((id == 82) ? 3 : ((id == 83) ? 2 : ((id == 84) ? 3 : ((id == 85) ? 3 : ((id == 86) ? 2 : ((id == 87) ? 4 : ((id == 88) ? 3 : 0))))))))))))))));
+    }
+
+    public static int costN2(int id) {
+        return ((id == 89) ? 1 : ((id == 90) ? 2 : ((id == 91) ? 2 : ((id == 92) ? 2 : ((id == 93) ? 6 : ((id == 94) ? 2 : ((id == 95) ? 3 : ((id == 96) ? 1 : ((id == 97) ? 1 : ((id == 98) ? 3 : ((id == 99) ? 4 : ((id == 100) ? 5 : ((id == 101) ? 3 : ((id == 102) ? 1 : ((id == 103) ? 3 : ((id == 104) ? 2 : 0))))))))))))))));
+    }
+
+    public static int powerN1(int id) {
+        return ((id == 73) ? 3 : ((id == 74) ? 6 : ((id == 75) ? 7 : ((id == 76) ? 4 : ((id == 77) ? 9 : ((id == 78) ? 3 : ((id == 79) ? 5 : ((id == 80) ? 1 : ((id == 81) ? 1 : ((id == 82) ? 2 : ((id == 83) ? 2 : ((id == 84) ? 4 : ((id == 85) ? 4 : ((id == 86) ? 2 : ((id == 87) ? 8 : ((id == 88) ? 8 : 0))))))))))))))));
+    }
+
+    public static int powerN2(int id) {
+        return ((id == 89) ? 6 : ((id == 90) ? 3 : ((id == 91) ? 4 : ((id == 92) ? 3 : ((id == 93) ? 14 : ((id == 94) ? 3 : ((id == 95) ? 5 : ((id == 96) ? 3 : ((id == 97) ? 3 : ((id == 98) ? 8 : ((id == 99) ? 8 : ((id == 100) ? 10 : ((id == 101) ? 9 : ((id == 102) ? 1 : ((id == 103) ? 6 : ((id == 104) ? 5 : 0))))))))))))))));
+    }
+
+    public static int fxaN1(int id) {
+        return ((id == 73) ? 20000001 : ((id == 74) ? 10602004 : ((id == 75) ? 20000001 : ((id == 76) ? 10703003 : ((id == 77) ? 20000001 : ((id == 78) ? 10500005 : ((id == 79) ? 30000004 : ((id == 80) ? 10602006 : ((id == 81) ? 10400202 : ((id == 82) ? 320100050 : ((id == 83) ? 240100002 : ((id == 84) ? 60000603 : ((id == 85) ? 10000401 : ((id == 86) ? 220100003 : ((id == 87) ? 220100004 : ((id == 88) ? 210000002 : 0))))))))))))))));
+    }
+
+    public static int fxaN2(int id) {
+        return ((id == 89) ? 210000003 : ((id == 90) ? 10400003 : ((id == 91) ? 290100001 : ((id == 92) ? 11104003 : ((id == 93) ? 220100006 : ((id == 94) ? 11840007 : ((id == 95) ? 10000901 : ((id == 96) ? 11003004 : ((id == 97) ? 11702004 : ((id == 98) ? 230000001 : ((id == 99) ? 10601004 : ((id == 100) ? 10100008 : ((id == 101) ? 210200003 : ((id == 102) ? 11850005 : ((id == 103) ? 10500003 : ((id == 104) ? 210000001 : 0))))))))))))))));
+    }
+
+    public static int fxbN1(int id) {
+        return ((id == 73) ? 0 : ((id == 74) ? 0 : ((id == 75) ? 30000003 : ((id == 76) ? 0 : ((id == 77) ? 10910005 : ((id == 78) ? 10602002 : ((id == 79) ? 0 : ((id == 80) ? 0 : ((id == 81) ? 0 : ((id == 82) ? 0 : ((id == 83) ? 230100002 : ((id == 84) ? 280000003 : ((id == 85) ? 0 : ((id == 86) ? 0 : ((id == 87) ? 0 : ((id == 88) ? 0 : 0))))))))))))))));
+    }
+
+    public static int fxbN2(int id) {
+        return ((id == 89) ? 0 : ((id == 90) ? 0 : ((id == 91) ? 0 : ((id == 92) ? 0 : ((id == 93) ? 0 : ((id == 94) ? 12140001 : ((id == 95) ? 0 : ((id == 96) ? 0 : ((id == 97) ? 0 : ((id == 98) ? 0 : ((id == 99) ? 0 : ((id == 100) ? 0 : ((id == 101) ? 0 : ((id == 102) ? 0 : ((id == 103) ? 0 : ((id == 104) ? 0 : 0))))))))))))))));
+    }
+
+    public static int baseFx(int id) {
+        return ((id == 3) ? fx(1, 6, 2, 0, 1) : ((id == 4) ? fx(1, 6, 2, 0, 2) : ((id == 5) ? fx(1, 6, 2, 0, 3) : 0)));
+    }
+
     public static int cardFxA(int id) {
-        return ((id < 9) ? 0 : ((id < 25) ? fxaLo(id) : ((id < 41) ? fxaMid(id) : ((id < 57) ? fxaHi(id) : fxaTop(id)))));
+        return ((id < 9) ? baseFx(id) : ((id < 25) ? fxaLo(id) : ((id < 41) ? fxaMid(id) : ((id < 57) ? fxaHi(id) : ((id < 73) ? fxaTop(id) : ((id < 89) ? fxaN1(id) : fxaN2(id)))))));
     }
 
     public static int cardFxB(int id) {
-        return ((id < 21) ? 0 : ((id < 25) ? fxbLo(id) : ((id < 41) ? fxbMid(id) : ((id < 57) ? fxbHi(id) : fxbTop(id)))));
+        return ((id < 21) ? 0 : ((id < 25) ? fxbLo(id) : ((id < 41) ? fxbMid(id) : ((id < 57) ? fxbHi(id) : ((id < 73) ? fxbTop(id) : ((id < 89) ? fxbN1(id) : fxbN2(id)))))));
     }
 
     public static int fxCh(int x) {

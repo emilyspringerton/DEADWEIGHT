@@ -1,8 +1,8 @@
-# DEADWEIGHT wire protocol v2 (TCP)
+# DEADWEIGHT wire protocol v3 (TCP)
 
 Little-endian. Frame = `u16 len` (bytes after this field) + `u8 type` + payload. Max `len` 1024 (only AUTH is ever larger than 256); longer =
 protocol violation, server closes. Strings are fixed 16-byte NUL-padded UTF-8 (`name16`).
-One TCP connection = one session. Server sends nothing before HELLO. `proto` = 2 (v2 = the 73-card Guild ruleset, S503-16). A HELLO with any other `proto` gets `ERROR 1 (bad proto)` and a close, so a v1 client fails with a clear message instead of mis-rendering the new meters. v1 → v2 only *appends* fields to ROUND_START / ROUND_RESULT and adds bankruptcy as a match-end reason.
+One TCP connection = one session. Server sends nothing before HELLO. `proto` = 3 (v3 = the 105-card Offense / Operations / Defense catalog; the byte layout is identical to v2, the bump exists so older clients, which can't play or render card ids 73+, fail with a clear message instead of misbehaving). A HELLO with any other `proto` gets `ERROR 1 (bad proto)` and a close. v1 → v2 only *appended* fields to ROUND_START / ROUND_RESULT and added bankruptcy as a match-end reason.
 
 ## Client → server
 

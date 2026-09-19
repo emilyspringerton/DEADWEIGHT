@@ -1,5 +1,8 @@
 # DEADWEIGHT Card & Mechanic Meta Prompt
 
+> **Terminology note (2026-09-19):** the game's three card kinds are now Offense (Red), Operations (Yellow) and Defense (Blue). This historical document has been mechanically re-worded to those names; its analysis predates the retheme (the middle kind was then a heavy/defensive one) and is kept as written otherwise.
+
+
 **Context:** You are designing new cards and mechanics for DEADWEIGHT, a 1v1 real-time card duel game (currently shipping with 9 core cards, 3 kinds × 3 tiers). Your task is to generate, evaluate, and refine card designs across multiple iterations. This prompt provides the rules, constraints, and evaluation framework to do so independently or in response to feedback.
 
 ---
@@ -21,19 +24,19 @@ Core cards (ids 0–8):
 
 | Kind | ID | Tier 0 | Tier 1 | Tier 2 |
 |------|----|----|----|----|
-| BURST (0) | 0, 1, 2 | Cost 1, Power 3 | Cost 2, Power 6 | Cost 4, Power 10 |
-| TANK (1) | 3, 4, 5 | Cost 1, Power 3 | Cost 2, Power 6 | Cost 4, Power 10 |
-| SHIELD (2) | 6, 7, 8 | Cost 1, Power 3 | Cost 2, Power 6 | Cost 4, Power 10 |
+| OFFENSE (0) | 0, 1, 2 | Cost 1, Power 3 | Cost 2, Power 6 | Cost 4, Power 10 |
+| OPERATIONS (1) | 3, 4, 5 | Cost 1, Power 3 | Cost 2, Power 6 | Cost 4, Power 10 |
+| DEFENSE (2) | 6, 7, 8 | Cost 1, Power 3 | Cost 2, Power 6 | Cost 4, Power 10 |
 
 ### Damage Rules (Rock-Paper-Scissors Triangle)
 
-**BURST > TANK > SHIELD > BURST** (circular)
+**OFFENSE > OPERATIONS > DEFENSE > OFFENSE** (circular)
 
 For your play `a` vs. opponent's play `b`:
-- **You beat their kind:** You deal `power(a)`, opponent deals 0 (unless it's a SHIELD; then it reflects back to you)
-- **Same kind:** BURST-vs-BURST both deal full power; TANK-vs-TANK both deal power/2; SHIELD-vs-SHIELD both deal 0
+- **You beat their kind:** You deal `power(a)`, opponent deals 0 (unless it's a DEFENSE; then it reflects back to you)
+- **Same kind:** OFFENSE-vs-OFFENSE both deal full power; OPERATIONS-vs-OPERATIONS both deal power/2; DEFENSE-vs-DEFENSE both deal 0
 - **Opponent beats your kind:** You deal 0
-- **Opponent passes:** You deal full `power(a)` if BURST/TANK, 0 if SHIELD
+- **Opponent passes:** You deal full `power(a)` if OFFENSE/OPERATIONS, 0 if DEFENSE
 - **You pass:** You deal 0
 
 **Pass rule:** Passing banks +1 energy on next round (still capped at 6), costs 0.
@@ -64,14 +67,14 @@ For your play `a` vs. opponent's play `b`:
 - **Do not change:** the shuffling/draw logic, the "no replacement within a hand of 4" rule, or the per-player seeded shuffle
 
 ### 4. Rock-Paper-Scissors Triangle is Sacred
-- BURST > TANK > SHIELD > BURST must always hold
+- OFFENSE > OPERATIONS > DEFENSE > OFFENSE must always hold
 - All new cards must map to an existing kind (or rarely, a new kind—see "New Kinds" below)
-- **Example:** Siphon can be a BURST variant (still beats TANK), but it's not a 4th kind
+- **Example:** Siphon can be a OFFENSE variant (still beats OPERATIONS), but it's not a 4th kind
 - **Never:** Create a card that beats all three kinds, or beats none
 
 ### 5. Hull Economy (Secondary Balancing Law)
 - Start at 20 hp
-- Tier-2 BURST (power 10) is the highest single-hit damage (excluding new high-risk cards)
+- Tier-2 OFFENSE (power 10) is the highest single-hit damage (excluding new high-risk cards)
 - Two tier-2 cards in succession can kill a player (20 hp)
 - **New high-power cards** (power >10) are allowed only if:
   - They cost ≥5 energy (very restrictive), or
@@ -107,13 +110,13 @@ For your play `a` vs. opponent's play `b`:
 
 Current: 3 kinds × 3 tiers = 9 cards
 - **Recommendation:** Add variants within the 3 kinds, not new kinds (preserves RPS)
-  - Example: Burst variants = Burst + Siphon, Burst + Gambit, Burst + Overcharge (same RPS, new effect)
+  - Example: Offense variants = Offense + Siphon, Offense + Gambit, Offense + Overcharge (same RPS, new effect)
 - **Allow:** New kinds (4th, 5th) only if RPS can be cleanly extended (e.g., 4 kinds in a diamond, everyone beats one, loses to one)
   - Rare, and requires strong justification
 
 ### Step 2: Propose Base Stats
 
-For a BURST variant (examples):
+For a OFFENSE variant (examples):
 ```
 Cost:  1-2 (cheap variants), 3 (mid), 4-5 (expensive/risky)
 Power: Scaled by cost and mechanic
@@ -134,7 +137,7 @@ Power: Scaled by cost and mechanic
 **Pattern 2: Hull Manipulation**
 - Leech: Deal X damage, heal self Y hull (Y < X, always, to avoid infinite healing)
 - Gambit: Deal X damage, take Y damage yourself (high risk, high reward)
-- Reflection: Like SHIELD but deals Y damage back to attacker (variant of existing triangle)
+- Reflection: Like DEFENSE but deals Y damage back to attacker (variant of existing triangle)
 
 **Pattern 3: Conditional Scaling**
 - Spark: Power scales with energy (e.g., 3 + energy/2)
@@ -165,14 +168,14 @@ For every new card, answer:
 - [ ] Can any single card be played every round without running out of energy? (If yes, too cheap)
 - [ ] Does this card create a "dominant strategy" (always better than base cards in its tier)?
   - If yes, either increase cost or decrease effect
-- [ ] Against existing cards: does a bot spamming this card beat a bot spamming tier-2 BURST?
+- [ ] Against existing cards: does a bot spamming this card beat a bot spamming tier-2 OFFENSE?
   - If yes, it's too strong; adjust
 
 **Thematic Coherence:**
 - [ ] Does the mechanic align with the card's kind?
-  - BURST = offense, speed, energy-denial → Siphon, Gambit, Overcharge fit
-  - TANK = durability, shared damage, healing → Leech fits
-  - SHIELD = deflection, reflection → Reflection mechanics fit
+  - OFFENSE = offense, speed, energy-denial → Siphon, Gambit, Overcharge fit
+  - OPERATIONS = durability, shared damage, healing → Leech fits
+  - DEFENSE = deflection, reflection → Reflection mechanics fit
 - [ ] Does the name evoke the mechanic?
 
 **Hand Composition:**
@@ -187,7 +190,7 @@ For every new card, answer:
 
 ```
 **Card Name (id XX)**
-- Kind: [BURST/TANK/SHIELD]
+- Kind: [OFFENSE/OPERATIONS/DEFENSE]
 - Cost: X
 - Base Power: Y
 - Mechanic: [Description of new effect]
@@ -203,43 +206,43 @@ For every new card, answer:
 ### Good Design (Accepted Pattern)
 
 **Siphon Tier 1 (id 9)**
-- Kind: BURST
+- Kind: OFFENSE
 - Cost: 2, Power: 5
 - Mechanic: "On beat, reduce opponent's energy cap to 5 for next round"
 - Scalar: `if (kind-beats(a-id, 1)) opp-energy-cap = min(5, opp-energy) else 6`
-- Rationale: BURST-variant that still beats TANK, costs 2 (reasonable), offers board-control trade-off
+- Rationale: OFFENSE-variant that still beats OPERATIONS, costs 2 (reasonable), offers board-control trade-off
 - Risk: Siphon-spam could lock opponent out of tier-2 cards; monitor pick rate and win rate
 
 **✓ Scalar-only:** Yes, deterministic function of (a-beat-b)
-**✓ Preserve RPS:** Yes, still BURST (beats TANK)
+**✓ Preserve RPS:** Yes, still OFFENSE (beats OPERATIONS)
 **✓ Cost-power ratio:** Cost 2, power 5 is reasonable (slightly less than base 6)
-**✓ No runaway:** Can only siphon if you beat; opponent can block with SHIELD
+**✓ No runaway:** Can only siphon if you beat; opponent can block with DEFENSE
 
 ### Bad Design (Rejected Pattern)
 
 **"Echo" (id XX)**
-- Kind: BURST
+- Kind: OFFENSE
 - Cost: 2, Power: 6
 - Mechanic: "This card deals 3 damage again on round N+2"
 - ✗ **Reason:** Requires state persistence (which round will it trigger?), breaks scalar-only
 - **Fix:** Make it "This card heals you for 3 if played on round 6+", or "deals 6 + bonus if opponent's hull <10"
 
 **"Cascade" (id XX)**
-- Kind: BURST
+- Kind: OFFENSE
 - Cost: 1, Power: 3
 - Mechanic: "Whenever this card is played, gain 1 energy"
 - ✗ **Reason:** Breaks energy economy; infinite loop if you keep playing it (cost 1, gain 1 = free)
 - **Fix:** "Whenever this card wins, reduce cost of next Cascade by 1" (requires state); or reject
 
 **"Combo Chain" (id XX)**
-- Kind: BURST
+- Kind: OFFENSE
 - Cost: 2, Power: 4
-- Mechanic: "If your last card was TANK, this deals 2 extra damage"
+- Mechanic: "If your last card was OPERATIONS, this deals 2 extra damage"
 - ✗ **Reason:** Requires querying hand history (state), not scalar-only
 - **Fix:** "If you have energy ≥ 6, deal 2 extra damage" (condition on current state, scalar)
 
 **"Steal Opponent's Card" (id XX)**
-- Kind: SHIELD
+- Kind: DEFENSE
 - Cost: 3, Power: 0
 - Mechanic: "Remove opponent's next play from their hand"
 - ✗ **Reason:** Modifies opponent's game state mid-game, breaks sandbox
@@ -248,14 +251,14 @@ For every new card, answer:
 ### Borderline (Needs Careful Implementation)
 
 **"Desperation" (id XX)**
-- Kind: BURST
+- Kind: OFFENSE
 - Cost: 2, Power scales: 6 + (20 - your-hull)
 - Mechanic: "Power increases as your hull decreases"
 - Scalar? **Yes**, if we pass `a-hull` to `damage-dealt`
 - Balance? **Risky:** At 1 hull, this deals 25 damage (kills). At 20 hull, deals 6 (normal)
   - Good comeback mechanic, but requires monitoring
   - **Accept with caution:** add this only after simpler cards are shipped
-  - **Risk:** Could enable "intentionally tank damage then win on round 8" strategy
+  - **Risk:** Could enable "intentionally operations damage then win on round 8" strategy
 
 ---
 
@@ -310,7 +313,7 @@ For every new card, answer:
 - Starting energy or energy per round (+2 is tuned)
 
 ### Never Change:
-- RPS triangle (BURST > TANK > SHIELD > BURST)
+- RPS triangle (OFFENSE > OPERATIONS > DEFENSE > OFFENSE)
 - Pass rule (+1 energy, costs 0)
 - Simultaneous resolution (secret lock-in is core)
 - Hull starting value (20 hp)

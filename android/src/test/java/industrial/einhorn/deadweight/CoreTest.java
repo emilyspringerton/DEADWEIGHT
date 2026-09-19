@@ -25,7 +25,7 @@ public final class CoreTest {
     static void codec() throws Exception {
         byte[] h = Protocol.hello(0, 1, "Ripper", new byte[]{1, 2, 3});
         eq("hello len field", (h[0] & 0xFF) | ((h[1] & 0xFF) << 8), h.length - 2);
-        eq("hello type", h[2], 1); eq("hello proto", h[3], 2); eq("hello kind", h[5], 1);
+        eq("hello type", h[2], 1); eq("hello proto", h[3], 3); eq("hello kind", h[5], 1);
         eq("hello name0", h[6], 'R'); eq("hello name NUL", h[21], 0); eq("hello token_len", h[22], 3); eq("hello tok", h[24], 2);
         byte[] p = Protocol.play(0x01020304L, 5, -1);
         eq("play type", p[2], 3); eq("play mid LE", p[3], 4); eq("play mid hi", p[6], 1); eq("play round", p[7], 5); eq("play slot", p[8], -1);
@@ -110,7 +110,7 @@ public final class CoreTest {
     }
 
     static void fullMatch(final int tokenLen) throws Exception {
-        final int[] hand = {0, 3, 6, 2}; // burst t0, tank t0, shield t0, burst t2 (constant fake hand)
+        final int[] hand = {0, 3, 6, 2}; // offense t0, operations t0, defense t0, offense t2 (constant fake hand)
         final AtomicInteger playsSeen = new AtomicInteger();
         try (ServerSocket ss = new ServerSocket(0)) {
             Thread server = new Thread(() -> {
@@ -182,7 +182,7 @@ public final class CoreTest {
             eq("rounds seen", rounds.get(), 8); eq("results seen", results.get(), 8); eq("acks", acks.get(), 8);
             eq("server saw plays", playsSeen.get(), 8);
             eq("log size", s.match().log().size(), 8);
-            eq("final hullOpp", s.match().hullOpp, 20 - 8 * 3); // slot 0 = burst t0 (3 dmg) each round vs pass; energy 6
+            eq("final hullOpp", s.match().hullOpp, 20 - 8 * 3); // slot 0 = offense t0 (3 dmg) each round vs pass; energy 6
             yes("state READY after end", s.state() == Session.State.READY);
             server.join();
             // server closed the socket -> session must go CLOSED with an error, not hang or throw
@@ -211,7 +211,7 @@ public final class CoreTest {
         yes("empty slot illegal", !m.canPlaySlot(2));
         yes("pass always legal", m.canPlaySlot(-1));
         yes("bad slot", !m.canPlaySlot(4));
-        eq("preview burst2 vs tank0", m.previewDamage(0, 3), 10);
+        eq("preview offense2 vs operations0", m.previewDamage(0, 3), 10);
         m.locked = true; yes("locked blocks", !m.canPlaySlot(-1));
     }
 
