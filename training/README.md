@@ -45,9 +45,11 @@ listing/push failures print loudly and never stop training (checkpoints stay in 
 - **Real PPO training has now run** (2026-09-19, CPU, sb3-contrib 2.9 / torch 2.14): a 2-generation 3-role league against
   the real `dw_server`, checkpoints registered, Elo moving, and a resume-from-registry warm start of all three roles from
   real weights. It was a smoke run (512 timesteps/role), not a trained policy, and has never run *on Colab* itself.
-- **Live IDUNA does not serve `/api/v1/game-checkpoints/deadweight` yet** (404 at okemily.com) and the `DEADWEIGHT-RL`
-  agent secret is not provisioned there, so the shared registry is untested against the real service; the local-directory
-  registry is what was exercised. The migrations are in `IDUNA/migrations/truestore/` awaiting a deploy + bootstrap.
+- **The shared registry is live** (2026-09-19): IDUNA was redeployed with `/api/v1/game-checkpoints/deadweight` and the
+  `DEADWEIGHT-RL` agent provisioned (secret: `IDUNA/var/agent-secrets.env`, `IDUNA_SECRET_DEADWEIGHT_RL`). A real 3-role
+  push and a real resume-from-registry were verified end to end against okemily.com from a local run. Six 512-timestep
+  smoke checkpoints (source `colab-test`) sit in the registry from that verification; disable them in NOCK if you don't
+  want them as league opponents. Still never run inside a Colab runtime.
 - The observation folds the 64 Guild cards into the 9 base-card buckets and the action space is still 5 slots/pass, so a
   trained policy learns Guild cards only by kind/cost tier (a richer observation would change the wire-independent env
   contract and the bot weight blob).

@@ -13,13 +13,12 @@ Registry auth is IDUNA's M2M agent-secret grant (POST /api/v1/auth/agent, agent 
 not a browser OAuth redirect -- the same mechanism every other automated agent in this monorepo uses. Leave the secret
 blank for a local-only run (checkpoints stay in league_data/ on the Colab disk).
 
-HONEST STATUS: the game-scoped checkpoint route (/api/v1/game-checkpoints/deadweight) and the DEADWEIGHT-RL agent are in
-IDUNA's repo migrations but were NOT deployed on the live IDUNA when this was written (the route 404'd). Until they are,
-a registry listing/push fails LOUDLY and training carries on locally -- it never dies for a registry error. Real PPO
-training has also never been run before this script (sb3-contrib was not installable in the authoring sandbox), so expect
-first-run fixes.
+STATUS (2026-09-19): the registry is LIVE. IDUNA was redeployed with the game-scoped checkpoint route and the DEADWEIGHT-RL
+agent was provisioned; a real push (3 roles) and a real resume-from-registry (newest checkpoint per role) were verified
+end to end against https://okemily.com from a local run. This script itself has not been run inside a Colab runtime. A
+registry error still never kills training: it warns and carries on locally.
 
-Prereqs: a GitHub personal access token with repo read scope (private repo); optionally the DEADWEIGHT-RL secret.
+Prereqs: a GitHub personal access token with repo read scope (private repo); the DEADWEIGHT-RL secret (IDUNA/var/agent-secrets.env: IDUNA_SECRET_DEADWEIGHT_RL) to join the shared registry.
 Tunables (env vars, all optional): DEADWEIGHT_GENERATIONS (default 100000: "until the runtime dies"),
 DEADWEIGHT_TIMESTEPS (PPO steps per role per generation, default 4096), DEADWEIGHT_SAVE_FREQ (generations between
 snapshots, default 1), DEADWEIGHT_BASE_PORT (default 7100; each role uses its own port), IDUNA_BASE_URL.
