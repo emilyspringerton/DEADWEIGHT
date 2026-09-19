@@ -105,7 +105,8 @@ jobs:
           patchelf --set-rpath '$ORIGIN/lib' pkg/lin/dw_gui
           tar -C pkg/lin -czf dw_gui_linux_x86_64.tar.gz dw_gui lib
           cp build/dw_gui.exe sdl2_mingw/bin/SDL2.dll pkg/win/
-          (cd pkg/win && zip -q ../../dw_gui_windows.zip dw_gui.exe SDL2.dll)
+          printf '%s\n' "start dw_gui.exe" > pkg/win/PLAY.bat
+          (cd pkg/win && zip -q ../../dw_gui_windows.zip dw_gui.exe SDL2.dll PLAY.bat)
       - uses: actions/upload-artifact@v4
         with:
           name: gui-${{ github.run_number }}
