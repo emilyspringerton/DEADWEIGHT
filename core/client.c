@@ -37,12 +37,27 @@ int dwc_recv(DwClient *c, DwMsg *m, int timeout_ms) {
 
 void dwc_close(DwClient *c) { if (c->fd != DW_BAD_SOCK) { dw_close(c->fd); c->fd = DW_BAD_SOCK; } }
 
+/* Bot draft policy (simple on purpose -- the play brain is unchanged): take the higher power-for-cost card of the offer (25%
+ * of the time the other one, for variety) and give strong cards the scarcer multiplicity buckets. */
+static uint32_t bxs(uint32_t *s) { uint32_t x = *s; x ^= x << 13; x ^= x >> 17; x ^= x << 5; *s = x; return x; }
+static int bot_score(int id) { return card_power(id) * 2 - card_cost(id); }
+static void bot_draft_pick(uint32_t *rng, const DwMsg *offer, DwMsg *out) {
+    int a = bot_score(offer->u.draft_offer.card[0]), b = bot_score(offer->u.draft_offer.card[1]);
+    int idx = a >= b ? 0 : 1;
+    if (bxs(rng) % 4 == 0) idx ^= 1;
+    int sc = bot_score(offer->u.draft_offer.card[idx]);
+    const uint8_t *l = offer->u.draft_offer.left; int mult;
+    if (l[2] && sc >= 9) mult = 3; else if (l[1] && sc >= 6) mult = 2; else if (l[0]) mult = 1; else if (l[1]) mult = 2; else mult = 3;
+    memset(out, 0, sizeof *out); out->type = DW_C_DRAFT_PICK; out->u.draft_pick.index = (uint8_t)idx; out->u.draft_pick.mult = (uint8_t)mult;
+}
+
 int dwc_run(DwClient *c, DwRunOpts *o) {
+    uint32_t drng = o->seed * 2654435761u ^ 0xA5A5A5A5u; if (!drng) drng = 1;
     DwMsg m; DwPolicyCtx ctx; uint32_t match_id = 0; int8_t last_hand[4] = {-1, -1, -1, -1};
     dw_policy_reset(&ctx, o->seed);
     ctx.decide = o->decide; ctx.brain = o->brain; ctx.arch = o->arch; ctx.w_h = o->w_h; ctx.w_n = o->w_n; ctx.sigma = o->sigma;
     memset(&m, 0, sizeof m);
-    m.type = DW_C_HELLO; m.u.hello.proto = DW_PROTO_VERSION; m.u.hello.mode = DW_MODE_CARD; m.u.hello.kind = (uint8_t)o->kind;
+    m.type = DW_C_HELLO; m.u.hello.proto = DW_PROTO_VERSION; m.u.hello.mode = (uint8_t)(o->mode == DW_MODE_DRAFT ? DW_MODE_DRAFT : DW_MODE_CARD); m.u.hello.kind = (uint8_t)o->kind;
     strncpy(m.u.hello.name, o->name, DW_NAME_LEN);
     if (dwc_send(c, &m)) return -1;
     if (o->token && *o->token) {
@@ -61,6 +76,8 @@ int dwc_run(DwClient *c, DwRunOpts *o) {
         switch (m.type) {
         case DW_S_WELCOME: { DwMsg q; memset(&q, 0, sizeof q); q.type = DW_C_QUEUE; if (dwc_send(c, &q)) return -1; break; }
         case DW_S_QUEUED: break;
+        case DW_S_DRAFT_OFFER: { DwMsg p; bot_draft_pick(&drng, &m, &p); if (dwc_send(c, &p)) return -1; break; }
+        case DW_S_DRAFT_DONE: if (o->verbose) printf("deck %u drafted\n", m.u.draft_done.deck_id); break;
         case DW_S_MATCH_FOUND:
             match_id = m.u.match_found.match_id; dw_policy_reset(&ctx, o->seed ^ m.u.match_found.seed);
             if (o->verbose) printf("match %u vs %s (%s), seat %d\n", match_id, m.u.match_found.opp_name, m.u.match_found.opp_kind ? "bot" : "human", m.u.match_found.seat);
@@ -99,7 +116,9 @@ int dwc_run(DwClient *c, DwRunOpts *o) {
             if (m.u.match_end.result == DW_RES_WIN) o->wins++; else if (m.u.match_end.result == DW_RES_LOSS) o->losses++; else o->draws++;
             if (o->verbose) printf("match end: %s (reason %d)\n", m.u.match_end.result == DW_RES_WIN ? "WIN" : m.u.match_end.result == DW_RES_LOSS ? "LOSS" : "DRAW", m.u.match_end.reason);
             if (o->target_matches > 0 && o->done >= o->target_matches) return 0;
-            { DwMsg q; memset(&q, 0, sizeof q); q.type = DW_C_QUEUE; if (dwc_send(c, &q)) return -1; }
+            { DwMsg q; memset(&q, 0, sizeof q); q.type = DW_C_QUEUE;
+              if (o->mode == DW_MODE_DRAFT) q.u.queue.same_deck = m.u.match_end.result != DW_RES_LOSS;   /* keep a winning deck, redraft after a loss */
+              if (dwc_send(c, &q)) return -1; }
             break;
         case DW_S_ERROR: if (o->verbose) printf("server error %d\n", m.u.error.code); return -2;
         default: break;

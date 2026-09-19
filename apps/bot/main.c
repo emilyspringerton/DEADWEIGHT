@@ -17,7 +17,7 @@ static void on_signal(int s) { (void)s; stop_flag = 1; }
 static void sleep_interruptible(int ms) { for (int t = 0; t < ms && !stop_flag; t += 100) dw_sleep_ms(100); }
 
 int main(int argc, char **argv) {
-    const char *host = "127.0.0.1", *arch = "ripper", *name = NULL, *iduna_url = NULL, *secret_file = NULL, *agent_name = "DEADWEIGHT-BOTS"; int port = 7700, think = 0; const char *brain_mode = "hybrid", *weights = NULL; double w_h = 0.3, w_n = 1.0, sigma = 0.1;   /* tuned by tests/brain_winrates.sh: archetype flavour as a bias on top of the net */ long matches = 0; uint32_t seed = 1; int quiet = 1;
+    const char *host = "127.0.0.1", *arch = "ripper", *name = NULL, *iduna_url = NULL, *secret_file = NULL, *agent_name = "DEADWEIGHT-BOTS"; int port = 7700, think = 0; const char *brain_mode = "hybrid", *weights = NULL; double w_h = 0.3, w_n = 1.0, sigma = 0.1;   /* tuned by tests/brain_winrates.sh: archetype flavour as a bias on top of the net */ long matches = 0; uint32_t seed = 1; int quiet = 1, mode = DW_MODE_CARD;
     for (int i = 1; i < argc; i++) {
         if (!strcmp(argv[i], "--version")) { printf("dw_bot %s (rules: %d cards, hull %d)\n", DW_VERSION, num_cards(), start_hull()); return 0; }
         else if (!strcmp(argv[i], "--archetype") && i + 1 < argc) arch = argv[++i];
@@ -35,9 +35,10 @@ int main(int argc, char **argv) {
         else if (!strcmp(argv[i], "--wh") && i + 1 < argc) w_h = atof(argv[++i]);
         else if (!strcmp(argv[i], "--wn") && i + 1 < argc) w_n = atof(argv[++i]);
         else if (!strcmp(argv[i], "--sigma") && i + 1 < argc) sigma = atof(argv[++i]);
+        else if (!strcmp(argv[i], "--mode") && i + 1 < argc) { const char *mm = argv[++i]; if (!strcmp(mm, "draft")) mode = DW_MODE_DRAFT; else if (!strcmp(mm, "random")) mode = DW_MODE_CARD; else { fprintf(stderr, "dw_bot: --mode must be random or draft\n"); return 2; } }
         else if (!strcmp(argv[i], "--verbose")) quiet = 0;
         else {
-            fprintf(stderr, "usage: dw_bot --archetype ripper|wall|mirror [--name N] [--host H] [--port P] [--matches N] [--think-ms N] [--seed S] [--iduna-url URL --agent-secret-file F [--agent-name N]] [--brain hybrid|heuristic] [--weights FILE] [--wh W] [--wn W] [--sigma S] [--verbose]\n"
+            fprintf(stderr, "usage: dw_bot --archetype ripper|wall|mirror [--name N] [--host H] [--port P] [--matches N] [--think-ms N] [--seed S] [--iduna-url URL --agent-secret-file F [--agent-name N]] [--mode random|draft] [--brain hybrid|heuristic] [--weights FILE] [--wh W] [--wn W] [--sigma S] [--verbose]\n"
                             "archetype bots: hybrid = heuristic prior + hand-written MLP (default weights distilled, NOT RL-trained); heuristic = rules only\n");
             return 2;
         }
@@ -58,7 +59,7 @@ int main(int argc, char **argv) {
     signal(SIGINT, on_signal); signal(SIGTERM, on_signal);
 
     DwRunOpts o; memset(&o, 0, sizeof o);
-    o.name = name; o.kind = DW_KIND_BOT; o.policy = pol;
+    o.name = name; o.kind = DW_KIND_BOT; o.policy = pol; o.mode = mode;
     if (hybrid) { o.decide = dwb_choose; o.brain = &brain; o.arch = arch_id; o.w_h = w_h; o.w_n = w_n; o.sigma = sigma; } o.seed = seed; o.target_matches = matches; o.think_ms = think;
     o.verbose = !quiet; o.stop = &stop_flag;
     DwIduna idu; int use_idu = 0;

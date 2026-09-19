@@ -25,7 +25,9 @@ static int8_t draw_card(DwMatch *m, int s) {
 
 static void to_discard(DwMatch *m, int s, int8_t card) { if (card >= 0 && m->discard_n[s] < DW_DECK) m->discard[s][m->discard_n[s]++] = card; }
 
-void dw_match_init(DwMatch *m, uint32_t seed) {
+void dw_match_init(DwMatch *m, uint32_t seed) { dw_match_init_decks(m, seed, NULL, 0, NULL, 0); }
+
+void dw_match_init_decks(DwMatch *m, uint32_t seed, const int8_t *deck0, int n0, const int8_t *deck1, int n1) {
     memset(m, 0, sizeof *m);
     m->seed = seed;
     for (int s = 0; s < 2; s++) {
@@ -36,8 +38,11 @@ void dw_match_init(DwMatch *m, uint32_t seed) {
         uint32_t f = seed * 2246822519u ^ (uint32_t)(s + 1) * 0xC2B2AE3Du;
         m->rfx[s] = f ? f : 1;
         for (int i = 0; i < 3; i++) xs(&m->rfx[s]);
-        for (int i = 0; i < DW_DECK; i++) m->draw[s][i] = (int8_t)i;
-        m->draw_n[s] = num_cards();
+        const int8_t *dk = s == 0 ? deck0 : deck1; int dn = s == 0 ? n0 : n1;
+        if (!dk) { dn = num_cards(); }
+        if (dn > DW_DECK) dn = DW_DECK;
+        for (int i = 0; i < dn; i++) m->draw[s][i] = dk ? dk[i] : (int8_t)i;
+        m->draw_n[s] = dn;
         shuffle_pile(m, s, m->draw[s], m->draw_n[s]);
         for (int i = 0; i < hand_size(); i++) m->hand[s][i] = draw_card(m, s);
         m->hull[s] = m->hull_start[s] = m->hull_prev[s] = (int8_t)start_hull();

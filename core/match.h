@@ -63,6 +63,8 @@ typedef struct {
 } DwView;
 
 void dw_match_init(DwMatch *m, uint32_t seed);      /* shuffles, deals 4 each, round = 0 */
+/* Same, but each seat plays the given deck (card ids, n <= DW_DECK) instead of the whole catalog (draft mode). */
+void dw_match_init_decks(DwMatch *m, uint32_t seed, const int8_t *deck0, int n0, const int8_t *deck1, int n1);
 void dw_match_begin_round(DwMatch *m);              /* round++, +2 energy (cap), +1 credit, pending deltas, rolls, clear locks */
 /* Lock an action. Returns 0 ok, else a DW_REJ_* reason. slot -1 = pass. */
 int dw_match_lock(DwMatch *m, int seat, int slot);

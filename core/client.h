@@ -16,6 +16,7 @@ typedef struct {
     const char *name; int kind;            /* DW_KIND_* */
     const char *token;                     /* optional IDUNA token; sent as AUTH after HELLO (needed when the server requires auth) */
     int policy; uint32_t seed;
+    int mode;                              /* DW_MODE_CARD (random, default) or DW_MODE_DRAFT: draft a deck, then requeue same-deck on win/draw, redraft on loss */
     /* DW_POL_HYBRID only: brain config copied into the policy context (survives per-match resets) */
     DwDecideFn decide; const struct DwBrain *brain; int arch; double w_h, w_n, sigma;
     long target_matches;                   /* stop after this many completed matches (<=0: forever) */

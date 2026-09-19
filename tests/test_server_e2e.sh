@@ -8,7 +8,7 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 B=build; mkdir -p $B
 CF="-std=c99 -Wall -Wextra -Werror -Icore -Icore/runtime -DPARENA_NO_GRAPHICS -g -fsanitize=address,undefined -fno-sanitize-recover=all"
-gcc $CF -pthread apps/server/main.c core/match.c core/protocol.c core/card_rules.c core/iduna.c core/http.c -o $B/dw_server_asan
+gcc $CF -pthread apps/server/main.c core/match.c core/draft.c core/protocol.c core/card_rules.c core/card_text.c core/iduna.c core/http.c -o $B/dw_server_asan
 gcc $CF tests/replay_check.c core/match.c core/card_rules.c -o $B/replay_check
 for t in dw_bot dw_client; do [ -x $B/$t ] || { echo "build $B/$t first (scripts/build.sh)"; exit 1; }; done
 
@@ -71,6 +71,29 @@ kill -TERM "$SPID"; wait "$SPID" || fail "timer server exited non-zero"; PIDS=()
 grep -q "AddressSanitizer\|runtime error" "$W/server.err" && fail "sanitizer report (timer server)"
 $B/replay_check "$W/matches.ndjson" 1 || fail "timer match log does not replay"
 echo "OK: timeout auto-pass completed the match"
+echo "== e2e 4: draft mode -- separate queue, drafted decks, redraft/same-deck, deck log =="
+rm -f "$W/matches.ndjson" "$W/decks.ndjson"
+start_server --fast-forward
+scripts/bot_pool.sh start --port "$PORT" --think-ms 0 --mode draft --pidfile "$W/dpool.pids" >/dev/null
+sleep 1.5
+# a random-queue human must NOT be paired with the draft bots: with no random bots it just waits (times out)
+timeout 2 $B/dw_client --port "$PORT" --auto first-legal --name random-human --matches 1 --quiet > "$W/rh.out" && fail "random human was matched from a draft-only pool"
+# a draft human drafts, plays, and requeues (same deck on a win/draw, redraft is exercised by bots losing)
+timeout 20 $B/dw_client --port "$PORT" --mode draft --auto first-legal --name draft-human --matches 6 --quiet --seed 4 > "$W/dh.out" || fail "draft human did not finish 6 matches"
+grep -q "matches=6" "$W/dh.out" || fail "draft human did not complete 6 matches: $(cat "$W/dh.out")"
+for _ in $(seq 100); do n=$(wc -l < "$W/matches.ndjson" 2>/dev/null || echo 0); [ "$n" -ge 60 ] && break; sleep 0.1; done
+scripts/bot_pool.sh stop --pidfile "$W/dpool.pids" >/dev/null
+kill -TERM "$SPID"; wait "$SPID" || fail "draft server exited non-zero"; PIDS=()
+grep -q "AddressSanitizer\|runtime error" "$W/server.err" && fail "sanitizer report (draft server)"
+grep -q '"mode":"draft"' "$W/matches.ndjson" || fail "no draft matches in the match log"
+[ -s "$W/decks.ndjson" ] || fail "no decks.ndjson written"
+grep -q '"event":"draft"' "$W/decks.ndjson" && grep -q '"event":"match"' "$W/decks.ndjson" || fail "deck log lacks draft/match records"
+nd=$(grep -c '"event":"draft"' "$W/decks.ndjson"); nm=$(grep -c '"event":"match"' "$W/decks.ndjson")
+[ "$nd" -ge 4 ] || fail "expected >=4 drafted decks, got $nd"
+[ "$nd" -lt "$nm" ] || fail "decks ($nd) should be fewer than deck-match records ($nm): winners keep their deck"
+$B/replay_check "$W/matches.ndjson" 10 || fail "draft match log does not replay"
+echo "OK: draft queue separate from random; $nd decks drafted, $nm deck-match records, log replays"
+
 echo "== e2e 3: IDUNA auth + result reporting against a fake IDUNA (docs/IDUNA_CONTRACT.md) =="
 command -v python3 >/dev/null || { echo "python3 missing, skipping e2e 3"; echo "E2E PASS (without IDUNA leg)"; exit 0; }
 python3 tests/fake_iduna.py "$W/iduna.port" "$W/iduna.results" & IP=$!; PIDS+=("$IP")

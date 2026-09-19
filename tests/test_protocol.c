@@ -76,6 +76,14 @@ int main(void) {
     n = dw_encode(&m, b, sizeof b); CHECK(n == 22 && b[0] == 20 && b[2] == DW_S_ROUND_RESULT);
     m.type = DW_S_MATCH_END; m.u.match_end.match_id = 77; m.u.match_end.result = 2; m.u.match_end.reason = 1; roundtrip(&m);
     m.type = DW_S_ERROR; m.u.error.code = 3; roundtrip(&m);
+    /* draft mode */
+    memset(&m, 0, sizeof m); m.type = DW_C_QUEUE; m.u.queue.same_deck = 1; roundtrip(&m);
+    { uint8_t qb[8]; int qn = dw_encode(&m, qb, sizeof qb); CHECK(qn == 4); DwMsg qd; size_t qu; CHECK(dw_decode(qb, (size_t)qn, &qd, &qu) == 1 && qd.u.queue.same_deck == 1);
+      memset(&m, 0, sizeof m); m.type = DW_C_QUEUE; qn = dw_encode(&m, qb, sizeof qb); CHECK(qn == 3); CHECK(dw_decode(qb, (size_t)qn, &qd, &qu) == 1 && qd.u.queue.same_deck == 0); }
+    memset(&m, 0, sizeof m); m.type = DW_C_DRAFT_PICK; m.u.draft_pick.index = 1; m.u.draft_pick.mult = 3; roundtrip(&m);
+    memset(&m, 0, sizeof m); m.type = DW_S_DRAFT_OFFER; m.u.draft_offer.pick_no = 7; m.u.draft_offer.total = 16; m.u.draft_offer.card[0] = 12; m.u.draft_offer.card[1] = 70;
+    m.u.draft_offer.left[0] = 4; m.u.draft_offer.left[1] = 2; m.u.draft_offer.left[2] = 1; roundtrip(&m);
+    memset(&m, 0, sizeof m); m.type = DW_S_DRAFT_DONE; m.u.draft_done.deck_id = 0xABCDEF01u; for (int i = 0; i < DW_DRAFT_DECK; i++) m.u.draft_done.cards[i] = (int8_t)(i * 3); roundtrip(&m);
     m.type = 0x55; CHECK(dw_encode(&m, b, sizeof b) == -1);
 
     /* malformed frames */
@@ -84,7 +92,7 @@ int main(void) {
     uint8_t bad9[] = { 2, 0, DW_C_AUTH, 0 };      CHECK(dw_decode(bad9, 4, &d, &used) == -1);   /* AUTH shorter than its length field */
     uint8_t bad10[] = { 4, 0, DW_C_AUTH, 5, 0, 'a' }; CHECK(dw_decode(bad10, 6, &d, &used) == -1);   /* AUTH len/payload mismatch */
     uint8_t bad3[] = { 1, 0, 0x77 };              CHECK(dw_decode(bad3, 3, &d, &used) == -1);   /* unknown type */
-    uint8_t bad4[] = { 2, 0, DW_C_QUEUE, 0 };     CHECK(dw_decode(bad4, 4, &d, &used) == -1);   /* QUEUE with payload */
+    uint8_t bad4[] = { 3, 0, DW_C_QUEUE, 0, 0 };  CHECK(dw_decode(bad4, 5, &d, &used) == -1);   /* QUEUE with a 2-byte payload (0 or 1 byte only) */
     uint8_t bad5[] = { 3, 0, DW_C_PLAY, 0, 0 };   CHECK(dw_decode(bad5, 5, &d, &used) == -1);   /* short PLAY */
     uint8_t bad6[2 + 1 + 20]; memset(bad6, 0, sizeof bad6); bad6[0] = 21; bad6[2] = DW_C_HELLO; bad6[22] = 5; /* token_len 5, none present */
     CHECK(dw_decode(bad6, sizeof bad6, &d, &used) == -1);

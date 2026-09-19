@@ -5,5 +5,5 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 mkdir -p build
 gcc -std=c99 -O2 -Wall -Icore -Icore/runtime -DPARENA_NO_GRAPHICS -DDW_VERSION=\"training\" -pthread \
-    apps/server/main.c core/match.c core/protocol.c core/card_rules.c core/iduna.c core/http.c -o build/dw_server
+    apps/server/main.c core/match.c core/draft.c core/protocol.c core/card_rules.c core/card_text.c core/iduna.c core/http.c -o build/dw_server
 ./build/dw_server --version

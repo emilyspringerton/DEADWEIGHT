@@ -5,6 +5,8 @@
 #include <stdarg.h>
 #include <stdlib.h>
 #include "card_rules.h"
+#include "card_text.h"
+#include "draft.h"
 #include "iduna.h"
 #include "match.h"
 #include "protocol.h"
@@ -22,7 +24,7 @@
 #define ROUND_MS_DEFAULT 40000
 #define HELLO_TIMEOUT_MS 10000
 
-enum { S_FREE = 0, S_CONNECTED, S_READY, S_QUEUED, S_IN_MATCH, S_NEEDAUTH, S_VERIFYING };
+enum { S_FREE = 0, S_CONNECTED, S_READY, S_QUEUED, S_IN_MATCH, S_NEEDAUTH, S_VERIFYING, S_DRAFTING };
 
 typedef struct {
     dw_sock fd; int state; uint32_t session_id;
@@ -30,11 +32,14 @@ typedef struct {
     uint8_t out[OUTBUF]; size_t out_n;
     char name[DW_NAME_LEN + 1]; uint8_t kind, mode; char player_id[48];
     int match, seat; uint64_t queued_seq, connect_ms; int close_after_flush;
+    DwDraft draft;                          /* draft mode: the in-progress draft */
+    int8_t deck[DW_DRAFT_DECK]; int deck_n; uint32_t deck_id;   /* draft mode: the last completed deck (replayable via QUEUE same_deck) */
 } Conn;
 
 typedef struct {
     int active; uint32_t id; DwMatch m; int conn[2];
     uint64_t deadline; int8_t plays[DW_MAX_PLAYS][2]; int nplays;
+    int mode; uint32_t deck_id[2]; int8_t deck[2][DW_DRAFT_DECK];
 } Match;
 
 static Conn conns[MAX_CONNS];
@@ -46,9 +51,9 @@ static int opt_iduna = 0, opt_fail_open = 0, opt_noauth_explicit = 0;
 static DwIduna iduna;
 static int opt_round_ms = ROUND_MS_DEFAULT;
 static const char *opt_log_dir = NULL;
-static uint32_t next_session = 1, next_match = 1, seed_state = 0x9E3779B9u;
+static uint32_t next_session = 1, next_match = 1, next_deck = 1, seed_state = 0x9E3779B9u;
 static uint64_t queue_seq = 0;
-static long st_matches = 0, st_bot_bot = 0, st_human_bot = 0, st_human_human = 0, st_forfeits = 0;
+static long st_drafts = 0, st_draft_matches = 0, st_matches = 0, st_bot_bot = 0, st_human_bot = 0, st_human_human = 0, st_forfeits = 0;
 
 /* ---- IDUNA worker thread: verify + match-result HTTP never runs on the poll() loop ---- */
 enum { J_VERIFY = 1, J_REPORT };
@@ -171,8 +176,24 @@ static void write_match_log(const Match *mt) {
     const Conn *a = &conns[mt->conn[0]], *b = &conns[mt->conn[1]];
     fprintf(f, "{\"match_id\":%u,\"seed\":%u,\"names\":[\"%s\",\"%s\"],\"kinds\":[%d,%d],\"plays\":[", mt->id, mt->m.seed, a->name, b->name, a->kind, b->kind);
     for (int i = 0; i < mt->nplays; i++) fprintf(f, "%s[%d,%d]", i ? "," : "", mt->plays[i][0], mt->plays[i][1]);
-    fprintf(f, "],\"result\":[%d,%d],\"reason\":%d,\"rounds\":%d}\n", mt->m.result[0], mt->m.result[1], mt->m.reason, mt->m.round);
+    fprintf(f, "],\"result\":[%d,%d],\"reason\":%d,\"rounds\":%d", mt->m.result[0], mt->m.result[1], mt->m.reason, mt->m.round);
+    if (mt->mode == DW_MODE_DRAFT) {
+        fprintf(f, ",\"mode\":\"draft\",\"deck_ids\":[%u,%u],\"decks\":[", mt->deck_id[0], mt->deck_id[1]);
+        for (int s = 0; s < 2; s++) { fprintf(f, "%s[", s ? "," : ""); for (int i = 0; i < DW_DRAFT_DECK; i++) fprintf(f, "%s%d", i ? "," : "", mt->deck[s][i]); fprintf(f, "]"); }
+        fprintf(f, "]");
+    }
+    fprintf(f, "}\n");
     fclose(f);
+    if (mt->mode == DW_MODE_DRAFT) {   /* per-deck result record so a deck's record can be looked up by deck_id */
+        snprintf(path, sizeof path, "%s/decks.ndjson", opt_log_dir);
+        FILE *g = fopen(path, "a"); if (!g) return;
+        for (int s = 0; s < 2; s++) {
+            const Conn *c = s ? b : a;
+            fprintf(g, "{\"event\":\"match\",\"deck_id\":%u,\"match_id\":%u,\"player\":\"%s\",\"kind\":%d,\"result\":\"%s\",\"rounds\":%d}\n",
+                    mt->deck_id[s], mt->id, c->name, c->kind, mt->m.result[s] == DW_RES_WIN ? "win" : mt->m.result[s] == DW_RES_LOSS ? "loss" : "draw", mt->m.round);
+        }
+        fclose(g);
+    }
 }
 
 static void end_match(int mi) {
@@ -185,7 +206,7 @@ static void end_match(int mi) {
         if (conns[ci].state == S_IN_MATCH) { conns[ci].state = S_READY; conns[ci].match = -1; }
     }
     int kb = conns[mt->conn[0]].kind + conns[mt->conn[1]].kind;
-    st_matches++; if (kb == 2) st_bot_bot++; else if (kb == 1) st_human_bot++; else st_human_human++;
+    st_matches++; if (mt->mode == DW_MODE_DRAFT) st_draft_matches++; if (kb == 2) st_bot_bot++; else if (kb == 1) st_human_bot++; else st_human_human++;
     if (mt->m.reason == DW_END_FORFEIT) st_forfeits++;
     if (opt_iduna && mt->m.reason != DW_END_SERVER && conns[mt->conn[0]].player_id[0] && conns[mt->conn[1]].player_id[0]) {
         Job j; memset(&j, 0, sizeof j); j.type = J_REPORT;
@@ -224,13 +245,17 @@ static void resolve_round(int mi) {
     send_round_start(mt);
 }
 
-static int start_match(int a, int b) {
+static int start_match(int a, int b, int mode) {
     int mi = -1;
     for (int i = 0; i < MAX_MATCHES; i++) if (!matches[i].active) { mi = i; break; }
     if (mi < 0) return 0;
     Match *mt = &matches[mi]; memset(mt, 0, sizeof *mt);
     mt->active = 1; mt->id = next_match++; mt->conn[0] = a; mt->conn[1] = b;
-    dw_match_init(&mt->m, next_seed());
+    mt->mode = mode;
+    if (mode == DW_MODE_DRAFT) {
+        for (int s = 0; s < 2; s++) { memcpy(mt->deck[s], conns[mt->conn[s]].deck, DW_DRAFT_DECK); mt->deck_id[s] = conns[mt->conn[s]].deck_id; }
+        dw_match_init_decks(&mt->m, next_seed(), mt->deck[0], DW_DRAFT_DECK, mt->deck[1], DW_DRAFT_DECK);
+    } else dw_match_init(&mt->m, next_seed());
     for (int s = 0; s < 2; s++) {
         int ci = mt->conn[s], oi = mt->conn[1 - s];
         conns[ci].state = S_IN_MATCH; conns[ci].match = mi; conns[ci].seat = s;
@@ -239,18 +264,18 @@ static int start_match(int a, int b) {
         memcpy(m.u.match_found.opp_name, conns[oi].name, DW_NAME_LEN + 1); m.u.match_found.opp_kind = conns[oi].kind;
         send_msg(ci, &m);
     }
-    vlog("match %u: %s(%d) vs %s(%d) seed=%u", mt->id, conns[a].name, conns[a].kind, conns[b].name, conns[b].kind, mt->m.seed);
+    vlog("match %u%s: %s(%d) vs %s(%d) seed=%u", mt->id, mode == DW_MODE_DRAFT ? " [draft]" : "", conns[a].name, conns[a].kind, conns[b].name, conns[b].kind, mt->m.seed);
     dw_match_begin_round(&mt->m);
     send_round_start(mt);
     return 1;
 }
 
 /* oldest queued conn of a kind, optionally skipping one; -1 if none */
-static int oldest_queued(int kind, int skip, int *count) {
+static int oldest_queued(int mode, int kind, int skip, int *count) {
     int best = -1, n = 0;
     for (int i = 0; i < MAX_CONNS; i++) {
         Conn *c = &conns[i];
-        if (c->state != S_QUEUED || c->kind != kind) continue;
+        if (c->state != S_QUEUED || c->kind != kind || c->mode != mode) continue;
         n++;
         if (i != skip && (best < 0 || c->queued_seq < conns[best].queued_seq)) best = i;
     }
@@ -260,19 +285,21 @@ static int oldest_queued(int kind, int skip, int *count) {
 
 /* Pairing rule: humans first (human-human, then human-oldest-bot); bots only pair with each other while at
  * least one other bot remains waiting, so a late-joining human always finds a bot. */
-static void try_pair(void) {
+static void try_pair_mode(int mode) {
     for (;;) {
         int nh, nb;
-        int h1 = oldest_queued(DW_KIND_HUMAN, -1, &nh);
-        int b1 = oldest_queued(DW_KIND_BOT, -1, &nb);
-        if (nh >= 2) { int h2 = oldest_queued(DW_KIND_HUMAN, h1, NULL); if (!start_match(h1, h2)) break; continue; }
-        if (nh == 1 && nb >= 1) { if (!start_match(h1, b1)) break; continue; }
-        if (nh == 0 && nb >= 3) { int b2 = oldest_queued(DW_KIND_BOT, b1, NULL); if (!start_match(b1, b2)) break; continue; }
+        int h1 = oldest_queued(mode, DW_KIND_HUMAN, -1, &nh);
+        int b1 = oldest_queued(mode, DW_KIND_BOT, -1, &nb);
+        if (nh >= 2) { int h2 = oldest_queued(mode, DW_KIND_HUMAN, h1, NULL); if (!start_match(h1, h2, mode)) break; continue; }
+        if (nh == 1 && nb >= 1) { if (!start_match(h1, b1, mode)) break; continue; }
+        if (nh == 0 && nb >= 3) { int b2 = oldest_queued(mode, DW_KIND_BOT, b1, NULL); if (!start_match(b1, b2, mode)) break; continue; }
         break;
     }
 }
+/* Random and draft are separate queues: a player only ever meets someone queued in the same mode. */
+static void try_pair(void) { try_pair_mode(DW_MODE_CARD); try_pair_mode(DW_MODE_DRAFT); }
 
-static int queued_count(void) { int n = 0; for (int i = 0; i < MAX_CONNS; i++) if (conns[i].state == S_QUEUED) n++; return n; }
+static int queued_count(int mode) { int n = 0; for (int i = 0; i < MAX_CONNS; i++) if (conns[i].state == S_QUEUED && conns[i].mode == mode) n++; return n; }
 
 static void leave_match_or_queue(int ci) {
     Conn *c = &conns[ci];
@@ -281,7 +308,7 @@ static void leave_match_or_queue(int ci) {
         dw_match_forfeit(&mt->m, c->seat);
         end_match(c->match);
     }
-    if (c->state == S_QUEUED) c->state = S_READY;
+    if (c->state == S_QUEUED || c->state == S_DRAFTING) c->state = S_READY;
 }
 
 static void conn_close(int ci) {
@@ -354,6 +381,56 @@ static void drain_results(void) {
 #endif
 }
 
+static void send_offer(int ci) {
+    Conn *c = &conns[ci]; DwMsg r; memset(&r, 0, sizeof r);
+    r.type = DW_S_DRAFT_OFFER; r.u.draft_offer.pick_no = c->draft.pick_no; r.u.draft_offer.total = DW_DRAFT_PICKS;
+    r.u.draft_offer.card[0] = c->draft.offer[0]; r.u.draft_offer.card[1] = c->draft.offer[1];
+    for (int i = 0; i < 3; i++) r.u.draft_offer.left[i] = c->draft.left[i];
+    send_msg(ci, &r);
+}
+
+/* decks.ndjson: one "draft" record per completed deck (card ids + names), then one "match" record per game played with it
+ * (see write_match_log), so any deck can be looked up by deck_id and its record summed up. */
+static void log_deck(const Conn *c) {
+    if (!opt_log_dir) return;
+    char path[512]; snprintf(path, sizeof path, "%s/decks.ndjson", opt_log_dir);
+    FILE *f = fopen(path, "a"); if (!f) return;
+    fprintf(f, "{\"event\":\"draft\",\"deck_id\":%u,\"t\":%lld,\"player\":\"%s\",\"kind\":%d,\"cards\":[", c->deck_id, (long long)time(NULL), c->name, c->kind);
+    for (int i = 0; i < c->deck_n; i++) fprintf(f, "%s%d", i ? "," : "", c->deck[i]);
+    fprintf(f, "],\"names\":[");
+    for (int i = 0; i < c->deck_n; i++) fprintf(f, "%s\"%s\"", i ? "," : "", dw_card_name(c->deck[i]));
+    fprintf(f, "]}\n");
+    fclose(f);
+}
+
+static void start_draft(int ci) {
+    Conn *c = &conns[ci];
+    dw_draft_init(&c->draft, next_seed());
+    c->state = S_DRAFTING;
+    send_offer(ci);
+}
+
+static void enter_queue(int ci) {
+    Conn *c = &conns[ci]; DwMsg r; memset(&r, 0, sizeof r);
+    c->state = S_QUEUED; c->queued_seq = ++queue_seq;
+    r.type = DW_S_QUEUED; r.u.queued.waiting = (uint16_t)queued_count(c->mode); send_msg(ci, &r);
+    try_pair();
+}
+
+static void draft_pick(int ci, const DwMsg *m) {
+    Conn *c = &conns[ci];
+    if (c->state != S_DRAFTING) { send_error(ci, DW_ERR_BAD_STATE); return; }
+    if (dw_draft_pick(&c->draft, m->u.draft_pick.index, m->u.draft_pick.mult) != 0) { send_offer(ci); return; }   /* invalid pick: just re-show the offer */
+    if (!dw_draft_done(&c->draft)) { send_offer(ci); return; }
+    memcpy(c->deck, c->draft.deck, DW_DRAFT_DECK); c->deck_n = DW_DRAFT_DECK; c->deck_id = next_deck++;
+    st_drafts++;
+    log_deck(c);
+    DwMsg r; memset(&r, 0, sizeof r);
+    r.type = DW_S_DRAFT_DONE; r.u.draft_done.deck_id = c->deck_id; memcpy(r.u.draft_done.cards, c->deck, DW_DRAFT_DECK);
+    send_msg(ci, &r);
+    enter_queue(ci);
+}
+
 static void handle_msg(int ci, const DwMsg *m) {
     Conn *c = &conns[ci];
     DwMsg r; memset(&r, 0, sizeof r);
@@ -362,7 +439,7 @@ static void handle_msg(int ci, const DwMsg *m) {
     case DW_C_HELLO:
         if (c->state != S_CONNECTED) { send_error(ci, DW_ERR_BAD_STATE); return; }
         if (m->u.hello.proto != DW_PROTO_VERSION) { send_error(ci, DW_ERR_BAD_PROTO); return; }
-        if (m->u.hello.mode != DW_MODE_CARD) { send_error(ci, DW_ERR_BAD_STATE); return; } /* backpack = VS1 */
+        if (m->u.hello.mode != DW_MODE_CARD && m->u.hello.mode != DW_MODE_DRAFT) { send_error(ci, DW_ERR_BAD_STATE); return; } /* backpack = VS1 */
         if (m->u.hello.kind > DW_KIND_BOT) { send_error(ci, DW_ERR_BAD_FRAME); return; }
         memcpy(c->name, m->u.hello.name, sizeof c->name); c->kind = m->u.hello.kind; c->mode = m->u.hello.mode;
         for (char *q = c->name; *q; q++) if ((unsigned char)*q < 32 || *q == '"' || *q == '\\' || *q == 127) *q = '_';
@@ -378,9 +455,11 @@ static void handle_msg(int ci, const DwMsg *m) {
         return;
     case DW_C_QUEUE:
         if (c->state != S_READY) { send_error(ci, DW_ERR_BAD_STATE); return; }
-        c->state = S_QUEUED; c->queued_seq = ++queue_seq;
-        r.type = DW_S_QUEUED; r.u.queued.waiting = (uint16_t)queued_count(); send_msg(ci, &r);
-        try_pair();
+        if (c->mode == DW_MODE_DRAFT && !(m->u.queue.same_deck && c->deck_n == DW_DRAFT_DECK)) { start_draft(ci); return; }   /* redraft (or no deck yet) */
+        enter_queue(ci);
+        return;
+    case DW_C_DRAFT_PICK:
+        draft_pick(ci, m);
         return;
     case DW_C_PLAY: {
         if (c->state != S_IN_MATCH || c->match < 0 || !matches[c->match].active) {
@@ -533,7 +612,7 @@ int main(int argc, char **argv) {
     for (int i = 0; i < MAX_CONNS; i++) if (conns[i].state != S_FREE) { flush_conn(i); conn_close(i); }
     dw_close(ls);
     stop_worker();
-    fprintf(stderr, "dw_server: shutdown matches=%ld bot_bot=%ld human_bot=%ld human_human=%ld forfeits=%ld\n",
-            st_matches, st_bot_bot, st_human_bot, st_human_human, st_forfeits);
+    fprintf(stderr, "dw_server: shutdown drafts=%ld draft_matches=%ld matches=%ld bot_bot=%ld human_bot=%ld human_human=%ld forfeits=%ld\n",
+            st_drafts, st_draft_matches, st_matches, st_bot_bot, st_human_bot, st_human_human, st_forfeits);
     return 0;
 }

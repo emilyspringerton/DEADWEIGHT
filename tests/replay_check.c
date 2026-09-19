@@ -17,7 +17,19 @@ int main(int argc, char **argv) {
         p = strstr(line, "\"result\":["); if (!p) { bad++; continue; } if (sscanf(p, "\"result\":[%d,%d],\"reason\":%d", &r0, &r1, &reason) != 3) { bad++; continue; }
         if (reason != DW_END_HULL && reason != DW_END_ROUNDS && reason != DW_END_BANKRUPT) { skipped++; continue; }
         p = strstr(line, "\"plays\":["); if (!p) { bad++; continue; } p += 9;
-        DwMatch m; dw_match_init(&m, seed);
+        DwMatch m;
+        char *dp = strstr(line, "\"decks\":[[");
+        if (dp) {   /* draft match: each seat played its recorded 23-card deck */
+            int8_t dk[2][DW_DRAFT_DECK]; int okd = 1; dp += 9;
+            for (int sd = 0; sd < 2 && okd; sd++) {
+                if (*dp != '[') { okd = 0; break; }
+                dp++;
+                for (int i = 0; i < DW_DRAFT_DECK; i++) { int v, n = 0; if (sscanf(dp, "%d%n", &v, &n) != 1) { okd = 0; break; } dk[sd][i] = (int8_t)v; dp += n; if (*dp == ',') dp++; }
+                if (okd && *dp == ']') { dp++; if (*dp == ',') dp++; } else okd = 0;
+            }
+            if (!okd) { bad++; continue; }
+            dw_match_init_decks(&m, seed, dk[0], DW_DRAFT_DECK, dk[1], DW_DRAFT_DECK);
+        } else dw_match_init(&m, seed);
         while (*p == '[') {
             int a, b, n = 0;
             if (sscanf(p, "[%d,%d]%n", &a, &b, &n) != 2) { bad++; break; }

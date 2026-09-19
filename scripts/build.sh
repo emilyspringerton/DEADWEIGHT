@@ -25,6 +25,11 @@ gcc $CFLAGS_BASE -g -fsanitize=address,undefined -fno-sanitize-recover=all \
     tests/test_match.c core/match.c core/card_rules.c -o build/test_match
 ./build/test_match
 
+echo "== C: draft + deck-match tests (ASan+UBSan) =="
+gcc $CFLAGS_BASE -g -fsanitize=address,undefined -fno-sanitize-recover=all \
+    tests/test_draft.c core/draft.c core/match.c core/card_rules.c -o build/test_draft
+./build/test_draft
+
 echo "== C: bot brain tests (ASan+UBSan) =="
 BRAIN_SRC="core/brain.c core/bot_brain.c core/brain_default.c core/runtime/parena_runtime.c"
 gcc $CFLAGS_BASE -include card_rules.h -g -fsanitize=address,undefined -fno-sanitize-recover=all \
@@ -34,7 +39,7 @@ gcc $CFLAGS_BASE -include card_rules.h -O1 tests/brain_dump.c core/policy.c core
 if command -v python3 >/dev/null; then (cd training && python3 -m unittest test_dw_brain -v 2>&1 | tail -4); fi
 
 echo "== C: server + client =="
-SERVER_SRC="apps/server/main.c core/match.c core/protocol.c core/card_rules.c core/iduna.c core/http.c"
+SERVER_SRC="apps/server/main.c core/match.c core/draft.c core/protocol.c core/card_rules.c core/card_text.c core/iduna.c core/http.c"
 CLIENT_SRC="apps/client/main.c core/client.c core/policy.c core/protocol.c core/card_rules.c core/iduna.c core/http.c"
 gcc $CFLAGS_BASE -O2 -pthread $SERVER_SRC -o build/dw_server
 gcc $CFLAGS_BASE -O2 $CLIENT_SRC -o build/dw_client
