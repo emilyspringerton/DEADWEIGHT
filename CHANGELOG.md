@@ -1,6 +1,7 @@
 # CHANGELOG
 
 ## 2026-09-19
+- feat(gui): Windows client defaults to okemily.com:6980 (was 127.0.0.1:7700) (sess-20260918-1725-497f394f)
 - feat(training): training/colab_train.py one-cell Colab bootstrap + dw_train --resume-from-registry; first real MaskablePPO smoke run + resume verified locally; live IDUNA registry route not deployed yet (sess-20260918-1725-497f394f)
 - feat: round limit 8 -> 100, round timer 20s -> 40s; server play-log buffer sized for 100 rounds (was fixed 8) (sess-20260918-1725-497f394f)
 
