@@ -1,5 +1,10 @@
 # CHANGELOG
 
+## 2026-09-19
+
+- feat(card-mode): 64 new cards (73 total) -- armor, credits, statuses, hand locks, cancel/copy/swap control, Dark Pool; wire protocol v2; data-driven effect engine in PARENA; C==Java==Python parity over ~14.7k vectors; PARENA Java emitter truncation bug fixed (PARENA 8141f8f). Draft/deckbuilding is next (not in this ship) (sess-20260918-1725-497f394f)
+
+
 ## 2026-09-18
 - docs(card_expansion): graded Haiku's card-expansion proposal + meta prompt, wrote proposal review, metaprompt engineering pass, and v2 meta prompt (not yet run against a model) (sess-20260918-1725-497f394f)
 - fix(android): LOCK IN crashed the app -- Session sent frames on the UI thread (NetworkOnMainThreadException); all outbound writes now go through a single writer thread + regression test (sess-20260918-1725-497f394f)
