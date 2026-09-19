@@ -28,7 +28,7 @@ import java.nio.charset.StandardCharsets;
  */
 public final class MainActivity extends Activity implements Session.Listener {
     private static final String PREFS = "deadweight";
-    private static final String[] REASONS = {"hull destroyed", "round limit", "opponent left", "server"};
+    private static final String[] REASONS = {"hull destroyed", "round limit", "opponent left", "server", "bankrupt"};
 
     private SharedPreferences prefs;
     private LinearLayout root;
@@ -64,13 +64,42 @@ public final class MainActivity extends Activity implements Session.Listener {
     @Override public void onPlayReject(MatchModel m, int r) { ui(() -> { selectedSlot = -2; status = "Play rejected (" + r + "), pick again"; render(); }); }
     @Override public void onRoundResult(MatchModel m, MatchModel.RoundLog r) {
         ui(() -> {
-            lastRound = "Round " + r.round + ": you " + MatchModel.kindName(r.cardYou) + " vs " + MatchModel.kindName(r.cardOpp)
-                + "\nYou took " + r.dmgYou + ", dealt " + r.dmgOpp;
+            lastRound = "Round " + r.round + ": you " + played(r.cardYou, r.effYou) + " vs " + played(r.cardOpp, r.effOpp)
+                + "\nYou took " + r.dmgYou + (r.healYou > 0 ? " (healed " + r.healYou + ")" : "")
+                + ", they took " + r.dmgOpp + (r.healOpp > 0 ? " (healed " + r.healOpp + ")" : "") + fxNotes(r);
             render();
         });
     }
     @Override public void onMatchEnd(MatchModel m) { ui(this::render); }
     @Override public void onError(String msg) { ui(() -> { status = "Disconnected: " + msg; connecting = false; menuMode = true; session = null; render(); }); }
+
+    /** "Dark Pool -> Naked Short" when a card resolved as something else; names only otherwise. */
+    private static String played(int card, int eff) {
+        if (card < 0) return "PASS";
+        return eff >= 0 && eff != card ? CardText.name(card) + " -> " + CardText.name(eff) : CardText.name(card);
+    }
+
+    private static String fxNotes(MatchModel.RoundLog r) {
+        StringBuilder b = new StringBuilder();
+        if ((r.flagsYou & 1) != 0) b.append("\nYour card was cancelled.");
+        if ((r.flagsOpp & 1) != 0) b.append("\nTheir card was cancelled.");
+        if ((r.flagsYou & 4) != 0) b.append("\nShieldbow saved you at 1 hull.");
+        if ((r.flagsOpp & 4) != 0) b.append("\nTheir Shieldbow saved them at 1 hull.");
+        if ((r.flagsYou & 16) != 0) b.append("\nHands were swapped!");
+        if ((r.flagsYou & 8) != 0) b.append("\nYou locked one of their cards.");
+        if ((r.flagsOpp & 8) != 0) b.append("\nOne of your cards is locked next round.");
+        if ((r.flagsYou & 32) != 0) b.append("\nYou made them discard.");
+        if ((r.flagsOpp & 32) != 0) b.append("\nThey made you discard.");
+        return b.toString();
+    }
+
+    private static String meters(int armor, int vault, int status, boolean hidden) {
+        String s = hidden ? "  A?  $?" : "  A" + armor + "  $" + vault;
+        if ((status & 1) != 0) s += "  BURN";
+        if ((status & 2) != 0) s += "  REGEN";
+        if ((status & 4) != 0) s += "  HIDDEN";
+        return s;
+    }
 
     private void ui(Runnable r) { if (!isFinishing()) runOnUiThread(r); }
 
@@ -187,7 +216,7 @@ public final class MainActivity extends Activity implements Session.Listener {
         String res = m.result == Protocol.RESULT_WIN ? "VICTORY" : m.result == Protocol.RESULT_LOSS ? "DEFEAT" : "DRAW";
         int col = m.result == Protocol.RESULT_WIN ? 0xFF43A967 : m.result == Protocol.RESULT_LOSS ? 0xFFD9534F : 0xFFFFD54F;
         text(res, 40, col).setGravity(Gravity.CENTER);
-        text("vs " + m.oppName + "  |  " + m.hullYou + " - " + m.hullOpp + "  |  " + REASONS[Math.max(0, Math.min(3, m.endReason))], 16, 0xFFCCCCCC).setGravity(Gravity.CENTER);
+        text("vs " + m.oppName + "  |  " + m.hullYou + " - " + m.hullOpp + "  |  " + REASONS[Math.max(0, Math.min(4, m.endReason))], 16, 0xFFCCCCCC).setGravity(Gravity.CENTER);
         button("PLAY AGAIN", v -> { s.queue(); }, null, 0);
         button("Menu", v -> disconnect(), null, 0);
     }
@@ -196,17 +225,21 @@ public final class MainActivity extends Activity implements Session.Listener {
         if (m == null) return;
         // Top: opponent + hull/energy
         BarView opp = new BarView(this);
-        opp.set(m.oppName + " hull", m.hullOpp, 20, m.energyOpp, 0xFFD9534F);
+        boolean oppHidden = m.energyOpp == Protocol.HIDDEN_U8;
+        opp.set(m.oppName + " hull" + meters(m.armorOpp, m.vaultOpp, m.statusOpp, oppHidden), m.hullOpp, 20, oppHidden ? 0 : m.energyOpp, 0xFFD9534F);
         root.addView(opp, new LinearLayout.LayoutParams(-1, 130));
         BarView me = new BarView(this);
-        me.set("You hull", m.hullYou, 20, m.energyYou, 0xFF43A967);
+        me.set("You hull" + meters(m.armorYou, m.vaultYou, m.statusYou, false), m.hullYou, 20, m.energyYou, 0xFF43A967);
         root.addView(me, new LinearLayout.LayoutParams(-1, 130));
         text("Round " + m.round + " / 8   (opp hand: " + m.oppHandSize + ")", 16, 0xFFAAAAAA);
         // Middle: last round reveal (grows to fill)
-        TextView log = text(lastRound.isEmpty() ? "Pick a card and lock in." : lastRound, 20, Color.WHITE);
+        String hint = selectedSlot >= 0 && m.hand[selectedSlot] >= 0
+            ? CardText.name(m.hand[selectedSlot]) + ": " + CardText.text(m.hand[selectedSlot]) : "";
+        TextView log = text(lastRound.isEmpty() ? "Pick a card and lock in." : lastRound, 18, Color.WHITE);
         log.setGravity(Gravity.CENTER);
         ((LinearLayout.LayoutParams) log.getLayoutParams()).height = 0;
         ((LinearLayout.LayoutParams) log.getLayoutParams()).weight = 1;
+        if (!hint.isEmpty() && !m.locked) text(hint, 16, 0xFF9AD0FF).setGravity(Gravity.CENTER);
         if (m.locked) text("Locked in. Waiting for opponent…", 16, 0xFFFFD54F).setGravity(Gravity.CENTER);
         else if (!status.isEmpty()) text(status, 14, 0xFFFFB74D).setGravity(Gravity.CENTER);
         // Thumb zone (bottom): action row, then the hand
@@ -222,7 +255,7 @@ public final class MainActivity extends Activity implements Session.Listener {
         for (int i = 0; i < 4; i++) {
             final int slot = i;
             CardView cv = new CardView(this);
-            cv.set(m.hand[i], m.canPlaySlot(i), selectedSlot == i);
+            cv.set(m.hand[i], m.canPlaySlot(i), selectedSlot == i, ((m.lockMask >> i) & 1) != 0);
             cv.setOnClickListener(v -> { if (m.canPlaySlot(slot)) { selectedSlot = slot; render(); } });
             hand.addView(cv, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, 1));
         }

@@ -48,13 +48,22 @@ int dw_encode(const DwMsg *m, uint8_t *buf, size_t cap) {
         w8(&w, m->u.round_start.round); w8(&w, (uint8_t)m->u.round_start.hull_you); w8(&w, (uint8_t)m->u.round_start.hull_opp);
         w8(&w, m->u.round_start.energy_you); w8(&w, m->u.round_start.energy_opp);
         for (int i = 0; i < 4; i++) w8(&w, (uint8_t)m->u.round_start.hand[i]);
-        w8(&w, m->u.round_start.opp_hand_size); w16(&w, m->u.round_start.deadline_ms); break;
+        w8(&w, m->u.round_start.opp_hand_size); w16(&w, m->u.round_start.deadline_ms);
+        w8(&w, m->u.round_start.armor_you); w8(&w, m->u.round_start.armor_opp);
+        w8(&w, (uint8_t)m->u.round_start.vault_you); w8(&w, (uint8_t)m->u.round_start.vault_opp);
+        w8(&w, m->u.round_start.lock_mask); w8(&w, m->u.round_start.status_you); w8(&w, m->u.round_start.status_opp); break;
     case DW_S_PLAY_ACK: w32(&w, m->u.ack.match_id); w8(&w, m->u.ack.round); break;
     case DW_S_PLAY_REJECT: w32(&w, m->u.reject.match_id); w8(&w, m->u.reject.round); w8(&w, m->u.reject.reason); break;
     case DW_S_ROUND_RESULT:
         w8(&w, m->u.round_result.round); w8(&w, (uint8_t)m->u.round_result.card_you); w8(&w, (uint8_t)m->u.round_result.card_opp);
         w8(&w, m->u.round_result.dmg_you); w8(&w, m->u.round_result.dmg_opp);
-        w8(&w, (uint8_t)m->u.round_result.hull_you); w8(&w, (uint8_t)m->u.round_result.hull_opp); break;
+        w8(&w, (uint8_t)m->u.round_result.hull_you); w8(&w, (uint8_t)m->u.round_result.hull_opp);
+        w8(&w, (uint8_t)m->u.round_result.eff_you); w8(&w, (uint8_t)m->u.round_result.eff_opp);
+        w8(&w, m->u.round_result.armor_you); w8(&w, m->u.round_result.armor_opp);
+        w8(&w, (uint8_t)m->u.round_result.vault_you); w8(&w, (uint8_t)m->u.round_result.vault_opp);
+        w8(&w, m->u.round_result.heal_you); w8(&w, m->u.round_result.heal_opp);
+        w8(&w, m->u.round_result.roll_you); w8(&w, m->u.round_result.roll_opp);
+        w8(&w, m->u.round_result.flags_you); w8(&w, m->u.round_result.flags_opp); break;
     case DW_S_MATCH_END: w32(&w, m->u.match_end.match_id); w8(&w, m->u.match_end.result); w8(&w, m->u.match_end.reason); break;
     case DW_S_ERROR: w8(&w, m->u.error.code); break;
     default: return -1;
@@ -69,8 +78,8 @@ static int payload_size(uint8_t t) {
     switch (t) {
     case DW_C_HELLO: return -2; case DW_C_AUTH: return -3; case DW_C_QUEUE: case DW_C_LEAVE: return 0; case DW_C_PLAY: return 6;
     case DW_C_PING: case DW_S_PONG: return 4; case DW_S_WELCOME: return 5; case DW_S_QUEUED: return 2;
-    case DW_S_MATCH_FOUND: return 26; case DW_S_ROUND_START: return 12; case DW_S_PLAY_ACK: return 5;
-    case DW_S_PLAY_REJECT: return 6; case DW_S_ROUND_RESULT: return 7; case DW_S_MATCH_END: return 6;
+    case DW_S_MATCH_FOUND: return 26; case DW_S_ROUND_START: return 19; case DW_S_PLAY_ACK: return 5;
+    case DW_S_PLAY_REJECT: return 6; case DW_S_ROUND_RESULT: return 19; case DW_S_MATCH_END: return 6;
     case DW_S_ERROR: return 1; default: return -1;
     }
 }
@@ -114,13 +123,22 @@ int dw_decode(const uint8_t *buf, size_t len, DwMsg *out, size_t *consumed) {
         out->u.round_start.round = (uint8_t)r8(&r); out->u.round_start.hull_you = (int8_t)r8(&r); out->u.round_start.hull_opp = (int8_t)r8(&r);
         out->u.round_start.energy_you = (uint8_t)r8(&r); out->u.round_start.energy_opp = (uint8_t)r8(&r);
         for (int i = 0; i < 4; i++) out->u.round_start.hand[i] = (int8_t)r8(&r);
-        out->u.round_start.opp_hand_size = (uint8_t)r8(&r); out->u.round_start.deadline_ms = (uint16_t)r16(&r); break;
+        out->u.round_start.opp_hand_size = (uint8_t)r8(&r); out->u.round_start.deadline_ms = (uint16_t)r16(&r);
+        out->u.round_start.armor_you = (uint8_t)r8(&r); out->u.round_start.armor_opp = (uint8_t)r8(&r);
+        out->u.round_start.vault_you = (int8_t)r8(&r); out->u.round_start.vault_opp = (int8_t)r8(&r);
+        out->u.round_start.lock_mask = (uint8_t)r8(&r); out->u.round_start.status_you = (uint8_t)r8(&r); out->u.round_start.status_opp = (uint8_t)r8(&r); break;
     case DW_S_PLAY_ACK: out->u.ack.match_id = r32(&r); out->u.ack.round = (uint8_t)r8(&r); break;
     case DW_S_PLAY_REJECT: out->u.reject.match_id = r32(&r); out->u.reject.round = (uint8_t)r8(&r); out->u.reject.reason = (uint8_t)r8(&r); break;
     case DW_S_ROUND_RESULT:
         out->u.round_result.round = (uint8_t)r8(&r); out->u.round_result.card_you = (int8_t)r8(&r); out->u.round_result.card_opp = (int8_t)r8(&r);
         out->u.round_result.dmg_you = (uint8_t)r8(&r); out->u.round_result.dmg_opp = (uint8_t)r8(&r);
-        out->u.round_result.hull_you = (int8_t)r8(&r); out->u.round_result.hull_opp = (int8_t)r8(&r); break;
+        out->u.round_result.hull_you = (int8_t)r8(&r); out->u.round_result.hull_opp = (int8_t)r8(&r);
+        out->u.round_result.eff_you = (int8_t)r8(&r); out->u.round_result.eff_opp = (int8_t)r8(&r);
+        out->u.round_result.armor_you = (uint8_t)r8(&r); out->u.round_result.armor_opp = (uint8_t)r8(&r);
+        out->u.round_result.vault_you = (int8_t)r8(&r); out->u.round_result.vault_opp = (int8_t)r8(&r);
+        out->u.round_result.heal_you = (uint8_t)r8(&r); out->u.round_result.heal_opp = (uint8_t)r8(&r);
+        out->u.round_result.roll_you = (uint8_t)r8(&r); out->u.round_result.roll_opp = (uint8_t)r8(&r);
+        out->u.round_result.flags_you = (uint8_t)r8(&r); out->u.round_result.flags_opp = (uint8_t)r8(&r); break;
     case DW_S_MATCH_END: out->u.match_end.match_id = r32(&r); out->u.match_end.result = (uint8_t)r8(&r); out->u.match_end.reason = (uint8_t)r8(&r); break;
     case DW_S_ERROR: out->u.error.code = (uint8_t)r8(&r); break;
     default: return -1;

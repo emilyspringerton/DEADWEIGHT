@@ -67,7 +67,8 @@ int dwc_run(DwClient *c, DwRunOpts *o) {
             break;
         case DW_S_ROUND_START: {
             ctx.hull_you = m.u.round_start.hull_you; ctx.hull_opp = m.u.round_start.hull_opp;
-            ctx.energy_opp = m.u.round_start.energy_opp; ctx.opp_hand_size = m.u.round_start.opp_hand_size;
+            ctx.energy_opp = m.u.round_start.energy_opp == DW_HIDDEN_U8 ? 0 : m.u.round_start.energy_opp; ctx.opp_hand_size = m.u.round_start.opp_hand_size;
+            ctx.vault_you = m.u.round_start.vault_you; ctx.lock_mask = m.u.round_start.lock_mask;
             int slot = dw_policy_choose(o->policy, &ctx, m.u.round_start.hand, m.u.round_start.energy_you, m.u.round_start.round);
             memcpy(last_hand, m.u.round_start.hand, 4);
             if (o->think_ms > 0) dw_sleep_ms((unsigned)o->think_ms);

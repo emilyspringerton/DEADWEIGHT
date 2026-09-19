@@ -7,21 +7,56 @@
 
 int start_hull();
 int start_energy();
+int start_vault();
 int max_rounds();
 int hand_size();
 int num_cards();
 int energy_cap(int);
 int card_kind(int);
+int tier_of_cost(int);
 int card_tier(int);
+int cost_lo(int);
+int cost_mid(int);
+int cost_hi(int);
+int cost_top(int);
 int card_cost(int);
+int power_lo(int);
+int power_mid(int);
+int power_hi(int);
+int power_top(int);
 int card_power(int);
+int card_credit(int);
 int kind_beats(int, int);
-int is_legal_play(int, int);
+int is_legal_play(int, int, int);
 int damage_dealt(int, int);
 int round_start_energy(int);
+int round_start_vault(int);
 int energy_after_play(int, int);
 int round_winner_by_hull(int, int);
+int round_winner(int, int, int, int);
 int match_decided(int, int);
+int bankrupt(int);
+int card_substitute(int, int);
+int fx(int, int, int, int, int);
+int fxa_lo(int);
+int fxb_lo(int);
+int fxa_mid(int);
+int fxb_mid(int);
+int fxa_hi(int);
+int fxb_hi(int);
+int fxa_top(int);
+int fxb_top(int);
+int card_fx_a(int);
+int card_fx_b(int);
+int fx_ch(int);
+int fx_nn(int);
+int fx_pp(int);
+int fx_m(int);
+int fx_aa(int);
+int fx_phase(int);
+int fx_cond_ok(int, int, int, int, int, int, int, int, int, int, int, int, int, int);
+int fx_scale(int, int, int, int, int, int, int, int, int);
+int fx_amount(int, int, int, int, int, int, int, int, int, int, int, int, int, int);
 
 int start_hull(void) {
     return 20;
@@ -29,6 +64,10 @@ int start_hull(void) {
 
 int start_energy(void) {
     return 2;
+}
+
+int start_vault(void) {
+    return 3;
 }
 
 int max_rounds(void) {
@@ -40,7 +79,7 @@ int hand_size(void) {
 }
 
 int num_cards(void) {
-    return 9;
+    return 73;
 }
 
 int energy_cap(int e __attribute__((unused))) {
@@ -52,14 +91,318 @@ int energy_cap(int e __attribute__((unused))) {
 }
 
 int card_kind(int id __attribute__((unused))) {
+    if ((id < 9)) {
     return (id / 3);
+    } else {
+    if ((id < 31)) {
+    return 0;
+    } else {
+    if ((id < 52)) {
+    return 1;
+    } else {
+    return 2;
+    }
+    }
+    }
+}
+
+int tier_of_cost(int c __attribute__((unused))) {
+    if ((c <= 1)) {
+    return 0;
+    } else {
+    if ((c <= 3)) {
+    return 1;
+    } else {
+    return 2;
+    }
+    }
 }
 
 int card_tier(int id __attribute__((unused))) {
+    if ((id < 9)) {
     return (id - ((id / 3) * 3));
+    } else {
+    return tier_of_cost(card_cost(id));
+    }
+}
+
+int cost_lo(int id __attribute__((unused))) {
+    if ((id == 9)) {
+    return 2;
+    } else {
+    if ((id == 10)) {
+    return 1;
+    } else {
+    if ((id == 11)) {
+    return 4;
+    } else {
+    if ((id == 12)) {
+    return 3;
+    } else {
+    if ((id == 13)) {
+    return 2;
+    } else {
+    if ((id == 14)) {
+    return 2;
+    } else {
+    if ((id == 15)) {
+    return 3;
+    } else {
+    if ((id == 16)) {
+    return 2;
+    } else {
+    if ((id == 17)) {
+    return 5;
+    } else {
+    if ((id == 18)) {
+    return 2;
+    } else {
+    if ((id == 19)) {
+    return 3;
+    } else {
+    if ((id == 20)) {
+    return 2;
+    } else {
+    if ((id == 21)) {
+    return 3;
+    } else {
+    if ((id == 22)) {
+    return 1;
+    } else {
+    if ((id == 23)) {
+    return 1;
+    } else {
+    if ((id == 24)) {
+    return 1;
+    } else {
+    return 1;
+    }
+    }
+    }
+    }
+    }
+    }
+    }
+    }
+    }
+    }
+    }
+    }
+    }
+    }
+    }
+    }
+}
+
+int cost_mid(int id __attribute__((unused))) {
+    if ((id == 25)) {
+    return 3;
+    } else {
+    if ((id == 26)) {
+    return 4;
+    } else {
+    if ((id == 27)) {
+    return 3;
+    } else {
+    if ((id == 28)) {
+    return 2;
+    } else {
+    if ((id == 29)) {
+    return 2;
+    } else {
+    if ((id == 30)) {
+    return 1;
+    } else {
+    if ((id == 31)) {
+    return 1;
+    } else {
+    if ((id == 32)) {
+    return 2;
+    } else {
+    if ((id == 33)) {
+    return 4;
+    } else {
+    if ((id == 34)) {
+    return 2;
+    } else {
+    if ((id == 35)) {
+    return 1;
+    } else {
+    if ((id == 36)) {
+    return 5;
+    } else {
+    if ((id == 37)) {
+    return 3;
+    } else {
+    if ((id == 38)) {
+    return 1;
+    } else {
+    if ((id == 39)) {
+    return 2;
+    } else {
+    if ((id == 40)) {
+    return 3;
+    } else {
+    return 3;
+    }
+    }
+    }
+    }
+    }
+    }
+    }
+    }
+    }
+    }
+    }
+    }
+    }
+    }
+    }
+    }
+}
+
+int cost_hi(int id __attribute__((unused))) {
+    if ((id == 41)) {
+    return 1;
+    } else {
+    if ((id == 42)) {
+    return 2;
+    } else {
+    if ((id == 43)) {
+    return 2;
+    } else {
+    if ((id == 44)) {
+    return 2;
+    } else {
+    if ((id == 45)) {
+    return 1;
+    } else {
+    if ((id == 46)) {
+    return 2;
+    } else {
+    if ((id == 47)) {
+    return 2;
+    } else {
+    if ((id == 48)) {
+    return 2;
+    } else {
+    if ((id == 49)) {
+    return 3;
+    } else {
+    if ((id == 50)) {
+    return 6;
+    } else {
+    if ((id == 51)) {
+    return 4;
+    } else {
+    if ((id == 52)) {
+    return 2;
+    } else {
+    if ((id == 53)) {
+    return 3;
+    } else {
+    if ((id == 54)) {
+    return 1;
+    } else {
+    if ((id == 55)) {
+    return 2;
+    } else {
+    if ((id == 56)) {
+    return 2;
+    } else {
+    return 2;
+    }
+    }
+    }
+    }
+    }
+    }
+    }
+    }
+    }
+    }
+    }
+    }
+    }
+    }
+    }
+    }
+}
+
+int cost_top(int id __attribute__((unused))) {
+    if ((id == 57)) {
+    return 2;
+    } else {
+    if ((id == 58)) {
+    return 3;
+    } else {
+    if ((id == 59)) {
+    return 3;
+    } else {
+    if ((id == 60)) {
+    return 3;
+    } else {
+    if ((id == 61)) {
+    return 3;
+    } else {
+    if ((id == 62)) {
+    return 1;
+    } else {
+    if ((id == 63)) {
+    return 2;
+    } else {
+    if ((id == 64)) {
+    return 4;
+    } else {
+    if ((id == 65)) {
+    return 3;
+    } else {
+    if ((id == 66)) {
+    return 5;
+    } else {
+    if ((id == 67)) {
+    return 2;
+    } else {
+    if ((id == 68)) {
+    return 2;
+    } else {
+    if ((id == 69)) {
+    return 4;
+    } else {
+    if ((id == 70)) {
+    return 4;
+    } else {
+    if ((id == 71)) {
+    return 4;
+    } else {
+    if ((id == 72)) {
+    return 2;
+    } else {
+    return 2;
+    }
+    }
+    }
+    }
+    }
+    }
+    }
+    }
+    }
+    }
+    }
+    }
+    }
+    }
+    }
+    }
 }
 
 int card_cost(int id __attribute__((unused))) {
+    if ((id < 0)) {
+    return 0;
+    } else {
+    if ((id < 9)) {
     if ((card_tier(id) == 0)) {
     return 1;
     } else {
@@ -69,9 +412,301 @@ int card_cost(int id __attribute__((unused))) {
     return 4;
     }
     }
+    } else {
+    if ((id < 25)) {
+    return cost_lo(id);
+    } else {
+    if ((id < 41)) {
+    return cost_mid(id);
+    } else {
+    if ((id < 57)) {
+    return cost_hi(id);
+    } else {
+    return cost_top(id);
+    }
+    }
+    }
+    }
+    }
+}
+
+int power_lo(int id __attribute__((unused))) {
+    if ((id == 9)) {
+    return 4;
+    } else {
+    if ((id == 10)) {
+    return 8;
+    } else {
+    if ((id == 11)) {
+    return 8;
+    } else {
+    if ((id == 12)) {
+    return 3;
+    } else {
+    if ((id == 13)) {
+    return 5;
+    } else {
+    if ((id == 14)) {
+    return 3;
+    } else {
+    if ((id == 15)) {
+    return 2;
+    } else {
+    if ((id == 16)) {
+    return 2;
+    } else {
+    if ((id == 17)) {
+    return 14;
+    } else {
+    if ((id == 18)) {
+    return 1;
+    } else {
+    if ((id == 19)) {
+    return 3;
+    } else {
+    if ((id == 20)) {
+    return 12;
+    } else {
+    if ((id == 21)) {
+    return 3;
+    } else {
+    if ((id == 22)) {
+    return 0;
+    } else {
+    if ((id == 23)) {
+    return 2;
+    } else {
+    if ((id == 24)) {
+    return 9;
+    } else {
+    return 0;
+    }
+    }
+    }
+    }
+    }
+    }
+    }
+    }
+    }
+    }
+    }
+    }
+    }
+    }
+    }
+    }
+}
+
+int power_mid(int id __attribute__((unused))) {
+    if ((id == 25)) {
+    return 5;
+    } else {
+    if ((id == 26)) {
+    return 6;
+    } else {
+    if ((id == 27)) {
+    return 3;
+    } else {
+    if ((id == 28)) {
+    return 6;
+    } else {
+    if ((id == 29)) {
+    return 3;
+    } else {
+    if ((id == 30)) {
+    return 6;
+    } else {
+    if ((id == 31)) {
+    return 2;
+    } else {
+    if ((id == 32)) {
+    return 4;
+    } else {
+    if ((id == 33)) {
+    return 3;
+    } else {
+    if ((id == 34)) {
+    return 0;
+    } else {
+    if ((id == 35)) {
+    return 0;
+    } else {
+    if ((id == 36)) {
+    return 0;
+    } else {
+    if ((id == 37)) {
+    return 0;
+    } else {
+    if ((id == 38)) {
+    return 0;
+    } else {
+    if ((id == 39)) {
+    return 0;
+    } else {
+    if ((id == 40)) {
+    return 2;
+    } else {
+    return 0;
+    }
+    }
+    }
+    }
+    }
+    }
+    }
+    }
+    }
+    }
+    }
+    }
+    }
+    }
+    }
+    }
+}
+
+int power_hi(int id __attribute__((unused))) {
+    if ((id == 41)) {
+    return 3;
+    } else {
+    if ((id == 42)) {
+    return 4;
+    } else {
+    if ((id == 43)) {
+    return 0;
+    } else {
+    if ((id == 44)) {
+    return 2;
+    } else {
+    if ((id == 45)) {
+    return 0;
+    } else {
+    if ((id == 46)) {
+    return 1;
+    } else {
+    if ((id == 47)) {
+    return 2;
+    } else {
+    if ((id == 48)) {
+    return 0;
+    } else {
+    if ((id == 49)) {
+    return 0;
+    } else {
+    if ((id == 50)) {
+    return 0;
+    } else {
+    if ((id == 51)) {
+    return 0;
+    } else {
+    if ((id == 52)) {
+    return 4;
+    } else {
+    if ((id == 53)) {
+    return 3;
+    } else {
+    if ((id == 54)) {
+    return 0;
+    } else {
+    if ((id == 55)) {
+    return 2;
+    } else {
+    if ((id == 56)) {
+    return 2;
+    } else {
+    return 0;
+    }
+    }
+    }
+    }
+    }
+    }
+    }
+    }
+    }
+    }
+    }
+    }
+    }
+    }
+    }
+    }
+}
+
+int power_top(int id __attribute__((unused))) {
+    if ((id == 57)) {
+    return 3;
+    } else {
+    if ((id == 58)) {
+    return 0;
+    } else {
+    if ((id == 59)) {
+    return 4;
+    } else {
+    if ((id == 60)) {
+    return 0;
+    } else {
+    if ((id == 61)) {
+    return 3;
+    } else {
+    if ((id == 62)) {
+    return 0;
+    } else {
+    if ((id == 63)) {
+    return 5;
+    } else {
+    if ((id == 64)) {
+    return 4;
+    } else {
+    if ((id == 65)) {
+    return 0;
+    } else {
+    if ((id == 66)) {
+    return 0;
+    } else {
+    if ((id == 67)) {
+    return 3;
+    } else {
+    if ((id == 68)) {
+    return 1;
+    } else {
+    if ((id == 69)) {
+    return 0;
+    } else {
+    if ((id == 70)) {
+    return 2;
+    } else {
+    if ((id == 71)) {
+    return 0;
+    } else {
+    if ((id == 72)) {
+    return 1;
+    } else {
+    return 0;
+    }
+    }
+    }
+    }
+    }
+    }
+    }
+    }
+    }
+    }
+    }
+    }
+    }
+    }
+    }
+    }
 }
 
 int card_power(int id __attribute__((unused))) {
+    if ((id < 0)) {
+    return 0;
+    } else {
+    if ((id < 9)) {
     if ((card_tier(id) == 0)) {
     return 3;
     } else {
@@ -81,14 +716,50 @@ int card_power(int id __attribute__((unused))) {
     return 10;
     }
     }
+    } else {
+    if ((id < 25)) {
+    return power_lo(id);
+    } else {
+    if ((id < 41)) {
+    return power_mid(id);
+    } else {
+    if ((id < 57)) {
+    return power_hi(id);
+    } else {
+    return power_top(id);
+    }
+    }
+    }
+    }
+    }
+}
+
+int card_credit(int id __attribute__((unused))) {
+    if ((id == 13)) {
+    return 2;
+    } else {
+    if ((id == 30)) {
+    return 2;
+    } else {
+    if ((id == 51)) {
+    return 3;
+    } else {
+    if ((id == 59)) {
+    return 2;
+    } else {
+    return 0;
+    }
+    }
+    }
+    }
 }
 
 int kind_beats(int a __attribute__((unused)), int b __attribute__((unused))) {
     return (b == ((a == 2) ? 0 : (a + 1)));
 }
 
-int is_legal_play(int id __attribute__((unused)), int energy __attribute__((unused))) {
-    return ((id >= 0) && ((id <= 8) && (card_cost(id) <= energy)));
+int is_legal_play(int id __attribute__((unused)), int energy __attribute__((unused)), int vault __attribute__((unused))) {
+    return ((id >= 0) && ((id < 73) && ((card_cost(id) <= energy) && ((card_credit(id) == 0) || (card_credit(id) <= vault)))));
 }
 
 int damage_dealt(int a __attribute__((unused)), int b __attribute__((unused))) {
@@ -127,6 +798,14 @@ int round_start_energy(int e __attribute__((unused))) {
     return energy_cap((e + 2));
 }
 
+int round_start_vault(int v __attribute__((unused))) {
+    if ((v > 98)) {
+    return 99;
+    } else {
+    return (v + 1);
+    }
+}
+
 int energy_after_play(int e __attribute__((unused)), int played __attribute__((unused))) {
     if ((played < 0)) {
     return energy_cap((e + 1));
@@ -147,7 +826,591 @@ int round_winner_by_hull(int h0 __attribute__((unused)), int h1 __attribute__((u
     }
 }
 
+int round_winner(int h0 __attribute__((unused)), int h1 __attribute__((unused)), int v0 __attribute__((unused)), int v1 __attribute__((unused))) {
+    if ((h0 > h1)) {
+    return 0;
+    } else {
+    if ((h0 < h1)) {
+    return 1;
+    } else {
+    if ((v0 > v1)) {
+    return 0;
+    } else {
+    if ((v0 < v1)) {
+    return 1;
+    } else {
+    return 2;
+    }
+    }
+    }
+    }
+}
+
 int match_decided(int h0 __attribute__((unused)), int h1 __attribute__((unused))) {
     return ((h0 <= 0) || (h1 <= 0));
+}
+
+int bankrupt(int v __attribute__((unused))) {
+    return (v < (0 - 6));
+}
+
+int card_substitute(int id __attribute__((unused)), int roll __attribute__((unused))) {
+    if ((id == 34)) {
+    if ((roll < 25)) {
+    return 35;
+    } else {
+    if ((roll < 50)) {
+    return 21;
+    } else {
+    if ((roll < 75)) {
+    return 20;
+    } else {
+    return 36;
+    }
+    }
+    }
+    } else {
+    return id;
+    }
+}
+
+int fx(int ch __attribute__((unused)), int nn __attribute__((unused)), int pp __attribute__((unused)), int m __attribute__((unused)), int a __attribute__((unused))) {
+    return ((ch * 10000000) + ((nn * 100000) + ((pp * 1000) + ((m * 100) + a))));
+}
+
+int fxa_lo(int id __attribute__((unused))) {
+    if ((id == 9)) {
+    return fx(23, 1, 0, 0, 1);
+    } else {
+    if ((id == 10)) {
+    return fx(21, 0, 0, 0, 4);
+    } else {
+    if ((id == 11)) {
+    return fx(3, 0, 0, 0, 4);
+    } else {
+    if ((id == 12)) {
+    return fx(1, 1, 0, 3, 1);
+    } else {
+    if ((id == 13)) {
+    return fx(22, 17, 3, 0, 6);
+    } else {
+    if ((id == 14)) {
+    return fx(1, 6, 1, 0, 3);
+    } else {
+    if ((id == 15)) {
+    return fx(32, 1, 0, 0, 35);
+    } else {
+    if ((id == 16)) {
+    return fx(1, 9, 10, 0, 8);
+    } else {
+    if ((id == 17)) {
+    return fx(21, 0, 0, 0, 4);
+    } else {
+    if ((id == 18)) {
+    return fx(1, 0, 0, 1, 1);
+    } else {
+    if ((id == 19)) {
+    return fx(1, 14, 1, 0, 8);
+    } else {
+    if ((id == 20)) {
+    return fx(21, 0, 0, 0, 6);
+    } else {
+    if ((id == 21)) {
+    return fx(9, 0, 0, 0, 1);
+    } else {
+    if ((id == 22)) {
+    return fx(1, 18, 50, 0, 9);
+    } else {
+    if ((id == 23)) {
+    return fx(1, 5, 0, 0, 4);
+    } else {
+    return fx(21, 2, 0, 0, 5);
+    }
+    }
+    }
+    }
+    }
+    }
+    }
+    }
+    }
+    }
+    }
+    }
+    }
+    }
+    }
+}
+
+int fxb_lo(int id __attribute__((unused))) {
+    if ((id == 21)) {
+    return fx(31, 0, 0, 0, 2);
+    } else {
+    if ((id == 22)) {
+    return fx(21, 21, 50, 0, 3);
+    } else {
+    return 0;
+    }
+    }
+}
+
+int fxa_mid(int id __attribute__((unused))) {
+    if ((id == 25)) {
+    return fx(2, 0, 0, 0, 1);
+    } else {
+    if ((id == 26)) {
+    return fx(1, 9, 8, 0, 8);
+    } else {
+    if ((id == 27)) {
+    return fx(1, 8, 6, 0, 11);
+    } else {
+    if ((id == 28)) {
+    return fx(1, 0, 0, 0, 2);
+    } else {
+    if ((id == 29)) {
+    return fx(24, 1, 0, 0, 1);
+    } else {
+    if ((id == 31)) {
+    return fx(23, 10, 3, 0, 1);
+    } else {
+    if ((id == 32)) {
+    return fx(6, 2, 0, 6, 5);
+    } else {
+    if ((id == 33)) {
+    return fx(28, 2, 0, 6, 5);
+    } else {
+    if ((id == 35)) {
+    return fx(23, 0, 0, 0, 3);
+    } else {
+    if ((id == 36)) {
+    return fx(7, 0, 0, 0, 1);
+    } else {
+    if ((id == 37)) {
+    return fx(22, 4, 0, 2, 2);
+    } else {
+    if ((id == 38)) {
+    return fx(23, 15, 0, 0, 3);
+    } else {
+    if ((id == 39)) {
+    return fx(33, 0, 0, 0, 36);
+    } else {
+    if ((id == 40)) {
+    return fx(32, 0, 0, 0, 21);
+    } else {
+    return 0;
+    }
+    }
+    }
+    }
+    }
+    }
+    }
+    }
+    }
+    }
+    }
+    }
+    }
+    }
+}
+
+int fxb_mid(int id __attribute__((unused))) {
+    if ((id == 35)) {
+    return fx(21, 2, 0, 0, 5);
+    } else {
+    if ((id == 36)) {
+    return fx(8, 0, 0, 0, 1);
+    } else {
+    return 0;
+    }
+    }
+}
+
+int fxa_hi(int id __attribute__((unused))) {
+    if ((id == 41)) {
+    return fx(23, 0, 0, 0, 1);
+    } else {
+    if ((id == 42)) {
+    return fx(20, 0, 0, 0, 2);
+    } else {
+    if ((id == 43)) {
+    return fx(23, 0, 0, 0, 2);
+    } else {
+    if ((id == 44)) {
+    return fx(29, 0, 0, 0, 2);
+    } else {
+    if ((id == 45)) {
+    return fx(23, 0, 0, 0, 4);
+    } else {
+    if ((id == 46)) {
+    return fx(31, 0, 0, 0, 3);
+    } else {
+    if ((id == 47)) {
+    return fx(35, 0, 0, 0, 3);
+    } else {
+    if ((id == 48)) {
+    return fx(34, 0, 0, 0, 1);
+    } else {
+    if ((id == 49)) {
+    return fx(37, 0, 0, 0, 1);
+    } else {
+    if ((id == 50)) {
+    return fx(7, 0, 0, 0, 1);
+    } else {
+    if ((id == 51)) {
+    return fx(36, 0, 0, 0, 1);
+    } else {
+    if ((id == 52)) {
+    return fx(20, 2, 0, 5, 3);
+    } else {
+    if ((id == 53)) {
+    return fx(4, 8, 6, 0, 1);
+    } else {
+    if ((id == 54)) {
+    return fx(23, 0, 0, 0, 1);
+    } else {
+    if ((id == 55)) {
+    return fx(20, 8, 8, 0, 4);
+    } else {
+    return fx(28, 2, 0, 0, 3);
+    }
+    }
+    }
+    }
+    }
+    }
+    }
+    }
+    }
+    }
+    }
+    }
+    }
+    }
+    }
+}
+
+int fxb_hi(int id __attribute__((unused))) {
+    if ((id == 45)) {
+    return fx(30, 0, 0, 0, 4);
+    } else {
+    if ((id == 49)) {
+    return fx(29, 0, 0, 0, 2);
+    } else {
+    if ((id == 50)) {
+    return fx(24, 0, 0, 0, 6);
+    } else {
+    if ((id == 54)) {
+    return fx(21, 16, 6, 0, 4);
+    } else {
+    return 0;
+    }
+    }
+    }
+    }
+}
+
+int fxa_top(int id __attribute__((unused))) {
+    if ((id == 57)) {
+    return fx(23, 6, 0, 0, 2);
+    } else {
+    if ((id == 58)) {
+    return fx(4, 0, 0, 0, 1);
+    } else {
+    if ((id == 59)) {
+    return fx(5, 0, 0, 0, 1);
+    } else {
+    if ((id == 60)) {
+    return fx(4, 0, 0, 0, 1);
+    } else {
+    if ((id == 61)) {
+    return fx(28, 0, 0, 0, 4);
+    } else {
+    if ((id == 62)) {
+    return fx(28, 0, 0, 0, 2);
+    } else {
+    if ((id == 63)) {
+    return fx(28, 0, 0, 0, 2);
+    } else {
+    if ((id == 64)) {
+    return fx(6, 0, 0, 6, 10);
+    } else {
+    if ((id == 65)) {
+    return fx(20, 0, 0, 0, 6);
+    } else {
+    if ((id == 66)) {
+    return fx(20, 0, 0, 0, 8);
+    } else {
+    if ((id == 67)) {
+    return fx(24, 7, 3, 0, 2);
+    } else {
+    if ((id == 68)) {
+    return fx(41, 0, 0, 0, 4);
+    } else {
+    if ((id == 69)) {
+    return fx(39, 0, 0, 0, 1);
+    } else {
+    if ((id == 70)) {
+    return fx(34, 0, 0, 0, 2);
+    } else {
+    if ((id == 71)) {
+    return fx(40, 0, 0, 0, 1);
+    } else {
+    return fx(29, 0, 0, 0, 2);
+    }
+    }
+    }
+    }
+    }
+    }
+    }
+    }
+    }
+    }
+    }
+    }
+    }
+    }
+    }
+}
+
+int fxb_top(int id __attribute__((unused))) {
+    if ((id == 57)) {
+    return fx(29, 6, 0, 0, 1);
+    } else {
+    if ((id == 58)) {
+    return fx(26, 0, 0, 0, 2);
+    } else {
+    if ((id == 60)) {
+    return fx(26, 0, 0, 0, 1);
+    } else {
+    if ((id == 64)) {
+    return fx(42, 0, 0, 0, 1);
+    } else {
+    if ((id == 66)) {
+    return fx(43, 0, 0, 0, 1);
+    } else {
+    if ((id == 72)) {
+    return fx(31, 0, 0, 0, 2);
+    } else {
+    return 0;
+    }
+    }
+    }
+    }
+    }
+    }
+}
+
+int card_fx_a(int id __attribute__((unused))) {
+    if ((id < 9)) {
+    return 0;
+    } else {
+    if ((id < 25)) {
+    return fxa_lo(id);
+    } else {
+    if ((id < 41)) {
+    return fxa_mid(id);
+    } else {
+    if ((id < 57)) {
+    return fxa_hi(id);
+    } else {
+    return fxa_top(id);
+    }
+    }
+    }
+    }
+}
+
+int card_fx_b(int id __attribute__((unused))) {
+    if ((id < 21)) {
+    return 0;
+    } else {
+    if ((id < 25)) {
+    return fxb_lo(id);
+    } else {
+    if ((id < 41)) {
+    return fxb_mid(id);
+    } else {
+    if ((id < 57)) {
+    return fxb_hi(id);
+    } else {
+    return fxb_top(id);
+    }
+    }
+    }
+    }
+}
+
+int fx_ch(int x __attribute__((unused))) {
+    return (x / 10000000);
+}
+
+int fx_nn(int x __attribute__((unused))) {
+    return ((x / 100000) - ((x / 10000000) * 100));
+}
+
+int fx_pp(int x __attribute__((unused))) {
+    return ((x / 1000) - ((x / 100000) * 100));
+}
+
+int fx_m(int x __attribute__((unused))) {
+    return ((x / 100) - ((x / 1000) * 10));
+}
+
+int fx_aa(int x __attribute__((unused))) {
+    return (x - ((x / 100) * 100));
+}
+
+int fx_phase(int ch __attribute__((unused))) {
+    if ((ch < 20)) {
+    return 1;
+    } else {
+    return 2;
+    }
+}
+
+int fx_cond_ok(int x __attribute__((unused)), int dealt __attribute__((unused)), int taken __attribute__((unused)), int mk __attribute__((unused)), int ok __attribute__((unused)), int oc __attribute__((unused)), int mh __attribute__((unused)), int oh __attribute__((unused)), int el __attribute__((unused)), int oe __attribute__((unused)), int mv __attribute__((unused)), int ov __attribute__((unused)), int rnd __attribute__((unused)), int roll __attribute__((unused))) {
+    if ((fx_nn(x) == 0)) {
+    return (x >= 0);
+    } else {
+    if ((fx_nn(x) == 1)) {
+    return (dealt > 0);
+    } else {
+    if ((fx_nn(x) == 2)) {
+    return (taken > 0);
+    } else {
+    if ((fx_nn(x) == 3)) {
+    return ((ok >= 0) && kind_beats(ok, mk));
+    } else {
+    if ((fx_nn(x) == 4)) {
+    return (ok >= 0);
+    } else {
+    if ((fx_nn(x) == 5)) {
+    return (ok < 0);
+    } else {
+    if ((fx_nn(x) == 6)) {
+    return (ok == fx_pp(x));
+    } else {
+    if ((fx_nn(x) == 7)) {
+    return ((ok >= 0) && (oc >= fx_pp(x)));
+    } else {
+    if ((fx_nn(x) == 8)) {
+    return (mh <= fx_pp(x));
+    } else {
+    if ((fx_nn(x) == 9)) {
+    return (oh <= fx_pp(x));
+    } else {
+    if ((fx_nn(x) == 10)) {
+    return (el >= fx_pp(x));
+    } else {
+    if ((fx_nn(x) == 11)) {
+    return (oe >= fx_pp(x));
+    } else {
+    if ((fx_nn(x) == 12)) {
+    return (mv >= fx_pp(x));
+    } else {
+    if ((fx_nn(x) == 13)) {
+    return (mv < fx_pp(x));
+    } else {
+    if ((fx_nn(x) == 14)) {
+    return (ov < fx_pp(x));
+    } else {
+    if ((fx_nn(x) == 15)) {
+    return ((dealt <= 0) && (taken <= 0));
+    } else {
+    if ((fx_nn(x) == 16)) {
+    return (taken >= fx_pp(x));
+    } else {
+    if ((fx_nn(x) == 17)) {
+    return ((fx_pp(x) > 0) && ((rnd - ((rnd / fx_pp(x)) * fx_pp(x))) == 0));
+    } else {
+    if ((fx_nn(x) == 18)) {
+    return (roll < fx_pp(x));
+    } else {
+    if ((fx_nn(x) == 19)) {
+    return (dealt >= fx_pp(x));
+    } else {
+    if ((fx_nn(x) == 20)) {
+    return (!((ok == fx_pp(x))));
+    } else {
+    return (roll >= fx_pp(x));
+    }
+    }
+    }
+    }
+    }
+    }
+    }
+    }
+    }
+    }
+    }
+    }
+    }
+    }
+    }
+    }
+    }
+    }
+    }
+    }
+    }
+}
+
+int fx_scale(int x __attribute__((unused)), int dealt __attribute__((unused)), int taken __attribute__((unused)), int oc __attribute__((unused)), int mh __attribute__((unused)), int el __attribute__((unused)), int oe __attribute__((unused)), int mv __attribute__((unused)), int rnd __attribute__((unused))) {
+    if ((fx_m(x) == 0)) {
+    return fx_aa(x);
+    } else {
+    if ((fx_m(x) == 1)) {
+    return (fx_aa(x) * oe);
+    } else {
+    if ((fx_m(x) == 2)) {
+    return (fx_aa(x) * oc);
+    } else {
+    if ((fx_m(x) == 3)) {
+    return ((fx_aa(x) * rnd) / 2);
+    } else {
+    if ((fx_m(x) == 4)) {
+    return (fx_aa(x) * el);
+    } else {
+    if ((fx_m(x) == 5)) {
+    if ((taken < fx_aa(x))) {
+    return taken;
+    } else {
+    return fx_aa(x);
+    }
+    } else {
+    if ((fx_m(x) == 6)) {
+    return ((taken * fx_aa(x)) / 10);
+    } else {
+    if ((fx_m(x) == 7)) {
+    return ((dealt * fx_aa(x)) / 10);
+    } else {
+    if ((fx_m(x) == 8)) {
+    return ((fx_aa(x) * (20 - mh)) / 4);
+    } else {
+    return ((fx_aa(x) * ((mv < 0) ? 0 : mv)) / 2);
+    }
+    }
+    }
+    }
+    }
+    }
+    }
+    }
+    }
+}
+
+int fx_amount(int x __attribute__((unused)), int dealt __attribute__((unused)), int taken __attribute__((unused)), int mk __attribute__((unused)), int ok __attribute__((unused)), int oc __attribute__((unused)), int mh __attribute__((unused)), int oh __attribute__((unused)), int el __attribute__((unused)), int oe __attribute__((unused)), int mv __attribute__((unused)), int ov __attribute__((unused)), int rnd __attribute__((unused)), int roll __attribute__((unused))) {
+    if ((x == 0)) {
+    return 0;
+    } else {
+    if (fx_cond_ok(x, dealt, taken, mk, ok, oc, mh, oh, el, oe, mv, ov, rnd, roll)) {
+    return fx_scale(x, dealt, taken, oc, mh, el, oe, mv, rnd);
+    } else {
+    return 0;
+    }
+    }
 }
 

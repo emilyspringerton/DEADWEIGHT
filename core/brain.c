@@ -63,12 +63,13 @@ int dwb_load_default(DwBrain *b) { return dwb_load_mem(b, dw_brain_default_blob,
 void dwb_free(DwBrain *b) { if (b->loaded) { arena_free_all(&b->arena); memset(b, 0, sizeof *b); } }
 
 /* Observation layout == training/dw_env.py build_observation():
- * [0..4] hull_you/20 hull_opp/20 energy_you/6 energy_opp/6 round/8; [5..44] 4 hand slots x 10 one-hot (card 0..8, 9 = empty);
+ * [0..4] hull_you/20 hull_opp/20 energy_you/6 energy_opp/6 round/8; [5..44] 4 hand slots x 10 one-hot (bucket kind*3+tier, 9 = empty; Guild cards fold into their kind/cost-tier bucket);
  * [45] opp_hand_size/4; [46..57] opp's last 3 kinds (oldest first) x 4 one-hot (BURST, TANK, SHIELD, none/pass). */
 void dwb_build_obs(double o[DW_OBS_DIM], const DwPolicyCtx *c, const int8_t hand[4], int energy_you, int round) {
     memset(o, 0, sizeof(double) * DW_OBS_DIM);
     o[0] = c->hull_you / 20.0; o[1] = c->hull_opp / 20.0; o[2] = energy_you / 6.0; o[3] = c->energy_opp / 6.0; o[4] = round / 8.0;
-    for (int s = 0; s < 4; s++) { int id = hand[s]; o[5 + s * 10 + (id >= 0 && id <= 8 ? id : 9)] = 1.0; }
+    /* the distilled net only knows the 9 base cards: Guild cards are folded into their (kind, cost-tier) bucket */
+    for (int s = 0; s < 4; s++) { int id = hand[s]; o[5 + s * 10 + (id >= 0 ? card_kind(id) * 3 + card_tier(id) : 9)] = 1.0; }
     o[45] = c->opp_hand_size / 4.0;
     for (int k = 0; k < 3; k++) { int kd = c->opp_kinds[k]; o[46 + k * 4 + (kd >= 0 && kd <= 2 ? kd : 3)] = 1.0; }
 }
@@ -105,13 +106,13 @@ int dwb_choose(DwPolicyCtx *c, const int8_t hand[4], int energy, int round) {
     double m[5];
     for (int i = 0; i < 5; i++) {
         int card = i < 4 ? hand[i] : -1;
-        int legal = i == 4 ? 1 : (card >= 0 && is_legal_play(card, energy));
+        int legal = i == 4 ? 1 : (card >= 0 && !((c->lock_mask >> i) & 1) && is_legal_play(card, energy, c->vault_you));
         double s = blend(heuristic_prior(c->arch, card, last_kind, bank), logits[i], c->w_h, w_n);
         if (c->sigma > 0.0) s += c->sigma * gauss(c);
         m[i] = mask_score(s, legal);
     }
     int slot = pick5(m[0], m[1], m[2], m[3], m[4]);
     /* defence in depth: the mask already guarantees legality, but a bug here must never put an illegal play on the wire */
-    if (slot >= 0 && !(hand[slot] >= 0 && is_legal_play(hand[slot], energy))) return -1;
+    if (slot >= 0 && !(hand[slot] >= 0 && !((c->lock_mask >> slot) & 1) && is_legal_play(hand[slot], energy, c->vault_you))) return -1;
     return slot;
 }

@@ -8,6 +8,7 @@
  * remote host (known limitation, VS0.5). */
 #include "client.h"          /* pulls net.h first (must precede other system headers) */
 #include "card_rules.h"
+#include "card_text.h"
 #include "version.h"
 #define SDL_MAIN_HANDLED
 #include <SDL.h>
@@ -86,6 +87,7 @@ typedef struct {
     DwClient c; int connected, welcomed;
     uint32_t match_id; int seat; char opp[DW_NAME_LEN + 1]; int opp_kind;
     int round, hull_you, hull_opp, energy_you, energy_opp, opp_hand; int8_t hand[4];
+    int armor_you, armor_opp, vault_you, vault_opp, lock_mask;
     Uint32 deadline_at;                     /* SDL ticks when the round timer ends (0 = none) */
     int sel;                                /* -2 none, -1 pass, 0..3 card slot */
     int locked;
@@ -135,7 +137,7 @@ static void lock_selected(void) {
     if (dwc_send(&A.c, &m)) { to_menu("Connection lost"); return; }
     A.locked = 1;
 }
-static int slot_legal(int s) { return s >= 0 && s < 4 && A.hand[s] >= 0 && is_legal_play(A.hand[s], A.energy_you); }
+static int slot_legal(int s) { return s >= 0 && s < 4 && A.hand[s] >= 0 && !((A.lock_mask >> s) & 1) && is_legal_play(A.hand[s], A.energy_you, A.vault_you); }
 static void select_slot(int s) { if (A.screen == S_MATCH && !A.locked && (s == -1 || slot_legal(s))) A.sel = s; }
 
 static void handle_msg(const DwMsg *m) {
@@ -146,12 +148,15 @@ static void handle_msg(const DwMsg *m) {
         A.match_id = m->u.match_found.match_id; A.seat = m->u.match_found.seat; A.opp_kind = m->u.match_found.opp_kind;
         snprintf(A.opp, sizeof A.opp, "%s", m->u.match_found.opp_name);
         A.screen = S_MATCH; A.nlog = 0; A.have_reveal = 0; A.round = 0; A.sel = -2; A.locked = 0;
-        A.hull_you = A.hull_opp = start_hull(); A.state_at = SDL_GetTicks(); A.dumped_mid = 0;
+        A.hull_you = A.hull_opp = start_hull(); A.armor_you = A.armor_opp = 0; A.vault_you = A.vault_opp = start_vault(); A.lock_mask = 0;
+        A.state_at = SDL_GetTicks(); A.dumped_mid = 0;
         break;
     case DW_S_ROUND_START:
         A.round = m->u.round_start.round; A.hull_you = m->u.round_start.hull_you; A.hull_opp = m->u.round_start.hull_opp;
         A.energy_you = m->u.round_start.energy_you; A.energy_opp = m->u.round_start.energy_opp;
         memcpy(A.hand, m->u.round_start.hand, 4); A.opp_hand = m->u.round_start.opp_hand_size;
+        A.armor_you = m->u.round_start.armor_you; A.armor_opp = m->u.round_start.armor_opp;
+        A.vault_you = m->u.round_start.vault_you; A.vault_opp = m->u.round_start.vault_opp; A.lock_mask = m->u.round_start.lock_mask;
         A.deadline_at = m->u.round_start.deadline_ms ? SDL_GetTicks() + m->u.round_start.deadline_ms : 0;
         A.sel = -2; A.locked = 0; A.state_at = SDL_GetTicks();
         break;
@@ -164,7 +169,10 @@ static void handle_msg(const DwMsg *m) {
         A.have_reveal = 1; A.rv_round = m->u.round_result.round; A.rv_you = m->u.round_result.card_you; A.rv_opp = m->u.round_result.card_opp;
         A.rv_dy = m->u.round_result.dmg_you; A.rv_do = m->u.round_result.dmg_opp;
         A.hull_you = m->u.round_result.hull_you; A.hull_opp = m->u.round_result.hull_opp;
-        logline("R%d  YOU -%d  OPP -%d", m->u.round_result.round, m->u.round_result.dmg_you, m->u.round_result.dmg_opp);
+        A.rv_you = m->u.round_result.eff_you >= 0 ? m->u.round_result.eff_you : m->u.round_result.card_you;
+        A.rv_opp = m->u.round_result.eff_opp >= 0 ? m->u.round_result.eff_opp : m->u.round_result.card_opp;
+        logline("R%d  YOU -%d +%d  OPP -%d +%d", m->u.round_result.round, m->u.round_result.dmg_you, m->u.round_result.heal_you,
+                m->u.round_result.dmg_opp, m->u.round_result.heal_opp);
         break;
     case DW_S_MATCH_END:
         A.result = m->u.match_end.result; A.reason = m->u.match_end.reason; A.screen = S_END; A.state_at = SDL_GetTicks();
@@ -190,14 +198,17 @@ static void button(int x, int y, int w, int h, const char *label, Col c, int ena
     if (enabled && in_rect(mx, my, x, y, w, h)) { f.r = (uint8_t)(f.r + (255 - f.r) / 4); f.g = (uint8_t)(f.g + (255 - f.g) / 4); f.b = (uint8_t)(f.b + (255 - f.b) / 4); }
     rect(x, y, w, h, f); text_c(x + w / 2, y + h / 2 - 10, 3, enabled ? C_TEXT : C_DIM, "%s", label);
 }
-static void hull_bar(int y, int hull, const char *label) {
+static void hull_bar(int y, int hull, const char *label, int armor, int vault) {
     int hp = hull < 0 ? 0 : hull, mx = start_hull();
     rect(20, y, 440, 26, C_PANEL);
     rect(20, y, 440 * (hp > mx ? mx : hp) / mx, 26, hp * 3 <= mx ? C_BAD : C_GOOD);
     text(28, y + 5, 2, C_TEXT, "%s %d/%d", label, hull < 0 ? 0 : hull, mx);
+    if (armor == DW_HIDDEN_U8) text(300, y + 5, 2, C_TEXT, "A? $?");
+    else text(300, y + 5, 2, C_TEXT, "A%d $%d", armor, vault);
 }
 static void pips(int y, int energy, const char *label) {
     text(20, y + 2, 2, C_DIM, "%s", label);
+    if (energy == DW_HIDDEN_U8) { text(112, y + 2, 2, C_DIM, "? (HIDDEN)"); return; }
     for (int i = 0; i < 6; i++) { rect(112 + i * 34, y, 28, 16, i < energy ? (Col){250, 210, 70} : C_PANEL); }
 }
 static void card_box(int x, int y, int w, int h, int id, int num, int state /*0 normal 1 sel 2 disabled 3 locked*/) {
@@ -206,10 +217,10 @@ static void card_box(int x, int y, int w, int h, int id, int num, int state /*0 
     Col kc = KIND_COL[card_kind(id)];
     if (state == 2) { kc.r /= 3; kc.g /= 3; kc.b /= 3; }
     rect(x, y, w, 30, kc);
-    text_c(x + w / 2, y + 8, 2, C_TEXT, "%s", KIND_NAME[card_kind(id)]);
+    text_c(x + w / 2, y + 12, 1, C_TEXT, "%s", dw_card_name(id));
     text_c(x + w / 2, y + 46, 2, state == 2 ? C_DIM : C_TEXT, "COST %d", card_cost(id));
     text_c(x + w / 2, y + 68, 3, state == 2 ? C_DIM : C_TEXT, "%d", card_power(id));
-    text_c(x + w / 2, y + 96, 1, C_DIM, "POWER");
+    text_c(x + w / 2, y + 96, 1, C_DIM, "%s%s", KIND_NAME[card_kind(id)], card_credit(id) ? " $" : "");
     if (num > 0) text(x + 4, y + h - 14, 1, C_DIM, "(%d)", num);
     if (state == 1) frame(x - 3, y - 3, w + 6, h + 6, C_SEL, 3);
     if (state == 3) frame(x, y, w, h, C_GOOD, 2);
@@ -236,7 +247,7 @@ static void draw_queue(int mx, int my) {
 }
 static void draw_match(int mx, int my) {
     text(20, 14, 2, C_TEXT, "%s%s", A.opp, A.opp_kind ? " (BOT)" : "");
-    hull_bar(44, A.hull_opp, "HULL"); pips(80, A.energy_opp, "ENERGY"); text(350, 82, 2, C_DIM, "HAND %d", A.opp_hand);
+    hull_bar(44, A.hull_opp, "HULL", A.armor_opp, A.vault_opp); pips(80, A.energy_opp, "ENERGY"); text(350, 82, 2, C_DIM, "HAND %d", A.opp_hand);
     text_c(W / 2, 118, 3, C_TEXT, "ROUND %d/%d", A.round, max_rounds());
     if (A.deadline_at) { int left = (int)(A.deadline_at - SDL_GetTicks()); if (left < 0) left = 0; text_c(W / 2, 148, 2, left < 5000 ? C_BAD : C_DIM, "%d S", left / 1000); }
     if (A.have_reveal) {
@@ -246,7 +257,8 @@ static void draw_match(int mx, int my) {
         text_c(120, 360, 2, A.rv_dy ? C_BAD : C_DIM, "TOOK %d", A.rv_dy); text_c(360, 360, 2, A.rv_do ? C_GOOD : C_DIM, "TOOK %d", A.rv_do);
     } else text_c(W / 2, 260, 2, C_DIM, "PICK A CARD OR PASS");
     for (int i = 0; i < A.nlog; i++) text(20, 400 + i * 22, 2, C_DIM, "%s", A.log[i]);
-    hull_bar(552, A.hull_you, "YOU"); pips(588, A.energy_you, "ENERGY");
+    if (A.sel >= 0 && A.hand[A.sel] >= 0) text(20, 534, 1, C_TEXT, "%s: %s", dw_card_name(A.hand[A.sel]), dw_card_text(A.hand[A.sel]));
+    hull_bar(552, A.hull_you, "YOU", A.armor_you, A.vault_you); pips(588, A.energy_you, "ENERGY");
     for (int i = 0; i < 4; i++) {
         int st = A.hand[i] < 0 ? 2 : !slot_legal(i) ? 2 : (A.sel == i ? (A.locked ? 3 : 1) : 0);
         card_box(20 + i * 112, 620, 104, 120, A.hand[i], i + 1, st);
@@ -258,8 +270,8 @@ static void draw_match(int mx, int my) {
 static void draw_end(int mx, int my) {
     Col c = A.result == DW_RES_WIN ? C_GOOD : A.result == DW_RES_LOSS ? C_BAD : C_DIM;
     text_c(W / 2, 220, 6, c, "%s", A.result == DW_RES_WIN ? "VICTORY" : A.result == DW_RES_LOSS ? "DEFEAT" : "DRAW");
-    const char *why[4] = {"HULL DESTROYED", "ROUNDS OVER", "OPPONENT FORFEIT", "SERVER"};
-    text_c(W / 2, 310, 2, C_DIM, "%s", why[A.reason & 3]);
+    const char *why[5] = {"HULL DESTROYED", "ROUNDS OVER", "OPPONENT FORFEIT", "SERVER", "BANKRUPT"};
+    text_c(W / 2, 310, 2, C_DIM, "%s", why[A.reason > 4 ? 3 : A.reason]);
     text_c(W / 2, 350, 2, C_TEXT, "YOU %d  -  %s %d", A.hull_you < 0 ? 0 : A.hull_you, A.opp, A.hull_opp < 0 ? 0 : A.hull_opp);
     button(60, 480, 360, 70, "PLAY AGAIN", C_GOOD, 1, mx, my);
     button(60, 580, 360, 60, "MENU", C_LOCK, 1, mx, my);

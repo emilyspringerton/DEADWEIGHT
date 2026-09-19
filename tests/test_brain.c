@@ -32,11 +32,11 @@ static size_t tiny_blob(uint8_t *buf, float b1, const float w2[5], const float b
 static DwPolicyCtx mkctx(void) { DwPolicyCtx c; memset(&c, 0, sizeof c); dw_policy_reset(&c, 7); return c; }
 
 static void rand_state(DwPolicyCtx *c, int8_t hand[4], int *energy, int *round) {
-    for (int i = 0; i < 4; i++) hand[i] = (int8_t)((int)(rnd() % 11) - 1 > 8 ? -1 : (int)(rnd() % 11) - 1);
+    for (int i = 0; i < 4; i++) { int r_ = (int)(rnd() % 76) - 3; hand[i] = (int8_t)(r_ < 0 ? -1 : r_); }   /* -1 or any of the 73 catalog ids */
     *energy = (int)(rnd() % 7); *round = 1 + (int)(rnd() % 8);
     c->hull_you = 1 + (int)(rnd() % 20); c->hull_opp = 1 + (int)(rnd() % 20); c->energy_opp = (int)(rnd() % 7); c->opp_hand_size = 1 + (int)(rnd() % 4);
     for (int k = 0; k < 3; k++) c->opp_kinds[k] = (int)(rnd() % 4);
-    c->last_opp_card = (int)(rnd() % 10) - 1;
+    c->last_opp_card = (int)(rnd() % 74) - 1; c->vault_you = (int)(rnd() % 8) - 2; c->lock_mask = (int)(rnd() % 16);
 }
 
 int main(void) {
@@ -66,7 +66,7 @@ int main(void) {
           DwPolicyCtx c = mkctx(); int8_t hand[4]; int energy, round; rand_state(&c, hand, &energy, &round);
           c.brain = &def; c.arch = (int)(rnd() % 3); c.w_h = (rnd() % 3) * 0.5; c.w_n = (rnd() % 4) * 0.7; c.sigma = (rnd() % 3) * 0.5; c.rng = rnd() | 1;
           int s = dwb_choose(&c, hand, energy, round);
-          if (s == -1) passes++; else { plays++; if (s < 0 || s > 3 || hand[s] < 0 || !is_legal_play(hand[s], energy)) illegal++; }
+          if (s == -1) passes++; else { plays++; if (s < 0 || s > 3 || hand[s] < 0 || !is_legal_play(hand[s], energy, c.vault_you) || ((c.lock_mask >> s) & 1)) illegal++; }
       }
       CHECK(illegal == 0, "%ld illegal plays", illegal); CHECK(passes > 0 && plays > 0, "both pass (%ld) and play (%ld) occur", passes, plays); }
 
@@ -110,7 +110,7 @@ int main(void) {
               /* an accepted mutant may have odd (even overflowing) weights, but the legality mask must still hold */
               DwPolicyCtx c = mkctx(); int8_t hand[4]; int energy, round; rand_state(&c, hand, &energy, &round);
               c.brain = &z; c.arch = 1; c.w_h = 1.0; c.w_n = 1.0; int sl = dwb_choose(&c, hand, energy, round);
-              CHECK(sl == -1 || (sl >= 0 && sl <= 3 && hand[sl] >= 0 && is_legal_play(hand[sl], energy)), "mutant net produced illegal play");
+              CHECK(sl == -1 || (sl >= 0 && sl <= 3 && hand[sl] >= 0 && is_legal_play(hand[sl], energy, c.vault_you) && !((c.lock_mask >> sl) & 1)), "mutant net produced illegal play");
               dwb_free(&z);
           }
       }

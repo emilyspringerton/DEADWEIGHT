@@ -32,12 +32,12 @@ static void roundtrip(const DwMsg *m) {
 
 int main(void) {
     DwMsg m; uint8_t b[1200]; DwMsg d; size_t used;
-    memset(&m, 0, sizeof m); m.type = DW_C_HELLO; m.u.hello.proto = 1; m.u.hello.mode = 0; m.u.hello.kind = 1;
+    memset(&m, 0, sizeof m); m.type = DW_C_HELLO; m.u.hello.proto = DW_PROTO_VERSION; m.u.hello.mode = 0; m.u.hello.kind = 1;
     strcpy(m.u.hello.name, "Ripper"); m.u.hello.token_len = 3; memcpy(m.u.hello.token, "abc", 3);
     roundtrip(&m);
     int n = dw_encode(&m, b, sizeof b);
     CHECK(n == 2 + 1 + 20 + 3 && b[0] == 24);
-    CHECK(b[1] == 0 && b[2] == DW_C_HELLO && b[3] == 1 && b[6] == 'R');
+    CHECK(b[1] == 0 && b[2] == DW_C_HELLO && b[3] == DW_PROTO_VERSION && b[6] == 'R');
     m.u.hello.token_len = 0; roundtrip(&m);
     m.u.hello.token_len = DW_MAX_TOKEN; memset(m.u.hello.token, 0xAB, DW_MAX_TOKEN); roundtrip(&m);
     memset(m.u.hello.name, 'x', DW_NAME_LEN); m.u.hello.name[DW_NAME_LEN] = 0; roundtrip(&m);
@@ -62,12 +62,18 @@ int main(void) {
     strcpy(m.u.match_found.opp_name, "Wall"); m.u.match_found.opp_kind = 1; roundtrip(&m);
     m.type = DW_S_ROUND_START; m.u.round_start.round = 3; m.u.round_start.hull_you = 20; m.u.round_start.hull_opp = -3;
     m.u.round_start.energy_you = 4; m.u.round_start.energy_opp = 6; m.u.round_start.hand[0] = 8; m.u.round_start.hand[3] = -1;
-    m.u.round_start.opp_hand_size = 4; m.u.round_start.deadline_ms = 20000; roundtrip(&m);
-    n = dw_encode(&m, b, sizeof b); CHECK(n == 15 && b[0] == 13 && b[2] == DW_S_ROUND_START);
+    m.u.round_start.opp_hand_size = 4; m.u.round_start.deadline_ms = 20000;
+    m.u.round_start.armor_you = 5; m.u.round_start.armor_opp = DW_HIDDEN_U8; m.u.round_start.vault_you = -4; m.u.round_start.vault_opp = DW_HIDDEN_I8;
+    m.u.round_start.lock_mask = 0x0A; m.u.round_start.status_you = 3; m.u.round_start.status_opp = 4; roundtrip(&m);
+    n = dw_encode(&m, b, sizeof b); CHECK(n == 22 && b[0] == 20 && b[2] == DW_S_ROUND_START);
     m.type = DW_S_PLAY_ACK; m.u.ack.match_id = 1; m.u.ack.round = 2; roundtrip(&m);
     m.type = DW_S_PLAY_REJECT; m.u.reject.match_id = 1; m.u.reject.round = 2; m.u.reject.reason = 4; roundtrip(&m);
     m.type = DW_S_ROUND_RESULT; m.u.round_result.round = 8; m.u.round_result.card_you = -1; m.u.round_result.card_opp = 8;
-    m.u.round_result.dmg_you = 10; m.u.round_result.dmg_opp = 0; m.u.round_result.hull_you = -7; m.u.round_result.hull_opp = 20; roundtrip(&m);
+    m.u.round_result.dmg_you = 10; m.u.round_result.dmg_opp = 0; m.u.round_result.hull_you = -7; m.u.round_result.hull_opp = 20;
+    m.u.round_result.eff_you = 35; m.u.round_result.eff_opp = -1; m.u.round_result.armor_you = 12; m.u.round_result.armor_opp = 0;
+    m.u.round_result.vault_you = -6; m.u.round_result.vault_opp = 99; m.u.round_result.heal_you = 8; m.u.round_result.heal_opp = 2;
+    m.u.round_result.roll_you = 73; m.u.round_result.roll_opp = 99; m.u.round_result.flags_you = 0xFF; m.u.round_result.flags_opp = 0x81; roundtrip(&m);
+    n = dw_encode(&m, b, sizeof b); CHECK(n == 22 && b[0] == 20 && b[2] == DW_S_ROUND_RESULT);
     m.type = DW_S_MATCH_END; m.u.match_end.match_id = 77; m.u.match_end.result = 2; m.u.match_end.reason = 1; roundtrip(&m);
     m.type = DW_S_ERROR; m.u.error.code = 3; roundtrip(&m);
     m.type = 0x55; CHECK(dw_encode(&m, b, sizeof b) == -1);

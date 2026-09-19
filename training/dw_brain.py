@@ -115,7 +115,7 @@ def teacher(rs, kinds):
     out = []
     for s in range(4):
         a = rs["hand"][s]
-        if a < 0 or not R.is_legal_play(a, rs["energy_you"]): out.append(None); continue
+        if a < 0 or not R.is_legal_play(a, rs["energy_you"], rs.get("vault_you", R.START_VAULT)): out.append(None); continue
         v = p_pass * (R.damage_dealt(a, -1) - 0)
         for k in range(3):
             opp = k * 3 + tier

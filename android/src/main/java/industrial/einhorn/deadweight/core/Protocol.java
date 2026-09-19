@@ -2,11 +2,11 @@ package industrial.einhorn.deadweight.core;
 
 import java.nio.charset.StandardCharsets;
 
-/** Wire protocol v1 codec (docs/WIRE_PROTOCOL.md). Little-endian; frame = u16 len + u8 type + payload. */
+/** Wire protocol v2 codec (docs/WIRE_PROTOCOL.md). Little-endian; frame = u16 len + u8 type + payload. */
 public final class Protocol {
     private Protocol() {}
 
-    public static final int PROTO = 1;
+    public static final int PROTO = 2;
     public static final int MAX_FRAME = 1024; // only AUTH exceeds 256
 
     public static final int C_HELLO = 0x01, C_QUEUE = 0x02, C_PLAY = 0x03, C_LEAVE = 0x04, C_PING = 0x05, C_AUTH = 0x06;
@@ -17,6 +17,8 @@ public final class Protocol {
     public static final int MODE_CARD = 0;
     public static final int KIND_HUMAN = 0, KIND_BOT = 1;
     public static final int RESULT_LOSS = 0, RESULT_WIN = 1, RESULT_DRAW = 2;
+    public static final int HIDDEN_U8 = 255, HIDDEN_I8 = -128; // opponent meters hidden by Merkle Blindness
+    public static final int END_BANKRUPT = 4;
     public static final int MAX_TOKEN = 200; // inline HELLO token
     public static final int MAX_AUTH_TOKEN = 900;
 
@@ -103,12 +105,16 @@ public final class Protocol {
             case S_ROUND_START:
                 m.round = r.u8(); m.hullYou = r.i8(); m.hullOpp = r.i8(); m.energyYou = r.u8(); m.energyOpp = r.u8();
                 for (int i = 0; i < 4; i++) m.hand[i] = r.i8();
-                m.oppHandSize = r.u8(); m.deadlineMs = r.u16(); break;
+                m.oppHandSize = r.u8(); m.deadlineMs = r.u16();
+                m.armorYou = r.u8(); m.armorOpp = r.u8(); m.vaultYou = r.i8(); m.vaultOpp = r.i8();
+                m.lockMask = r.u8(); m.statusYou = r.u8(); m.statusOpp = r.u8(); break;
             case S_PLAY_ACK: m.matchId = r.u32(); m.round = r.u8(); break;
             case S_PLAY_REJECT: m.matchId = r.u32(); m.round = r.u8(); m.reason = r.u8(); break;
             case S_ROUND_RESULT:
                 m.round = r.u8(); m.cardYou = r.i8(); m.cardOpp = r.i8(); m.dmgYou = r.u8(); m.dmgOpp = r.u8();
-                m.hullYou = r.i8(); m.hullOpp = r.i8(); break;
+                m.hullYou = r.i8(); m.hullOpp = r.i8();
+                m.effYou = r.i8(); m.effOpp = r.i8(); m.armorYou = r.u8(); m.armorOpp = r.u8(); m.vaultYou = r.i8(); m.vaultOpp = r.i8();
+                m.healYou = r.u8(); m.healOpp = r.u8(); m.rollYou = r.u8(); m.rollOpp = r.u8(); m.flagsYou = r.u8(); m.flagsOpp = r.u8(); break;
             case S_MATCH_END: m.matchId = r.u32(); m.result = r.u8(); m.reason = r.u8(); break;
             case S_PONG: m.nonce = r.u32(); break;
             case S_ERROR: m.code = r.u8(); break;
@@ -128,16 +134,24 @@ public final class Protocol {
         System.arraycopy(nm, 0, f, 12, Math.min(nm.length, 15)); f[28] = (byte) oppKind; return f;
     }
     public static byte[] roundStart(int round, int hy, int ho, int ey, int eo, int[] hand, int oppHand, int deadline) {
-        byte[] f = frame(S_ROUND_START, 5 + 4 + 1 + 2);
+        return roundStart(round, hy, ho, ey, eo, hand, oppHand, deadline, 0, 0, 3, 3, 0, 0, 0);
+    }
+    public static byte[] roundStart(int round, int hy, int ho, int ey, int eo, int[] hand, int oppHand, int deadline,
+                                    int ay, int ao, int vy, int vo, int lockMask, int sy, int so) {
+        byte[] f = frame(S_ROUND_START, 5 + 4 + 1 + 2 + 7);
         f[3] = (byte) round; f[4] = (byte) hy; f[5] = (byte) ho; f[6] = (byte) ey; f[7] = (byte) eo;
         for (int i = 0; i < 4; i++) f[8 + i] = (byte) hand[i];
-        f[12] = (byte) oppHand; f[13] = (byte) deadline; f[14] = (byte) (deadline >> 8); return f;
+        f[12] = (byte) oppHand; f[13] = (byte) deadline; f[14] = (byte) (deadline >> 8);
+        f[15] = (byte) ay; f[16] = (byte) ao; f[17] = (byte) vy; f[18] = (byte) vo; f[19] = (byte) lockMask; f[20] = (byte) sy; f[21] = (byte) so;
+        return f;
     }
     public static byte[] playAck(long mid, int round) { byte[] f = frame(S_PLAY_ACK, 5); u32(f, 3, mid); f[7] = (byte) round; return f; }
     public static byte[] playReject(long mid, int round, int reason) { byte[] f = frame(S_PLAY_REJECT, 6); u32(f, 3, mid); f[7] = (byte) round; f[8] = (byte) reason; return f; }
     public static byte[] roundResult(int round, int cy, int co, int dy, int dop, int hy, int ho) {
-        byte[] f = frame(S_ROUND_RESULT, 7);
-        f[3] = (byte) round; f[4] = (byte) cy; f[5] = (byte) co; f[6] = (byte) dy; f[7] = (byte) dop; f[8] = (byte) hy; f[9] = (byte) ho; return f;
+        byte[] f = frame(S_ROUND_RESULT, 7 + 12);
+        f[3] = (byte) round; f[4] = (byte) cy; f[5] = (byte) co; f[6] = (byte) dy; f[7] = (byte) dop; f[8] = (byte) hy; f[9] = (byte) ho;
+        f[10] = (byte) cy; f[11] = (byte) co; f[14] = 3; f[15] = 3; // eff = played cards, credits unchanged; the rest zero
+        return f;
     }
     public static byte[] matchEnd(long mid, int result, int reason) { byte[] f = frame(S_MATCH_END, 6); u32(f, 3, mid); f[7] = (byte) result; f[8] = (byte) reason; return f; }
     public static byte[] error(int code) { byte[] f = frame(S_ERROR, 1); f[3] = (byte) code; return f; }

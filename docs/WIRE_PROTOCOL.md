@@ -1,8 +1,8 @@
-# DEADWEIGHT wire protocol v1 (TCP)
+# DEADWEIGHT wire protocol v2 (TCP)
 
 Little-endian. Frame = `u16 len` (bytes after this field) + `u8 type` + payload. Max `len` 1024 (only AUTH is ever larger than 256); longer =
 protocol violation, server closes. Strings are fixed 16-byte NUL-padded UTF-8 (`name16`).
-One TCP connection = one session. Server sends nothing before HELLO. `proto` = 1.
+One TCP connection = one session. Server sends nothing before HELLO. `proto` = 2 (v2 = the 73-card Guild ruleset, S503-16). A HELLO with any other `proto` gets `ERROR 1 (bad proto)` and a close, so a v1 client fails with a clear message instead of mis-rendering the new meters. v1 → v2 only *appends* fields to ROUND_START / ROUND_RESULT and adds bankruptcy as a match-end reason.
 
 ## Client → server
 
@@ -22,11 +22,11 @@ One TCP connection = one session. Server sends nothing before HELLO. `proto` = 1
 | 0x81 | WELCOME | `u32 session_id`, `u8 server_flags` (bit0 = fast_forward, bit1 = auth_required) |
 | 0x82 | QUEUED | `u16 waiting` |
 | 0x83 | MATCH_FOUND | `u32 match_id`, `u32 seed`, `u8 seat`, `name16 opp_name`, `u8 opp_kind` |
-| 0x84 | ROUND_START | `u8 round`, `i8 hull_you`, `i8 hull_opp`, `u8 energy_you`, `u8 energy_opp`, `i8 hand[4]` (−1 = empty), `u8 opp_hand_size`, `u16 deadline_ms` (0 in fast-forward) |
+| 0x84 | ROUND_START | `u8 round`, `i8 hull_you`, `i8 hull_opp`, `u8 energy_you`, `u8 energy_opp`, `i8 hand[4]` (−1 = empty), `u8 opp_hand_size`, `u16 deadline_ms` (0 in fast-forward), **v2:** `u8 armor_you`, `u8 armor_opp`, `i8 vault_you`, `i8 vault_opp` (credits), `u8 lock_mask` (your hand slots you cannot play this round), `u8 status_you`, `u8 status_opp` (bit0 burning, bit1 regenerating, bit2 hidden). While the opponent is hidden by Merkle Blindness, `energy_opp` and `armor_opp` are `255` and `vault_opp` is `-128`. |
 | 0x85 | PLAY_ACK | `u32 match_id`, `u8 round` |
 | 0x86 | PLAY_REJECT | `u32 match_id`, `u8 round`, `u8 reason` (1=illegal card, 2=bad slot, 3=wrong round, 4=already locked, 5=no match) |
-| 0x87 | ROUND_RESULT | `u8 round`, `i8 card_you`, `i8 card_opp` (−1 = pass), `u8 dmg_to_you`, `u8 dmg_to_opp`, `i8 hull_you`, `i8 hull_opp` |
-| 0x88 | MATCH_END | `u32 match_id`, `u8 result` (0=loss, 1=win, 2=draw), `u8 reason` (0=hull, 1=rounds, 2=forfeit, 3=server) |
+| 0x87 | ROUND_RESULT | `u8 round`, `i8 card_you`, `i8 card_opp` (declared card, −1 = pass), `u8 dmg_to_you`, `u8 dmg_to_opp` (total hull lost this round from every source), `i8 hull_you`, `i8 hull_opp`, **v2:** `i8 eff_you`, `i8 eff_opp` (the card that actually resolved — Dark Pool's result / a copied card; −1 = pass or cancelled), `u8 armor_you`, `u8 armor_opp`, `i8 vault_you`, `i8 vault_opp` (after the round; hidden sentinels as above), `u8 heal_you`, `u8 heal_opp`, `u8 roll_you`, `u8 roll_opp` (this round's 0–99 rolls), `u8 flags_you`, `u8 flags_opp` (bit0 cancelled, bit1 immune, bit2 lifeline saved, bit3 locked opp slots, bit4 hands swapped, bit5 made opp discard, bit6 redrew hand, bit7 copied) |
+| 0x88 | MATCH_END | `u32 match_id`, `u8 result` (0=loss, 1=win, 2=draw), `u8 reason` (0=hull, 1=rounds, 2=forfeit, 3=server, **4=bankrupt**) |
 | 0x89 | PONG | `u32 nonce` |
 | 0x8F | ERROR | `u8 code` (1=bad proto, 2=auth, 3=bad frame, 4=bad state), then connection closes |
 
@@ -39,10 +39,10 @@ hand contents are never sent.
 
 ## Determinism / training
 
-`seed` (from MATCH_FOUND) fully determines both players' shuffles, so a match is replayable from
+`seed` (from MATCH_FOUND) fully determines both players' shuffles, every per-round roll and every random target (locks, discards), so a match is replayable from
 `(seed, sequence of both players' PLAY slots)`. The training env speaks this protocol as a normal client
 (`kind=1`); observation = the fields of ROUND_START/ROUND_RESULT history, action = PLAY slot, mask = legal
-slots (`is-legal-play` over the hand) + pass.
+slots (`is-legal-play(card, energy, credits)` over the hand, minus `lock_mask`) + pass.
 
 ## Server matchmaking rule
 

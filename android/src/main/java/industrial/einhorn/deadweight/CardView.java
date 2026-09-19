@@ -28,7 +28,7 @@ final class CardView extends View {
     }
     private final Paint artPaint = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.FILTER_BITMAP_FLAG);
     int cardId = -1;
-    boolean enabled = true, selected = false;
+    boolean enabled = true, selected = false, slotLocked = false;
 
     CardView(Context c) { super(c); }
 
@@ -46,7 +46,25 @@ final class CardView extends View {
         }
     }
 
-    void set(int id, boolean enabled, boolean selected) { cardId = id; this.enabled = enabled; this.selected = selected; invalidate(); }
+    void set(int id, boolean enabled, boolean selected, boolean slotLocked) {
+        cardId = id; this.enabled = enabled; this.selected = selected; this.slotLocked = slotLocked; invalidate();
+    }
+
+    /** Greedy word-wrap of `text` into at most maxLines lines of width maxW, drawn centred at x. */
+    private void wrap(Canvas cv, String text, float x, float y, float maxW, int maxLines) {
+        String[] words = text.split(" ");
+        StringBuilder line = new StringBuilder();
+        int n = 0;
+        for (String w : words) {
+            String cand = line.length() == 0 ? w : line + " " + w;
+            if (p.measureText(cand) > maxW && line.length() > 0) {
+                cv.drawText(line.toString(), x, y + n * p.getTextSize() * 1.15f, p);
+                if (++n >= maxLines) return;
+                line = new StringBuilder(w);
+            } else line = new StringBuilder(cand);
+        }
+        if (line.length() > 0 && n < maxLines) cv.drawText(line.toString(), x, y + n * p.getTextSize() * 1.15f, p);
+    }
 
     @Override protected void onDraw(Canvas cv) {
         float w = getWidth(), h = getHeight(), pad = w * 0.05f;
@@ -64,11 +82,32 @@ final class CardView extends View {
         if (selected) { p.setStyle(Paint.Style.STROKE); p.setStrokeWidth(8); p.setColor(0xFFFFFFFF); cv.drawRoundRect(r, 18, 18, p); }
         p.setStyle(Paint.Style.FILL);
         p.setColor(0xFFFFFFFF); p.setTextAlign(Paint.Align.CENTER);
-        p.setTextSize(h * 0.36f); cv.drawText(String.valueOf(CardRules.cardPower(cardId)), w / 2, h * 0.58f, p);
-        p.setTextSize(h * 0.14f);
-        cv.drawText(industrial.einhorn.deadweight.core.MatchModel.kindName(cardId), w / 2, h * 0.86f, p);
+        if (cardId < 9) {
+            p.setTextSize(h * 0.36f); cv.drawText(String.valueOf(CardRules.cardPower(cardId)), w / 2, h * 0.58f, p);
+            p.setTextSize(h * 0.14f);
+            cv.drawText(CardText.name(cardId), w / 2, h * 0.86f, p);
+        } else {
+            // Guild card: name on top, power (if any) in the middle, rule text at the bottom
+            p.setTextSize(h * 0.085f); p.setFakeBoldText(true);
+            wrap(cv, CardText.name(cardId), w * 0.62f, h * 0.14f, w * 0.5f, 2);
+            p.setFakeBoldText(false);
+            int pw = CardRules.cardPower(cardId);
+            if (pw > 0) { p.setTextSize(h * 0.26f); cv.drawText(String.valueOf(pw), w / 2, h * 0.53f, p); }
+            p.setTextSize(h * 0.072f); p.setColor(0xFFEEEEEE);
+            wrap(cv, CardText.text(cardId), w / 2, h * 0.66f, w * 0.86f, 5);
+        }
         p.setColor(0xCC000000); cv.drawCircle(w * 0.2f, h * 0.17f, h * 0.11f, p);
-        p.setColor(0xFFFFD54F); p.setTextSize(h * 0.15f); cv.drawText(String.valueOf(CardRules.cardCost(cardId)), w * 0.2f, h * 0.22f, p);
-        if (face == null) for (int i = 0; i <= CardRules.cardTier(cardId); i++) cv.drawCircle(w * (0.62f + 0.12f * i), h * 0.17f, h * 0.04f, p);
+        p.setColor(0xFFFFD54F); p.setTextSize(h * 0.15f); p.setTextAlign(Paint.Align.CENTER);
+        cv.drawText(String.valueOf(CardRules.cardCost(cardId)), w * 0.2f, h * 0.22f, p);
+        int credit = CardRules.cardCredit(cardId);
+        if (credit > 0) {
+            p.setColor(0xCC000000); cv.drawCircle(w * 0.2f, h * 0.39f, h * 0.11f, p);
+            p.setColor(0xFF7CFC9A); p.setTextSize(h * 0.12f); cv.drawText("$" + credit, w * 0.2f, h * 0.435f, p);
+        }
+        if (cardId < 9 && face == null) for (int i = 0; i <= CardRules.cardTier(cardId); i++) cv.drawCircle(w * (0.62f + 0.12f * i), h * 0.17f, h * 0.04f, p);
+        if (slotLocked) {
+            p.setColor(0xB0000000); cv.drawRoundRect(r, 18, 18, p);
+            p.setColor(0xFFFF6E6E); p.setTextSize(h * 0.11f); p.setTextAlign(Paint.Align.CENTER); cv.drawText("LOCKED", w / 2, h * 0.5f, p);
+        }
     }
 }

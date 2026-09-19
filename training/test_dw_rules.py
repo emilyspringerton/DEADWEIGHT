@@ -2,7 +2,7 @@ import os, unittest
 import dw_rules as R
 
 VEC = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "tests", "parity_vectors.txt")
-B = {"kind_beats", "is_legal_play", "match_decided"}
+B = {"kind_beats", "is_legal_play", "match_decided", "bankrupt"}
 
 
 class Parity(unittest.TestCase):
@@ -16,10 +16,11 @@ class Parity(unittest.TestCase):
             if t[0] in B: got = int(got)
             self.assertEqual(got, int(want), line)
             n += 1
-        self.assertGreater(n, 1000)
+        self.assertGreater(n, 10000)
 
     def test_mask(self):
         self.assertEqual(R.legal_mask([2, 0, -1, 8], 2), [False, True, False, False, True])
+        self.assertEqual(R.legal_mask([30, 0, 51, 8], 4, 2, 0b0010), [True, False, False, True, True])   # Bribe needs 2 credits; slot 1 locked; Realm Warp needs 3
 
 
 if __name__ == "__main__":

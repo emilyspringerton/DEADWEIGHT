@@ -25,7 +25,7 @@ public final class CoreTest {
     static void codec() throws Exception {
         byte[] h = Protocol.hello(0, 1, "Ripper", new byte[]{1, 2, 3});
         eq("hello len field", (h[0] & 0xFF) | ((h[1] & 0xFF) << 8), h.length - 2);
-        eq("hello type", h[2], 1); eq("hello proto", h[3], 1); eq("hello kind", h[5], 1);
+        eq("hello type", h[2], 1); eq("hello proto", h[3], 2); eq("hello kind", h[5], 1);
         eq("hello name0", h[6], 'R'); eq("hello name NUL", h[21], 0); eq("hello token_len", h[22], 3); eq("hello tok", h[24], 2);
         byte[] p = Protocol.play(0x01020304L, 5, -1);
         eq("play type", p[2], 3); eq("play mid LE", p[3], 4); eq("play mid hi", p[6], 1); eq("play round", p[7], 5); eq("play slot", p[8], -1);

@@ -155,6 +155,9 @@ static void send_round_start(Match *mt) {
         m.u.round_start.energy_you = v.energy_you; m.u.round_start.energy_opp = v.energy_opp;
         memcpy(m.u.round_start.hand, v.hand, 4); m.u.round_start.opp_hand_size = v.opp_hand_size;
         m.u.round_start.deadline_ms = opt_ff ? 0 : (uint16_t)opt_round_ms;
+        m.u.round_start.armor_you = v.armor_you; m.u.round_start.armor_opp = v.armor_opp;
+        m.u.round_start.vault_you = v.vault_you; m.u.round_start.vault_opp = v.vault_opp;
+        m.u.round_start.lock_mask = v.lock_mask; m.u.round_start.status_you = v.status_you; m.u.round_start.status_opp = v.status_opp;
         send_msg(mt->conn[s], &m);
     }
     mt->deadline = opt_ff ? 0 : dw_now_ms() + (uint64_t)opt_round_ms;
@@ -206,6 +209,13 @@ static void resolve_round(int mi) {
         m.u.round_result.card_you = o.card[s]; m.u.round_result.card_opp = o.card[1 - s];
         m.u.round_result.dmg_you = o.dmg_to[s]; m.u.round_result.dmg_opp = o.dmg_to[1 - s];
         m.u.round_result.hull_you = mt->m.hull[s]; m.u.round_result.hull_opp = mt->m.hull[1 - s];
+        DwPostView pv; dw_match_post_view(&mt->m, s, &pv);
+        m.u.round_result.eff_you = o.eff[s]; m.u.round_result.eff_opp = o.eff[1 - s];
+        m.u.round_result.armor_you = pv.armor_you; m.u.round_result.armor_opp = pv.armor_opp;
+        m.u.round_result.vault_you = pv.vault_you; m.u.round_result.vault_opp = pv.vault_opp;
+        m.u.round_result.heal_you = o.heal[s]; m.u.round_result.heal_opp = o.heal[1 - s];
+        m.u.round_result.roll_you = o.roll[s]; m.u.round_result.roll_opp = o.roll[1 - s];
+        m.u.round_result.flags_you = o.flags[s]; m.u.round_result.flags_opp = o.flags[1 - s];
         send_msg(mt->conn[s], &m);
     }
     if (mt->m.done) { end_match(mi); return; }

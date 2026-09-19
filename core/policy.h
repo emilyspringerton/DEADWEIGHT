@@ -11,6 +11,7 @@ typedef struct DwPolicyCtx {
     uint32_t rng; int last_opp_card;                      /* last_opp_card: -1 = pass / none yet */
     /* observation state kept current by the client driver (only DW_POL_HYBRID reads it) */
     int hull_you, hull_opp, energy_opp, opp_hand_size;
+    int vault_you, lock_mask;                             /* your credits and hand slots locked this round (legality) */
     int opp_kinds[3];                                     /* opponent's last 3 played kinds, oldest first; 3 = none/pass */
     /* hybrid brain configuration (set once by the caller, survives dw_policy_reset) */
     DwDecideFn decide;                                    /* DW_POL_HYBRID entry point (dwb_choose); NULL elsewhere so non-bot binaries need no brain code */

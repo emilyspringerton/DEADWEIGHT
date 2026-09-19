@@ -1,11 +1,11 @@
-/* DEADWEIGHT wire protocol v1 codec (docs/WIRE_PROTOCOL.md). Little-endian, explicit byte ops (no struct
+/* DEADWEIGHT wire protocol v2 codec (docs/WIRE_PROTOCOL.md). Little-endian, explicit byte ops (no struct
  * punning, no alignment assumptions). Frame = u16 len (bytes after this field) + u8 type + payload. */
 #ifndef DW_PROTOCOL_H
 #define DW_PROTOCOL_H
 #include <stddef.h>
 #include <stdint.h>
 
-#define DW_PROTO_VERSION 1
+#define DW_PROTO_VERSION 2
 #define DW_MAX_FRAME_LEN 1024     /* max value of the u16 len field (only AUTH exceeds 256) */
 #define DW_MAX_AUTH_TOKEN 900     /* IDUNA ES256 JWTs are ~400-500 bytes: too big for HELLO's 200-byte token */
 #define DW_MAX_TOKEN 200
@@ -22,7 +22,10 @@ enum { DW_KIND_HUMAN = 0, DW_KIND_BOT = 1 };
 enum { DW_FLAG_FAST_FORWARD = 1, DW_FLAG_AUTH_REQUIRED = 2 };
 enum { DW_REJ_ILLEGAL_CARD = 1, DW_REJ_BAD_SLOT = 2, DW_REJ_WRONG_ROUND = 3, DW_REJ_ALREADY_LOCKED = 4, DW_REJ_NO_MATCH = 5 };
 enum { DW_RES_LOSS = 0, DW_RES_WIN = 1, DW_RES_DRAW = 2 };
-enum { DW_END_HULL = 0, DW_END_ROUNDS = 1, DW_END_FORFEIT = 2, DW_END_SERVER = 3 };
+enum { DW_END_HULL = 0, DW_END_ROUNDS = 1, DW_END_FORFEIT = 2, DW_END_SERVER = 3, DW_END_BANKRUPT = 4 };
+/* wire sentinels for the opponent's energy/armor (u8) and credits (i8) while Merkle Blindness hides them */
+#define DW_HIDDEN_U8 255
+#define DW_HIDDEN_I8 (-128)
 enum { DW_ERR_BAD_PROTO = 1, DW_ERR_AUTH = 2, DW_ERR_BAD_FRAME = 3, DW_ERR_BAD_STATE = 4 };
 
 typedef struct {
@@ -36,10 +39,13 @@ typedef struct {
         struct { uint16_t waiting; } queued;
         struct { uint32_t match_id, seed; uint8_t seat; char opp_name[DW_NAME_LEN + 1]; uint8_t opp_kind; } match_found;
         struct { uint8_t round; int8_t hull_you, hull_opp; uint8_t energy_you, energy_opp; int8_t hand[4];
-                 uint8_t opp_hand_size; uint16_t deadline_ms; } round_start;
+                 uint8_t opp_hand_size; uint16_t deadline_ms;
+                 uint8_t armor_you, armor_opp; int8_t vault_you, vault_opp; uint8_t lock_mask, status_you, status_opp; } round_start;
         struct { uint32_t match_id; uint8_t round; } ack;
         struct { uint32_t match_id; uint8_t round, reason; } reject;
-        struct { uint8_t round; int8_t card_you, card_opp; uint8_t dmg_you, dmg_opp; int8_t hull_you, hull_opp; } round_result;
+        struct { uint8_t round; int8_t card_you, card_opp; uint8_t dmg_you, dmg_opp; int8_t hull_you, hull_opp;
+                 int8_t eff_you, eff_opp; uint8_t armor_you, armor_opp; int8_t vault_you, vault_opp;
+                 uint8_t heal_you, heal_opp, roll_you, roll_opp, flags_you, flags_opp; } round_result;
         struct { uint32_t match_id; uint8_t result, reason; } match_end;
         struct { uint8_t code; } error;
     } u;

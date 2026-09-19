@@ -71,18 +71,19 @@ class FakeServer:
             rnd += 1
             energy = [R.round_start_energy(e) for e in energy]
             c.sendall(W.frame(W.S_ROUND_START, struct.pack("<BbbBB", rnd, hull[0], hull[1], energy[0], energy[1])
-                              + struct.pack("<4b", *hands[0]) + bytes([4]) + struct.pack("<H", 0)))
+                              + struct.pack("<4b", *hands[0]) + bytes([4]) + struct.pack("<H", 0)
+                              + bytes([0, 0]) + struct.pack("<bb", R.START_VAULT + rnd, R.START_VAULT + rnd) + bytes([0, 0, 0])))
             while True:
                 t, p = self._frame(c)
                 if t != W.C_PLAY: continue
                 m, r, slot = struct.unpack("<IBb", p[:6])
                 if r != rnd or m != mid: c.sendall(W.frame(W.S_PLAY_REJECT, struct.pack("<IBB", m, r, 3))); continue
-                if slot != -1 and not (0 <= slot < 4 and R.is_legal_play(hands[0][slot], energy[0])):
+                if slot != -1 and not (0 <= slot < 4 and R.is_legal_play(hands[0][slot], energy[0], R.START_VAULT + rnd)):
                     c.sendall(W.frame(W.S_PLAY_REJECT, struct.pack("<IBB", m, r, 1 if 0 <= slot < 4 else 2))); continue
                 break
             c.sendall(W.frame(W.S_PLAY_ACK, struct.pack("<IB", mid, rnd)))
             cards = [hands[0][slot] if slot >= 0 else -1, -1]
-            legal1 = [i for i, cc in enumerate(hands[1]) if R.is_legal_play(cc, energy[1])]
+            legal1 = [i for i, cc in enumerate(hands[1]) if R.is_legal_play(cc, energy[1], R.START_VAULT + rnd)]
             s1 = rng.choice(legal1 + [-1]); cards[1] = hands[1][s1] if s1 >= 0 else -1
             slots = [slot, s1]
             dmg = [R.damage_dealt(cards[0], cards[1]), R.damage_dealt(cards[1], cards[0])]  # dmg[s] dealt BY seat s
@@ -92,7 +93,9 @@ class FakeServer:
                 if slots[s] >= 0:
                     if not piles[s]: piles[s] = rng.sample(range(9), 9)
                     hands[s][slots[s]] = piles[s].pop()
-            c.sendall(W.frame(W.S_ROUND_RESULT, struct.pack("<BbbBBbb", rnd, cards[0], cards[1], dmg[1], dmg[0], hull[0], hull[1])))
+            c.sendall(W.frame(W.S_ROUND_RESULT, struct.pack("<BbbBBbb", rnd, cards[0], cards[1], dmg[1], dmg[0], hull[0], hull[1])
+                              + struct.pack("<bb", cards[0], cards[1]) + bytes([0, 0]) + struct.pack("<bb", R.START_VAULT + rnd, R.START_VAULT + rnd)
+                              + bytes([0, 0, 0, 0, 0, 0])))
             if R.match_decided(*hull): reason = 0; break
         res = 2 if hull[0] == hull[1] else (1 if hull[0] > hull[1] else 0)
         self.results.append(res)

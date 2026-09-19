@@ -6,6 +6,8 @@ public final class Msg {
     public long sessionId, matchId, seed, nonce;
     public int flags, waiting, seat, oppKind, round, hullYou, hullOpp, energyYou, energyOpp, oppHandSize,
         deadlineMs, reason, cardYou, cardOpp, dmgYou, dmgOpp, result, code;
+    public int armorYou, armorOpp, vaultYou, vaultOpp, lockMask, statusYou, statusOpp;
+    public int effYou, effOpp, healYou, healOpp, rollYou, rollOpp, flagsYou, flagsOpp;
     public int[] hand = new int[4];
     public String oppName = "";
 

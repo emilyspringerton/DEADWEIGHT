@@ -65,7 +65,7 @@ fi
 if [[ "$ARGS" == *" --gui "* ]]; then
   echo "== GUI: dw_gui (SDL2) + headless selftest =="
   command -v pkg-config >/dev/null && pkg-config --exists sdl2 || { echo "--gui requires libsdl2-dev (pkg-config sdl2)"; exit 1; }
-  GUI_SRC="apps/gui/main.c core/client.c core/policy.c core/protocol.c core/card_rules.c core/iduna.c core/http.c"
+  GUI_SRC="apps/gui/main.c core/client.c core/policy.c core/protocol.c core/card_rules.c core/card_text.c core/iduna.c core/http.c"
   gcc $CFLAGS_BASE -O2 $(pkg-config --cflags sdl2) $GUI_SRC $(pkg-config --libs sdl2) -o build/dw_gui
   ./build/dw_gui --version
   tests/test_gui_selftest.sh
