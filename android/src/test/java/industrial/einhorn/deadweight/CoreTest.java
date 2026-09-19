@@ -44,6 +44,30 @@ public final class CoreTest {
         eq("reject reason", Protocol.decode(body(Protocol.playReject(1, 1, 4))).reason, 4);
     }
 
+    static void draftCodec() throws Exception {
+        byte[] q = Protocol.queue(true);
+        eq("queue same_deck len", (q[0] & 0xFF) | ((q[1] & 0xFF) << 8), 2); eq("queue same_deck type", q[2], 2); eq("queue same_deck byte", q[3], 1);
+        eq("queue redraft is the empty frame", Protocol.queue(false).length, 3);
+        byte[] p = Protocol.draftPick(1, 3);
+        eq("pick type", p[2], 7); eq("pick index", p[3], 1); eq("pick mult", p[4], 3); eq("pick len", p.length, 5);
+        eq("hello draft mode", Protocol.hello(Protocol.MODE_DRAFT, 0, "x", null)[4], 2);
+        Msg m = Protocol.decode(body(Protocol.draftOffer(7, 12, 70, 4, 2, 1)));
+        eq("offer pickNo", m.pickNo, 7); eq("offer total", m.pickTotal, 16); eq("offer c0", m.offer[0], 12); eq("offer c1", m.offer[1], 70);
+        eq("offer left0", m.left[0], 4); eq("offer left1", m.left[1], 2); eq("offer left2", m.left[2], 1);
+        int[] cards = new int[Protocol.DRAFT_DECK]; for (int i = 0; i < cards.length; i++) cards[i] = i * 3;
+        m = Protocol.decode(body(Protocol.draftDone(0xABCDEF01L, cards)));
+        eq("done deckId", m.deckId & 0xFFFFFFFFL, 0xABCDEF01L); eq("done c0", m.deck[0], 0); eq("done c22", m.deck[22], 66);
+        expectProto("truncated offer", new byte[]{(byte) 0x8A, 1, 2});
+        DraftModel d = new DraftModel();
+        Msg o = Protocol.decode(body(Protocol.draftOffer(0, 5, 6, 10, 5, 1)));
+        d.onOffer(o); yes("can pick 1x", d.canPick(1)); yes("can pick 3x", d.canPick(3)); yes("cannot pick 4x", !d.canPick(4));
+        d.notePick(1, 3); d.onOffer(Protocol.decode(body(Protocol.draftOffer(1, 8, 9, 10, 5, 0))));
+        eq("pick recorded once accepted", d.picks().size(), 1); eq("recorded card", d.picks().get(0).card, 6); eq("recorded mult", d.picks().get(0).mult, 3);
+        yes("3x bucket now full", !d.canPick(3));
+        d.onOffer(Protocol.decode(body(Protocol.draftOffer(1, 8, 9, 10, 5, 0)))); // the server re-showed the offer (invalid pick): nothing new recorded
+        eq("no phantom pick", d.picks().size(), 1);
+    }
+
     static void expectProto(String what, byte[] payload) {
         checks++;
         try { Protocol.decode(payload); fails++; System.out.println("FAIL " + what + ": no ProtocolException"); }
@@ -250,7 +274,7 @@ public final class CoreTest {
     }
 
     public static void main(String[] a) throws Exception {
-        codec(); malformed(); legality(); guestAuth(); authFrame(); sendsOffCallerThread(); fullMatch(0); fullMatch(480);
+        codec(); draftCodec(); malformed(); legality(); guestAuth(); authFrame(); sendsOffCallerThread(); fullMatch(0); fullMatch(480);
         System.out.println("CoreTest: " + checks + " checks, " + fails + " failures");
         System.exit(fails == 0 ? 0 : 1);
     }

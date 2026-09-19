@@ -11,7 +11,7 @@ and generally-excellent "staples" are all intended (learning which cards only *l
 
 - 2 players (seats 0/1). Each starts **hull 20**, **energy 2**, **credits 3**, **armor 0**.
 - Catalog of **73 cards** (ids 0–72): the 9 original triangle cards + 64 Guild cards. **Interim deck rule:** each player
-  shuffles the whole 73-card catalog (per-player shuffle from the match seed). Deckbuilding is next (see "Draft" below).
+  shuffles the whole 73-card catalog (per-player shuffle from the match seed). Draft mode (its own queue) builds a 23-card deck first (see "Queues and Draft mode" below).
 - Each player holds a **hand of 4**. Hands are hidden: a client sees its own hand and only the opponent's hand *size*.
 - **Rounds 1..100.** Round start: +2 energy (cap 6), **+1 credit** (the Guild stipend), pending next-round energy deltas,
   a per-seat 0–99 **roll** (drives coin flips and Dark Pool), and any hand-slot **locks** placed by the opponent last round.
@@ -141,13 +141,27 @@ Underwrite, Glass Cannon, Pump & Dump and Yolo Roll only *look* good.
 | 71 | Chronobreak | Shield | 4 | - | 0 | Restore hull to last round's start. |
 | 72 | Hush Money | Shield | 2 | - | 1 | +2 credits. Opp loses 2. |
 
-## Draft (next feature — founder design, 2026-09-19, NOT in this ship)
+## Queues and Draft mode (shipped 2026-09-19)
 
-At matchmaking, each player first drafts a deck. Each pick presents **2 cards from the catalog**; the player picks a card
-*and* a multiplicity 1, 2 or 3, from three state-machine buckets: **ten 1-ofs, five 2-ofs, one 3-of** (16 picks → a
-**23-card deck**). A bucket greys out once full, so only legal decks can be built. After a game a human may re-queue
-with the same deck or redraft; **bots always redraft** (for PFSP training each generation drafts its own deck and plays
-it). Until this lands, decks are the whole shuffled catalog.
+There are separate queues (HELLO `mode`): **random** (mode 0, the original: each player's deck is the whole shuffled 73-card
+catalog) and **draft** (mode 2). Constructed (bring your own deck) is a later mode; random may go away when it lands.
+A player only ever meets someone in the same queue, so every queue needs its own bot pool of 3.
+
+In draft mode each player first drafts a deck (`core/draft.[ch]`, host-owned, not PARENA). Each of 16 picks offers **2 cards
+from the catalog** (a card already taken is never offered again); the drafter takes one card *and* a copy count from three
+buckets: **ten 1-ofs, five 2-ofs, one 3-of** = **a 23-card deck**. A bucket greys out once full, so only legal decks can be
+built. Offers are a deterministic function of the seed. The match then plays with each seat's own deck (`dw_match_init_decks`;
+the draw pile is the deck, the discard is reshuffled into it as before).
+
+After a match a human chooses **same deck** or **redraft** (`QUEUE same_deck`). Bots decide the same way by result: **a bot keeps
+its deck after a win or draw and redrafts after a loss** (so a winning bot deck is something to counter with a new deck). The
+bot drafting policy is deliberately simple (higher power-for-cost card of the offer, strong cards get the scarcer buckets); the
+play brain is unchanged.
+
+**Deck log.** The server appends every drafted deck to `decks.ndjson` (in `--match-log DIR`): a `draft` record (deck_id, time,
+player, kind, card ids and names) when the draft completes, and a `match` record (deck_id, match_id, player, win/loss/draw) per
+game played with it, so a deck's record can be looked up later (`jq -c 'select(.deck_id==42)' decks.ndjson`). `matches.ndjson`
+draft records carry `deck_ids` and both `decks`, so draft matches replay exactly (`build/replay_check`).
 
 ## PARENA rules module API (all `I32`/`Bool`, single-expression, dual-emitted C+Java)
 

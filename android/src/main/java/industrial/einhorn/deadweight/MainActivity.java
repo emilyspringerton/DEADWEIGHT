@@ -14,6 +14,7 @@ import android.widget.EditText;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.TextView;
+import industrial.einhorn.deadweight.core.DraftModel;
 import industrial.einhorn.deadweight.core.GuestAuth;
 import industrial.einhorn.deadweight.generated.CardRules;
 import industrial.einhorn.deadweight.core.MatchModel;
@@ -72,6 +73,8 @@ public final class MainActivity extends Activity implements Session.Listener {
         });
     }
     @Override public void onMatchEnd(MatchModel m) { ui(this::render); }
+    @Override public void onDraftOffer(DraftModel d) { ui(this::render); }
+    @Override public void onDraftDone(int deckId, int[] deck) { ui(this::render); }
     @Override public void onError(String msg) { ui(() -> { status = "Disconnected: " + msg; connecting = false; menuMode = true; session = null; render(); }); }
 
     /** "Dark Pool -> Naked Short" when a card resolved as something else; names only otherwise. */
@@ -112,6 +115,7 @@ public final class MainActivity extends Activity implements Session.Listener {
         if (menuMode || s == null || s.state() == Session.State.CLOSED) { menuMode = true; renderMenu(); return; }
         switch (s.state()) {
             case IN_MATCH: renderMatch(s, m); break;
+            case DRAFTING: renderDraft(s); break;
             case QUEUED: renderQueue(s); break;
             case READY: if (m != null && m.result >= 0) renderEnd(s, m); else renderLobby(s); break;
             default: text("Connecting…", 22, Color.WHITE); break;
@@ -125,10 +129,12 @@ public final class MainActivity extends Activity implements Session.Listener {
         return v;
     }
 
-    private Button button(String label, View.OnClickListener l, LinearLayout parent, float weight) {
+    private Button button(String label, View.OnClickListener l, LinearLayout parent, float weight) { return button(label, l, parent, weight, 150); }
+
+    private Button button(String label, View.OnClickListener l, LinearLayout parent, float weight, int heightPx) {
         Button b = new Button(this);
         b.setText(label); b.setTextSize(20); b.setOnClickListener(l);
-        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(weight > 0 ? 0 : -1, 150, weight);
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(weight > 0 ? 0 : -1, heightPx, weight);
         lp.setMargins(6, 6, 6, 6);
         (parent == null ? root : parent).addView(b, lp);
         return b;
@@ -156,22 +162,27 @@ public final class MainActivity extends Activity implements Session.Listener {
         EditText port = field("Server port", String.valueOf(prefs.getInt("port", Config.DEFAULT_PORT)), InputType.TYPE_CLASS_NUMBER);
         EditText iduna = field("IDUNA URL (blank = name only)", prefs.getString("iduna", Config.DEFAULT_IDUNA_URL), InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_URI);
         text(status, 15, 0xFFFFB74D);
-        Button go = button(connecting ? "Connecting…" : "PLAY VS BOT", v -> {
-            int p;
-            try { p = Integer.parseInt(port.getText().toString().trim()); } catch (NumberFormatException e) { p = -1; }
-            String n = name.getText().toString().trim();
-            if (n.isEmpty() || n.length() > 16) { status = "Name must be 1-16 characters"; render(); return; }
-            if (p < 1 || p > 65535) { status = "Bad port"; render(); return; }
-            prefs.edit().putString("name", n).putString("host", host.getText().toString().trim()).putInt("port", p)
-                .putString("iduna", iduna.getText().toString().trim()).apply();
-            connect(n, host.getText().toString().trim(), p, iduna.getText().toString().trim());
-        }, null, 0);
-        go.setEnabled(!connecting);
+        text("Random: the whole shuffled catalog.  Draft: pick 16 cards into a 23-card deck first.", 13, 0xFFAAAAAA);
+        Button playRandom = button(connecting ? "Connecting…" : "PLAY RANDOM", v -> startFromMenu(name, host, port, iduna, Protocol.MODE_CARD), null, 0);
+        Button playDraft = button(connecting ? "Connecting…" : "PLAY DRAFT", v -> startFromMenu(name, host, port, iduna, Protocol.MODE_DRAFT), null, 0);
+        playRandom.setEnabled(!connecting);
+        playDraft.setEnabled(!connecting);
         root = saved;
         root.addView(sv, new LinearLayout.LayoutParams(-1, -1));
     }
 
-    private void connect(String name, String host, int port, String idunaUrl) {
+    private void startFromMenu(EditText name, EditText host, EditText port, EditText iduna, int mode) {
+        int p;
+        try { p = Integer.parseInt(port.getText().toString().trim()); } catch (NumberFormatException e) { p = -1; }
+        String n = name.getText().toString().trim();
+        if (n.isEmpty() || n.length() > 16) { status = "Name must be 1-16 characters"; render(); return; }
+        if (p < 1 || p > 65535) { status = "Bad port"; render(); return; }
+        prefs.edit().putString("name", n).putString("host", host.getText().toString().trim()).putInt("port", p)
+            .putString("iduna", iduna.getText().toString().trim()).apply();
+        connect(n, host.getText().toString().trim(), p, iduna.getText().toString().trim(), mode);
+    }
+
+    private void connect(String name, String host, int port, String idunaUrl, int mode) {
         connecting = true; status = idunaUrl.isEmpty() ? "" : "Signing in…"; render();
         final String fn = name;
         new Thread(() -> {
@@ -187,7 +198,7 @@ public final class MainActivity extends Activity implements Session.Listener {
                     token = r.token.getBytes(StandardCharsets.UTF_8);
                     shown = r.displayName;
                 }
-                Session ns = new Session(new SocketTransport(host, port, 5000), this, Protocol.MODE_CARD, Protocol.KIND_HUMAN, shown, token);
+                Session ns = new Session(new SocketTransport(host, port, 5000), this, mode, Protocol.KIND_HUMAN, shown, token);
                 ns.setAutoQueue(true);
                 ui(() -> { session = ns; connecting = false; status = ""; menuMode = false; ns.start(); render(); });
             } catch (Exception e) {
@@ -206,6 +217,7 @@ public final class MainActivity extends Activity implements Session.Listener {
     }
 
     private void renderQueue(Session s) {
+        if (s.isDraft() && s.deck() != null) text("Deck " + s.deckId() + " locked in (" + s.deck().length + " cards).", 16, 0xFF9AD0FF);
         text("Searching for an opponent…", 24, Color.WHITE);
         text("A bot will take the seat if no human is waiting.", 14, 0xFFAAAAAA);
         button("Cancel", v -> { s.leave(); }, null, 0);
@@ -218,8 +230,45 @@ public final class MainActivity extends Activity implements Session.Listener {
         int col = m.result == Protocol.RESULT_WIN ? 0xFF43A967 : m.result == Protocol.RESULT_LOSS ? 0xFFD9534F : 0xFFFFD54F;
         text(res, 40, col).setGravity(Gravity.CENTER);
         text("vs " + m.oppName + "  |  " + m.hullYou + " - " + m.hullOpp + "  |  " + REASONS[Math.max(0, Math.min(4, m.endReason))], 16, 0xFFCCCCCC).setGravity(Gravity.CENTER);
-        button("PLAY AGAIN", v -> { s.queue(); }, null, 0);
+        if (s.isDraft()) {
+            button("SAME DECK", v -> s.queue(true), null, 0);
+            button("REDRAFT", v -> s.queue(false), null, 0);
+        } else button("PLAY AGAIN", v -> { s.queue(); }, null, 0);
         button("Menu", v -> disconnect(), null, 0);
+    }
+
+    private void renderDraft(Session s) {
+        DraftModel d = s.draft();
+        text("DRAFT  pick " + Math.min(d.pickNo + 1, d.total) + " / " + d.total, 26, Color.WHITE).setGravity(Gravity.CENTER);
+        text("Copies left:   1x " + d.left[0] + "     2x " + d.left[1] + "     3x " + d.left[2], 16, 0xFFAAAAAA).setGravity(Gravity.CENTER);
+        LinearLayout row = new LinearLayout(this);
+        row.setWeightSum(2);
+        root.addView(row, new LinearLayout.LayoutParams(-1, 0, 1));
+        for (int c = 0; c < 2; c++) {
+            final int idx = c;
+            LinearLayout col = new LinearLayout(this);
+            col.setOrientation(LinearLayout.VERTICAL);
+            row.addView(col, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, 1));
+            CardView cv = new CardView(this);
+            cv.set(d.offer[c], true, false, false);
+            col.addView(cv, new LinearLayout.LayoutParams(-1, 0, 1));
+            LinearLayout mults = new LinearLayout(this);
+            col.addView(mults, new LinearLayout.LayoutParams(-1, -2));
+            for (int m = 1; m <= 3; m++) {
+                final int mult = m;
+                Button b = button(m + "x", v -> s.pick(idx, mult), mults, 1, 130);
+                b.setEnabled(d.canPick(m));
+            }
+        }
+        StringBuilder sb = new StringBuilder();
+        for (DraftModel.Pick p : d.picks()) sb.append(p.mult).append("x ").append(CardText.name(p.card)).append('\n');
+        ScrollView sv = new ScrollView(this);
+        TextView deckText = new TextView(this);
+        deckText.setText("Your deck so far (" + d.picks().size() + "/" + d.total + ")\n" + sb);
+        deckText.setTextSize(15); deckText.setTextColor(0xFFCCCCCC);
+        sv.addView(deckText);
+        root.addView(sv, new LinearLayout.LayoutParams(-1, 240));
+        button("Leave", v -> { s.leave(); disconnect(); }, null, 0, 110);
     }
 
     private void renderMatch(Session s, MatchModel m) {

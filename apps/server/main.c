@@ -4,6 +4,7 @@
 #include <signal.h>
 #include <stdarg.h>
 #include <stdlib.h>
+#include <time.h>
 #include "card_rules.h"
 #include "card_text.h"
 #include "draft.h"

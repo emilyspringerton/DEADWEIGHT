@@ -57,11 +57,64 @@ public final class IntegrationTest {
                 fails++; System.out.println("FAIL ok=" + ok + " err=" + err[0] + " result=" + result.get() + " rounds=" + rounds.get());
             } else System.out.println("IntegrationTest: match complete, " + rounds.get() + " rounds, result " + result.get());
             s.close();
+            fails += draftLeg(a, port);
         } finally {
             if (bot != null) { bot.destroy(); bot.waitFor(2, TimeUnit.SECONDS); }
             server.destroy(); server.waitFor(2, TimeUnit.SECONDS);
         }
         System.out.println("IntegrationTest: " + fails + " failures");
         System.exit(fails == 0 ? 0 : 1);
+    }
+
+    /** Draft leg: a real drafting Session (16 picks through Session.pick) against a real draft-queue dw_bot, then a same-deck replay. */
+    static int draftLeg(String[] a, int port) throws Exception {
+        Process bot = new ProcessBuilder(a[1], "--archetype", "wall", "--mode", "draft", "--name", "itbot-d", "--port", String.valueOf(port))
+            .redirectErrorStream(true).redirectOutput(ProcessBuilder.Redirect.DISCARD).start();
+        int fails = 0;
+        try {
+            CountDownLatch ended = new CountDownLatch(2);
+            AtomicInteger picks = new AtomicInteger(), matches = new AtomicInteger(), doneCards = new AtomicInteger(-1);
+            String[] err = {null};
+            final Session[] h = new Session[1];
+            final int[] firstDeck = {0};
+            Session s = new Session(new SocketTransport("127.0.0.1", port, 3000), new Session.Listener() {
+                public void onState(Session.State st) { }
+                public void onQueued(int w) { }
+                public void onMatchFound(MatchModel m) { }
+                public void onRoundStart(MatchModel m) {
+                    int slot = -1;
+                    for (int i = 0; i < 4; i++) if (m.canPlaySlot(i)) { slot = i; break; }
+                    h[0].play(slot);
+                }
+                public void onPlayAck(MatchModel m) { }
+                public void onPlayReject(MatchModel m, int r) { err[0] = "reject " + r; }
+                public void onRoundResult(MatchModel m, MatchModel.RoundLog r) { }
+                public void onDraftOffer(DraftModel d) {
+                    int m = 1; while (m < 3 && !d.canPick(m)) m++;
+                    if (h[0].pick(0, m)) picks.incrementAndGet();
+                }
+                public void onDraftDone(int id, int[] deck) { doneCards.set(deck.length); firstDeck[0] = deck[0]; }
+                public void onMatchEnd(MatchModel m) {
+                    matches.incrementAndGet(); ended.countDown();
+                    if (matches.get() == 1) new Thread(() -> h[0].queue(true), "requeue").start(); // replay the same deck
+                }
+                public void onError(String msg) { err[0] = msg; ended.countDown(); ended.countDown(); }
+            }, Protocol.MODE_DRAFT, Protocol.KIND_HUMAN, "itDraft", new byte[0]);
+            h[0] = s;
+            s.setAutoQueue(true);
+            s.start();
+            boolean ok = ended.await(30, TimeUnit.SECONDS);
+            int[] deck = s.deck();
+            if (!ok || err[0] != null || picks.get() != Protocol.DRAFT_PICKS || doneCards.get() != Protocol.DRAFT_DECK || deck == null || deck.length != Protocol.DRAFT_DECK
+                || s.draft().picks().size() != Protocol.DRAFT_PICKS || matches.get() != 2) {
+                fails++; System.out.println("FAIL draft ok=" + ok + " err=" + err[0] + " picks=" + picks.get() + " done=" + doneCards.get() + " matches=" + matches.get());
+            } else {
+                int total = 0; for (DraftModel.Pick p : s.draft().picks()) total += p.mult;
+                if (total != Protocol.DRAFT_DECK) { fails++; System.out.println("FAIL draft picks sum to " + total); }
+                else System.out.println("IntegrationTest: draft complete, 16 picks -> 23-card deck, 2 matches (second on the same deck)");
+            }
+            s.close();
+        } finally { bot.destroy(); bot.waitFor(2, TimeUnit.SECONDS); }
+        return fails;
     }
 }

@@ -9,12 +9,14 @@ public final class Protocol {
     public static final int PROTO = 2;
     public static final int MAX_FRAME = 1024; // only AUTH exceeds 256
 
-    public static final int C_HELLO = 0x01, C_QUEUE = 0x02, C_PLAY = 0x03, C_LEAVE = 0x04, C_PING = 0x05, C_AUTH = 0x06;
+    public static final int C_HELLO = 0x01, C_QUEUE = 0x02, C_PLAY = 0x03, C_LEAVE = 0x04, C_PING = 0x05, C_AUTH = 0x06, C_DRAFT_PICK = 0x07;
     public static final int S_WELCOME = 0x81, S_QUEUED = 0x82, S_MATCH_FOUND = 0x83, S_ROUND_START = 0x84,
         S_PLAY_ACK = 0x85, S_PLAY_REJECT = 0x86, S_ROUND_RESULT = 0x87, S_MATCH_END = 0x88, S_PONG = 0x89,
-        S_ERROR = 0x8F;
+        S_DRAFT_OFFER = 0x8A, S_DRAFT_DONE = 0x8B, S_ERROR = 0x8F;
 
-    public static final int MODE_CARD = 0;
+    /** MODE_CARD is the "random" queue; MODE_DRAFT drafts a 23-card deck first and has its own queue. */
+    public static final int MODE_CARD = 0, MODE_DRAFT = 2;
+    public static final int DRAFT_PICKS = 16, DRAFT_DECK = 23;
     public static final int KIND_HUMAN = 0, KIND_BOT = 1;
     public static final int RESULT_LOSS = 0, RESULT_WIN = 1, RESULT_DRAW = 2;
     public static final int HIDDEN_U8 = 255, HIDDEN_I8 = -128; // opponent meters hidden by Merkle Blindness
@@ -58,6 +60,17 @@ public final class Protocol {
     }
 
     public static byte[] queue() { return frame(C_QUEUE, 0); }
+
+    /** Draft mode: sameDeck = replay the last drafted deck, otherwise (re)draft. Random mode ignores the byte. */
+    public static byte[] queue(boolean sameDeck) {
+        if (!sameDeck) return queue();
+        byte[] f = frame(C_QUEUE, 1); f[3] = 1; return f;
+    }
+
+    /** Take offer card `index` (0/1) with `mult` copies (1..3). */
+    public static byte[] draftPick(int index, int mult) {
+        byte[] f = frame(C_DRAFT_PICK, 2); f[3] = (byte) index; f[4] = (byte) mult; return f;
+    }
     public static byte[] leave() { return frame(C_LEAVE, 0); }
 
     public static byte[] play(long matchId, int round, int slot) {
@@ -117,6 +130,14 @@ public final class Protocol {
                 m.healYou = r.u8(); m.healOpp = r.u8(); m.rollYou = r.u8(); m.rollOpp = r.u8(); m.flagsYou = r.u8(); m.flagsOpp = r.u8(); break;
             case S_MATCH_END: m.matchId = r.u32(); m.result = r.u8(); m.reason = r.u8(); break;
             case S_PONG: m.nonce = r.u32(); break;
+            case S_DRAFT_OFFER:
+                m.pickNo = r.u8(); m.pickTotal = r.u8(); m.offer[0] = r.i8(); m.offer[1] = r.i8();
+                for (int i = 0; i < 3; i++) m.left[i] = r.u8();
+                break;
+            case S_DRAFT_DONE:
+                m.deckId = (int) r.u32();
+                for (int i = 0; i < DRAFT_DECK; i++) m.deck[i] = r.i8();
+                break;
             case S_ERROR: m.code = r.u8(); break;
             default: throw new ProtocolException("unknown message type 0x" + Integer.toHexString(m.type));
         }
@@ -154,5 +175,15 @@ public final class Protocol {
         return f;
     }
     public static byte[] matchEnd(long mid, int result, int reason) { byte[] f = frame(S_MATCH_END, 6); u32(f, 3, mid); f[7] = (byte) result; f[8] = (byte) reason; return f; }
+    public static byte[] draftOffer(int pickNo, int c0, int c1, int l1, int l2, int l3) {
+        byte[] f = frame(S_DRAFT_OFFER, 7);
+        f[3] = (byte) pickNo; f[4] = DRAFT_PICKS; f[5] = (byte) c0; f[6] = (byte) c1; f[7] = (byte) l1; f[8] = (byte) l2; f[9] = (byte) l3;
+        return f;
+    }
+    public static byte[] draftDone(long deckId, int[] cards) {
+        byte[] f = frame(S_DRAFT_DONE, 4 + DRAFT_DECK); u32(f, 3, deckId);
+        for (int i = 0; i < DRAFT_DECK; i++) f[7 + i] = (byte) cards[i];
+        return f;
+    }
     public static byte[] error(int code) { byte[] f = frame(S_ERROR, 1); f[3] = (byte) code; return f; }
 }

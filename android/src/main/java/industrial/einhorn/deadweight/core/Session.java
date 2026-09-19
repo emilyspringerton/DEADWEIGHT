@@ -10,7 +10,7 @@ import java.util.concurrent.Executors;
  * (queue/play/leave) may come from any thread.
  */
 public final class Session {
-    public enum State { IDLE, CONNECTING, READY, QUEUED, IN_MATCH, CLOSED }
+    public enum State { IDLE, CONNECTING, READY, DRAFTING, QUEUED, IN_MATCH, CLOSED }
 
     public interface Listener {
         void onState(State s);
@@ -21,6 +21,10 @@ public final class Session {
         void onPlayReject(MatchModel m, int reason);
         void onRoundResult(MatchModel m, MatchModel.RoundLog r);
         void onMatchEnd(MatchModel m);
+        /** Draft mode: a new pick is on offer (the model is live; read it on the UI thread). */
+        default void onDraftOffer(DraftModel d) { }
+        /** Draft mode: all picks made; the deck (23 card ids) is locked and the server queues us next. */
+        default void onDraftDone(int deckId, int[] deck) { }
         /** Terminal: connection lost or protocol/server error. State is CLOSED afterwards. */
         void onError(String message);
     }
@@ -32,6 +36,9 @@ public final class Session {
     private final byte[] token;
     private volatile State state = State.IDLE;
     private volatile MatchModel match;
+    private volatile DraftModel draft = new DraftModel();
+    private volatile int[] deck;
+    private volatile int deckId;
     private Thread reader;
     private volatile boolean autoQueue;
     // Android throws NetworkOnMainThreadException on socket writes from the UI thread, so every outbound frame goes
@@ -49,6 +56,11 @@ public final class Session {
 
     public State state() { return state; }
     public MatchModel match() { return match; }
+    public DraftModel draft() { return draft; }
+    /** The last drafted deck (23 card ids), or null before the first draft completes. */
+    public int[] deck() { return deck == null ? null : deck.clone(); }
+    public int deckId() { return deckId; }
+    public boolean isDraft() { return mode == Protocol.MODE_DRAFT; }
 
     private void set(State s) { state = s; listener.onState(s); }
 
@@ -84,6 +96,8 @@ public final class Session {
         switch (m.type) {
             case Protocol.S_WELCOME: set(State.READY); if (autoQueue) { autoQueue = false; queue(); } break;
             case Protocol.S_QUEUED: set(State.QUEUED); listener.onQueued(m.waiting); break;
+            case Protocol.S_DRAFT_OFFER: draft.onOffer(m); set(State.DRAFTING); listener.onDraftOffer(draft); break;
+            case Protocol.S_DRAFT_DONE: draft.onDone(); deck = m.deck.clone(); deckId = m.deckId; listener.onDraftDone(deckId, deck.clone()); break;
             case Protocol.S_MATCH_FOUND: {
                 MatchModel mm = new MatchModel(); mm.onMatchFound(m); match = mm;
                 set(State.IN_MATCH); listener.onMatchFound(mm); break;
@@ -125,6 +139,18 @@ public final class Session {
 
     public void queue() { if (state == State.READY) send(Protocol.queue()); }
 
+    /** Draft mode: requeue after a match. sameDeck replays the last deck, otherwise redrafts. */
+    public void queue(boolean sameDeck) { if (state == State.READY) send(Protocol.queue(sameDeck && deck != null)); }
+
+    /** Draft mode: take offer card `index` (0/1) with `mult` copies. Ignored (false) if that bucket is full. */
+    public boolean pick(int index, int mult) {
+        DraftModel d = draft;
+        if (state != State.DRAFTING || index < 0 || index > 1 || !d.canPick(mult)) return false;
+        d.notePick(index, mult);
+        send(Protocol.draftPick(index, mult));
+        return true;
+    }
+
     /** Lock a play (slot 0-3, or -1 = pass). Ignored (returns false) if the local legality gate says no. */
     public boolean play(int slot) {
         MatchModel mm = match;
@@ -134,7 +160,7 @@ public final class Session {
         return true;
     }
 
-    public void leave() { if (state == State.QUEUED || state == State.IN_MATCH) send(Protocol.leave()); }
+    public void leave() { if (state == State.QUEUED || state == State.IN_MATCH || state == State.DRAFTING) send(Protocol.leave()); }
 
     public void close() {
         if (state == State.CLOSED) return;

@@ -10,6 +10,9 @@ public final class Msg {
     public int effYou, effOpp, healYou, healOpp, rollYou, rollOpp, flagsYou, flagsOpp;
     public int[] hand = new int[4];
     public String oppName = "";
+    // draft mode (S_DRAFT_OFFER / S_DRAFT_DONE)
+    public int pickNo, pickTotal, deckId;
+    public int[] offer = new int[2], left = new int[3], deck = new int[Protocol.DRAFT_DECK];
 
     @Override public String toString() { return "Msg{type=0x" + Integer.toHexString(type) + "}"; }
 }

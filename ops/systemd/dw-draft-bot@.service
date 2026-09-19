@@ -1,0 +1,22 @@
+# One standing DEADWEIGHT DRAFT-queue bot per instance: dw-draft-bot@ripper, @wall, @mirror (user unit template).
+# FILES ONLY -- not installed/enabled by this repo. Same brain as the random-queue bots (dw-bot@); the only difference is
+# --mode draft: the bot drafts a 23-card deck, keeps it after a win/draw and redrafts after a loss.
+# The server pairs a human in the draft queue with these bots only (random and draft are separate queues), so the draft
+# queue needs its own pool of 3, exactly like the random queue. Deck lists are logged to ${DW_MATCH_LOG_DIR}/decks.ndjson.
+[Unit]
+Description=DEADWEIGHT draft-queue bot %i (dw_bot --mode draft)
+After=network-online.target dw-server.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+EnvironmentFile=%h/.config/deadweight/dw.env
+ExecStartPre=/usr/bin/test -x %h/.local/opt/deadweight/bin/dw_bot
+ExecStart=%h/.local/opt/deadweight/bin/dw_bot --archetype %i --name bot-%i-d --mode draft --host ${DW_HOST} --port ${DW_PORT} --think-ms ${DW_BOT_THINK_MS} $DW_BOT_ARGS
+Restart=always
+RestartSec=3
+KillSignal=SIGTERM
+TimeoutStopSec=10
+
+[Install]
+WantedBy=default.target
