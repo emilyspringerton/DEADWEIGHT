@@ -1,6 +1,7 @@
 # CHANGELOG
 
 ## 2026-09-19
+- ops: deployed the retheme (server + bots, proto 3); archived pre-retheme deck/match logs; server continues deck ids across restarts (sess-20260918-1725-497f394f)
 - feat: Offense/Operations/Defense retheme -- 105 cards (35 per colour), Operations keywords Lock/Sabotage/Flank/Scan/Siphon, wire proto 3, legacy Burst/Tank/Shield terms removed; not deployed (sess-20260918-1725-497f394f)
 - feat: scripts/export_cards.sh + apps/tools/cards_json.c -- card catalog JSON for WOTAN's deck browser (sess-20260918-1725-497f394f)
 - feat(draft): draft mode -- separate queue, 16-pick 23-card deck, same-deck/redraft (bots keep winners), decks.ndjson log; server, bots, Windows GUI, Android; not deployed yet (sess-20260918-1725-497f394f)
