@@ -1,6 +1,7 @@
 # CHANGELOG
 
 ## 2026-09-19
+- feat(gui): round-resolution animations + synthesized audio in the SDL2 client (fx.c/sfx.c), --fx-demo, test_sfx, docs/ANIMATION_AND_AUDIO.md; Windows/Linux only (sess-20260918-1725-497f394f)
 - ops: deployed the retheme (server + bots, proto 3); archived pre-retheme deck/match logs; server continues deck ids across restarts (sess-20260918-1725-497f394f)
 - feat: Offense/Operations/Defense retheme -- 105 cards (35 per colour), Operations keywords Lock/Sabotage/Flank/Scan/Siphon, wire proto 3, legacy Burst/Tank/Shield terms removed; not deployed (sess-20260918-1725-497f394f)
 - feat: scripts/export_cards.sh + apps/tools/cards_json.c -- card catalog JSON for WOTAN's deck browser (sess-20260918-1725-497f394f)
