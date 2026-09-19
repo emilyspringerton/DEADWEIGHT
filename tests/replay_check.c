@@ -15,7 +15,7 @@ int main(int argc, char **argv) {
         unsigned seed; int r0, r1, reason;
         char *p = strstr(line, "\"seed\":"); if (!p) { bad++; continue; } seed = (unsigned)strtoul(p + 7, NULL, 10);
         p = strstr(line, "\"result\":["); if (!p) { bad++; continue; } if (sscanf(p, "\"result\":[%d,%d],\"reason\":%d", &r0, &r1, &reason) != 3) { bad++; continue; }
-        if (reason != DW_END_HULL && reason != DW_END_ROUNDS) { skipped++; continue; }
+        if (reason != DW_END_HULL && reason != DW_END_ROUNDS && reason != DW_END_BANKRUPT) { skipped++; continue; }
         p = strstr(line, "\"plays\":["); if (!p) { bad++; continue; } p += 9;
         DwMatch m; dw_match_init(&m, seed);
         while (*p == '[') {

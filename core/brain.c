@@ -63,11 +63,11 @@ int dwb_load_default(DwBrain *b) { return dwb_load_mem(b, dw_brain_default_blob,
 void dwb_free(DwBrain *b) { if (b->loaded) { arena_free_all(&b->arena); memset(b, 0, sizeof *b); } }
 
 /* Observation layout == training/dw_env.py build_observation():
- * [0..4] hull_you/20 hull_opp/20 energy_you/6 energy_opp/6 round/8; [5..44] 4 hand slots x 10 one-hot (bucket kind*3+tier, 9 = empty; Guild cards fold into their kind/cost-tier bucket);
+ * [0..4] hull_you/20 hull_opp/20 energy_you/6 energy_opp/6 min(round,8)/8; [5..44] 4 hand slots x 10 one-hot (bucket kind*3+tier, 9 = empty; Guild cards fold into their kind/cost-tier bucket);
  * [45] opp_hand_size/4; [46..57] opp's last 3 kinds (oldest first) x 4 one-hot (BURST, TANK, SHIELD, none/pass). */
 void dwb_build_obs(double o[DW_OBS_DIM], const DwPolicyCtx *c, const int8_t hand[4], int energy_you, int round) {
     memset(o, 0, sizeof(double) * DW_OBS_DIM);
-    o[0] = c->hull_you / 20.0; o[1] = c->hull_opp / 20.0; o[2] = energy_you / 6.0; o[3] = c->energy_opp / 6.0; o[4] = round / 8.0;
+    o[0] = c->hull_you / 20.0; o[1] = c->hull_opp / 20.0; o[2] = energy_you / 6.0; o[3] = c->energy_opp / 6.0; o[4] = (round > 8 ? 8 : round) / 8.0;   /* the distilled net was trained on 8-round matches: clamp */
     /* the distilled net only knows the 9 base cards: Guild cards are folded into their (kind, cost-tier) bucket */
     for (int s = 0; s < 4; s++) { int id = hand[s]; o[5 + s * 10 + (id >= 0 ? card_kind(id) * 3 + card_tier(id) : 9)] = 1.0; }
     o[45] = c->opp_hand_size / 4.0;

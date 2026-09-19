@@ -4,7 +4,7 @@ ROUND_START / ROUND_RESULT / MATCH_END) -- the packet-level design of BRAWLPIT's
 drop-in bot: it sees exactly what a client sees.
 
 OBSERVATION (58 floats, OBS_DIM):
-  [0] hull_you/20   [1] hull_opp/20   [2] energy_you/6   [3] energy_opp/6   [4] round/8
+  [0] hull_you/20   [1] hull_opp/20   [2] energy_you/6   [3] energy_opp/6   [4] min(round,8)/8
   [5..44]  hand: 4 slots x 10 one-hot (bucket kind*3+tier -- the 9 base cards exactly, Guild cards folded into their
            kind/cost-tier bucket; index 9 = empty slot)
   [45] opp_hand_size/4
@@ -39,7 +39,7 @@ SHAPING = 0.1
 
 
 def build_observation(rs, opp_kinds):
-    o = [rs["hull_you"] / 20.0, rs["hull_opp"] / 20.0, rs["energy_you"] / 6.0, (0 if rs["energy_opp"] == W.HIDDEN_U8 else rs["energy_opp"]) / 6.0, rs["round"] / 8.0]
+    o = [rs["hull_you"] / 20.0, rs["hull_opp"] / 20.0, rs["energy_you"] / 6.0, (0 if rs["energy_opp"] == W.HIDDEN_U8 else rs["energy_opp"]) / 6.0, min(rs["round"], 8) / 8.0]
     for c in rs["hand"]:
         v = [0.0] * 10; v[R.card_kind(c) * 3 + R.card_tier(c) if c >= 0 else 9] = 1.0; o += v
     o.append(rs["opp_hand_size"] / 4.0)

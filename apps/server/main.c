@@ -14,11 +14,12 @@
 #define DW_HAVE_WORKER 1
 #endif
 
+#define DW_MAX_PLAYS 128          /* per-match play log; must be >= max_rounds() */
 #define MAX_CONNS 512
 #define MAX_MATCHES 256
 #define INBUF 2048
 #define OUTBUF 8192
-#define ROUND_MS_DEFAULT 20000
+#define ROUND_MS_DEFAULT 40000
 #define HELLO_TIMEOUT_MS 10000
 
 enum { S_FREE = 0, S_CONNECTED, S_READY, S_QUEUED, S_IN_MATCH, S_NEEDAUTH, S_VERIFYING };
@@ -33,7 +34,7 @@ typedef struct {
 
 typedef struct {
     int active; uint32_t id; DwMatch m; int conn[2];
-    uint64_t deadline; int8_t plays[8][2]; int nplays;
+    uint64_t deadline; int8_t plays[DW_MAX_PLAYS][2]; int nplays;
 } Match;
 
 static Conn conns[MAX_CONNS];
@@ -201,7 +202,7 @@ static void end_match(int mi) {
 
 static void resolve_round(int mi) {
     Match *mt = &matches[mi]; DwOutcome o;
-    mt->plays[mt->nplays][0] = mt->m.lock_slot[0]; mt->plays[mt->nplays][1] = mt->m.lock_slot[1]; mt->nplays++;
+    if (mt->nplays < DW_MAX_PLAYS) { mt->plays[mt->nplays][0] = mt->m.lock_slot[0]; mt->plays[mt->nplays][1] = mt->m.lock_slot[1]; mt->nplays++; }
     dw_match_resolve(&mt->m, &o);
     for (int s = 0; s < 2; s++) {
         DwMsg m; memset(&m, 0, sizeof m); m.type = DW_S_ROUND_RESULT;

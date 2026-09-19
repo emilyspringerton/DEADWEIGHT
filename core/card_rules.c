@@ -71,7 +71,7 @@ int start_vault(void) {
 }
 
 int max_rounds(void) {
-    return 8;
+    return 100;
 }
 
 int hand_size(void) {

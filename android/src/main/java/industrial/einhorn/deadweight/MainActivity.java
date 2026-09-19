@@ -15,6 +15,7 @@ import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.TextView;
 import industrial.einhorn.deadweight.core.GuestAuth;
+import industrial.einhorn.deadweight.generated.CardRules;
 import industrial.einhorn.deadweight.core.MatchModel;
 import industrial.einhorn.deadweight.core.Protocol;
 import industrial.einhorn.deadweight.core.Session;
@@ -231,7 +232,7 @@ public final class MainActivity extends Activity implements Session.Listener {
         BarView me = new BarView(this);
         me.set("You hull" + meters(m.armorYou, m.vaultYou, m.statusYou, false), m.hullYou, 20, m.energyYou, 0xFF43A967);
         root.addView(me, new LinearLayout.LayoutParams(-1, 130));
-        text("Round " + m.round + " / 8   (opp hand: " + m.oppHandSize + ")", 16, 0xFFAAAAAA);
+        text("Round " + m.round + " / " + CardRules.maxRounds() + "   (opp hand: " + m.oppHandSize + ")", 16, 0xFFAAAAAA);
         // Middle: last round reveal (grows to fill)
         String hint = selectedSlot >= 0 && m.hand[selectedSlot] >= 0
             ? CardText.name(m.hand[selectedSlot]) + ": " + CardText.text(m.hand[selectedSlot]) : "";

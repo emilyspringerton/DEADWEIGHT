@@ -33,7 +33,7 @@ One TCP connection = one session. Server sends nothing before HELLO. `proto` = 2
 ## Session state machine
 
 `CONNECTED --HELLO--> (auth required: --AUTH--> VERIFYING, ERROR 2 on rejection) READY --QUEUE--> QUEUED --MATCH_FOUND--> IN_MATCH --MATCH_END--> READY`.
-Inside a match the server loops `ROUND_START` → collect locks → `ROUND_RESULT`, up to round 8, then `MATCH_END`.
+Inside a match the server loops `ROUND_START` → collect locks → `ROUND_RESULT`, up to round 100, then `MATCH_END`.
 `ROUND_START` for round *n*+1 follows `ROUND_RESULT` *n* immediately. Both clients get every message; opponent
 hand contents are never sent.
 

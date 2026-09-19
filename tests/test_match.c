@@ -79,17 +79,17 @@ static void scripted_end(void) {
     dw_match_init(&m, 3); set_hand(&m, 0, 0, 1, 2, 3); set_hand(&m, 1, 0, 1, 2, 3); m.hull[0] = m.hull[1] = 3;
     dw_match_begin_round(&m); dw_match_lock(&m, 0, 0); dw_match_lock(&m, 1, 0); dw_match_resolve(&m, &o);
     EQ(m.done, 1); EQ(m.result[0], DW_RES_DRAW); EQ(m.result[1], DW_RES_DRAW);
-    /* all-pass 8 rounds: energy stays capped at 6; hull 20 vs 17 -> seat 0 wins on rounds */
+    /* all-pass full-length game: energy stays capped at 6; hull 20 vs 17 -> seat 0 wins on rounds */
     dw_match_init(&m, 4); m.hull[1] = 17;
-    for (int r = 1; r <= 8; r++) {
+    for (int r = 1; r <= max_rounds(); r++) {
         dw_match_begin_round(&m); EQ(m.done, 0); EQ(m.energy[0] <= 6, 1);
         dw_match_lock(&m, 0, -1); dw_match_lock(&m, 1, -1); dw_match_resolve(&m, &o);
     }
-    EQ(m.round, 8); EQ(m.done, 1); EQ(m.reason, DW_END_ROUNDS); EQ(m.result[0], DW_RES_WIN); EQ(m.result[1], DW_RES_LOSS);
+    EQ(m.round, max_rounds()); EQ(m.done, 1); EQ(m.reason, DW_END_ROUNDS); EQ(m.result[0], DW_RES_WIN); EQ(m.result[1], DW_RES_LOSS);
     EQ(m.energy[0], 6);
     /* equal hull at round cap = draw */
     dw_match_init(&m, 5);
-    for (int r = 1; r <= 8; r++) { dw_match_begin_round(&m); dw_match_lock(&m, 0, -1); dw_match_lock(&m, 1, -1); dw_match_resolve(&m, &o); }
+    for (int r = 1; r <= max_rounds(); r++) { dw_match_begin_round(&m); dw_match_lock(&m, 0, -1); dw_match_lock(&m, 1, -1); dw_match_resolve(&m, &o); }
     EQ(m.result[0], DW_RES_DRAW);
     /* forfeit */
     dw_match_init(&m, 6); dw_match_begin_round(&m); dw_match_forfeit(&m, 1);
@@ -175,8 +175,8 @@ static void guild_cards(void) {
     start(&m, 30, 30, 0, 0, 0, 0, 0, 0, 0);
     o = go(&m, 0, -1); EQ(m.hull[1], 14); EQ(m.vault[0], 2);
     /* the 8-round tiebreak: equal hull, more credits wins */
-    dw_match_init(&m, 31); m.vault[0] = 9; m.vault[1] = 1;
-    for (int r = 1; r <= 8; r++) { dw_match_begin_round(&m); dw_match_lock(&m, 0, -1); dw_match_lock(&m, 1, -1); dw_match_resolve(&m, &o); }
+    dw_match_init(&m, 31); m.vault[0] = 9; m.vault[1] = 1; m.round = max_rounds() - 1;   /* jump to the last round (credits cap at 99, so a 100-round pass-fest would tie) */
+    dw_match_begin_round(&m); dw_match_lock(&m, 0, -1); dw_match_lock(&m, 1, -1); dw_match_resolve(&m, &o);
     EQ(m.done, 1); EQ(m.reason, DW_END_ROUNDS); EQ(m.result[0], DW_RES_WIN); EQ(m.result[1], DW_RES_LOSS);
 }
 
@@ -197,7 +197,7 @@ static uint32_t play(uint32_t seed, uint32_t policy_seed, int check, int *rounds
     if (check) { EQ(deck_ok(&m, 0), 1); EQ(deck_ok(&m, 1), 1); }
     while (!m.done) {
         dw_match_begin_round(&m);
-        if (check) { EQ(m.energy[0] <= 6 && m.energy[1] <= 6, 1); EQ(m.round <= 8, 1); }
+        if (check) { EQ(m.energy[0] <= 6 && m.energy[1] <= 6, 1); EQ(m.round <= max_rounds(), 1); }
         for (int s = 0; s < 2; s++) {
             int legal[5], n = 0;
             legal[n++] = -1;
@@ -216,7 +216,7 @@ static uint32_t play(uint32_t seed, uint32_t policy_seed, int check, int *rounds
         }
     }
     if (check) {
-        EQ(m.round <= 8, 1);
+        EQ(m.round <= max_rounds(), 1);
         EQ(m.result[0] == DW_RES_WIN ? m.result[1] == DW_RES_LOSS : m.result[0] == DW_RES_LOSS ? m.result[1] == DW_RES_WIN : m.result[1] == DW_RES_DRAW, 1);
         if (m.reason == DW_END_HULL) EQ(m.hull[0] <= 0 || m.hull[1] <= 0, 1);
         if (m.reason == DW_END_BANKRUPT) EQ(bankrupt(m.vault[0]) || bankrupt(m.vault[1]), 1);
@@ -240,7 +240,7 @@ int main(void) {
     }
     for (uint32_t i = 0; i < 300; i++) { DwMatch m; dw_match_init(&m, i); (void)m; }
     (void)draws;
-    EQ(longest <= 8, 1); EQ(ended_early > 0, 1);
+    EQ(longest <= max_rounds(), 1); EQ(ended_early > 0, 1);
     printf("test_match: %d checks, %d failures (longest game %d rounds, %d/10000 ended early)\n", checks, fails, longest, ended_early);
     return fails ? 1 : 0;
 }

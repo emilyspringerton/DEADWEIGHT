@@ -7,7 +7,7 @@ legality, the effect engine's conditions/amounts, economy, end conditions) is an
 then checks against the C build's outputs."""
 import os
 
-START_HULL, START_ENERGY, START_VAULT, MAX_ROUNDS, HAND_SIZE, NUM_CARDS = 20, 2, 3, 8, 4, 73
+START_HULL, START_ENERGY, START_VAULT, MAX_ROUNDS, HAND_SIZE, NUM_CARDS = 20, 2, 3, 100, 4, 73
 _VEC = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "tests", "parity_vectors.txt")
 _TABLES = {"card_kind": {}, "card_tier": {}, "card_cost": {}, "card_power": {}, "card_credit": {}, "card_fx_a": {}, "card_fx_b": {}}
 

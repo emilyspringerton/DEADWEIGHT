@@ -13,11 +13,11 @@ and generally-excellent "staples" are all intended (learning which cards only *l
 - Catalog of **73 cards** (ids 0–72): the 9 original triangle cards + 64 Guild cards. **Interim deck rule:** each player
   shuffles the whole 73-card catalog (per-player shuffle from the match seed). Deckbuilding is next (see "Draft" below).
 - Each player holds a **hand of 4**. Hands are hidden: a client sees its own hand and only the opponent's hand *size*.
-- **Rounds 1..8.** Round start: +2 energy (cap 6), **+1 credit** (the Guild stipend), pending next-round energy deltas,
+- **Rounds 1..100.** Round start: +2 energy (cap 6), **+1 credit** (the Guild stipend), pending next-round energy deltas,
   a per-seat 0–99 **roll** (drives coin flips and Dark Pool), and any hand-slot **locks** placed by the opponent last round.
 - Both players secretly **lock one action**: play a card in hand slot 0–3, or **pass** (slot −1, banks +1 energy). A card
   is legal iff `cost ≤ energy`, `credit-cost ≤ credits` and its slot is not locked. Playing spends its cost even if the
-  card is later cancelled. The played card is discarded and the slot refills. Timer (live play): 20 s, timeout = pass.
+  card is later cancelled. The played card is discarded and the slot refills. Timer (live play): 40 s, timeout = pass. Matches run to 100 rounds.
 
 ## Resolution order (one round)
 
@@ -36,7 +36,7 @@ and generally-excellent "staples" are all intended (learning which cards only *l
    equalize, Chronobreak. **Lifeline** then rescues anyone at ≤ 0 hull (once per playing card).
 7. **Burn/regen tick** (statuses applied *this* round start ticking next round), then new statuses apply.
 8. **Hand effects:** played cards discard and refill; Fire Sale redraws; Realm Warp swaps hands; discards and slot locks.
-9. **End.** Hull ≤ 0 (or **bankruptcy**: credits below −6) loses immediately (both = draw). After round 8, higher hull
+9. **End.** Hull ≤ 0 (or **bankruptcy**: credits below −6) loses immediately (both = draw). After round 100, higher hull
    wins; equal hull → **higher credits win** (cash is a scoring tiebreak, never a way to win outright); else draw.
 
 ## Effect engine (how a card's rider is stored)

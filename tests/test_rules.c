@@ -13,7 +13,7 @@ static int fails = 0, checks = 0;
 int main(int argc, char **argv) {
     const char *vec = argc > 1 ? argv[1] : "tests/parity_vectors.txt";
     /* constants */
-    EQ(start_hull(), 20); EQ(start_energy(), 2); EQ(start_vault(), 3); EQ(max_rounds(), 8); EQ(hand_size(), 4); EQ(num_cards(), 73);
+    EQ(start_hull(), 20); EQ(start_energy(), 2); EQ(start_vault(), 3); EQ(max_rounds(), 100); EQ(hand_size(), 4); EQ(num_cards(), 73);
     /* base catalog: id = kind*3+tier ; cost 1/2/4 ; power 3/6/10 */
     int cost[3] = {1, 2, 4}, power[3] = {3, 6, 10};
     for (int id = 0; id < 9; id++) {

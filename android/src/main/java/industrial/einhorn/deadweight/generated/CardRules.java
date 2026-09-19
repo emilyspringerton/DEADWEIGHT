@@ -16,7 +16,7 @@ public final class CardRules {
     }
 
     public static int maxRounds() {
-        return 8;
+        return 100;
     }
 
     public static int handSize() {
