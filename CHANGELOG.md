@@ -1,6 +1,7 @@
 # CHANGELOG
 
 ## 2026-09-19
+- feat(draft): draft mode -- separate queue, 16-pick 23-card deck, same-deck/redraft (bots keep winners), decks.ndjson log; server, bots, Windows GUI, Android; not deployed yet (sess-20260918-1725-497f394f)
 - fix(training): Colab script/notebook clone the public repo over plain https -- no GitHub token prompt (sess-20260918-1725-497f394f)
 - docs(training): shared registry live on okemily.com (IDUNA redeployed, DEADWEIGHT-RL provisioned); real push + resume verified (sess-20260918-1725-497f394f)
 - feat(gui): card effect text always visible on every card (hand 2x2 grid, revealed cards too), 2x text with word wrap, falls back to 1x if it doesn't fit; effectless cards show no text; window 480x956; added & ' ; $ = glyphs; verified via headless selftest frames (sess-20260918-1725-497f394f)
