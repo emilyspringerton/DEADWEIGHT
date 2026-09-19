@@ -1,6 +1,7 @@
 # CHANGELOG
 
 ## 2026-09-19
+- feat: scripts/export_cards.sh + apps/tools/cards_json.c -- card catalog JSON for WOTAN's deck browser (sess-20260918-1725-497f394f)
 - feat(draft): draft mode -- separate queue, 16-pick 23-card deck, same-deck/redraft (bots keep winners), decks.ndjson log; server, bots, Windows GUI, Android; not deployed yet (sess-20260918-1725-497f394f)
 - fix(training): Colab script/notebook clone the public repo over plain https -- no GitHub token prompt (sess-20260918-1725-497f394f)
 - docs(training): shared registry live on okemily.com (IDUNA redeployed, DEADWEIGHT-RL provisioned); real push + resume verified (sess-20260918-1725-497f394f)
