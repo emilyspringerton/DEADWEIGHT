@@ -22,4 +22,15 @@ fi
 cat "$W/gui.out"
 grep -q "full match played" "$W/gui.out" || { echo "GUI SELFTEST FAIL: no completed match"; exit 1; }
 [ -s "$FRAMES/dw_gui_match.bmp" ] && [ -s "$FRAMES/dw_gui_end.bmp" ] || { echo "GUI SELFTEST FAIL: frames missing"; exit 1; }
-echo "GUI SELFTEST OK"
+echo "GUI SELFTEST OK (random)"
+# draft mode: the GUI drafts 16 picks through its own draft screen, then plays a match with the drafted deck
+$B/dw_bot --archetype wall --mode draft --name bot-wall-d --port "$PORT" --think-ms 0 > "$W/dbot.out" 2>&1 & PIDS+=("$!")
+sleep 0.5
+mkdir -p "$FRAMES/draft"
+if ! SDL_VIDEODRIVER=dummy timeout 40 $B/dw_gui --selftest --mode draft --name gui-draft --host 127.0.0.1 --port "$PORT" --frames "$FRAMES/draft" > "$W/gui2.out" 2> "$W/gui2.err"; then
+  echo "GUI DRAFT SELFTEST FAIL"; cat "$W/gui2.out" "$W/gui2.err"; exit 1
+fi
+cat "$W/gui2.out"
+grep -q "full match played" "$W/gui2.out" || { echo "GUI DRAFT SELFTEST FAIL: no completed match"; exit 1; }
+[ -s "$FRAMES/draft/dw_gui_draft.bmp" ] && [ -s "$FRAMES/draft/dw_gui_match.bmp" ] && [ -s "$FRAMES/draft/dw_gui_end.bmp" ] || { echo "GUI DRAFT SELFTEST FAIL: frames missing"; exit 1; }
+echo "GUI DRAFT SELFTEST OK"

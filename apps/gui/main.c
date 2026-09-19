@@ -9,6 +9,7 @@
 #include "client.h"          /* pulls net.h first (must precede other system headers) */
 #include "card_rules.h"
 #include "card_text.h"
+#include "draft.h"
 #include "version.h"
 #define SDL_MAIN_HANDLED
 #include <SDL.h>
@@ -80,7 +81,7 @@ static void text_c(int cx, int y, int scale, Col c, const char *fmt, ...) {
 }
 
 /* ---------- app state ---------- */
-enum { S_MENU, S_QUEUE, S_MATCH, S_END };
+enum { S_MENU, S_QUEUE, S_MATCH, S_END, S_DRAFT };
 typedef struct {
     int screen;
     char name[DW_NAME_LEN + 1], host[64], port[8], token[DW_MAX_AUTH_TOKEN + 1];
@@ -97,6 +98,11 @@ typedef struct {
     char log[MAX_LOG][64]; int nlog;
     int result, reason, waiting;
     int qcount_at_end;
+    /* draft mode */
+    int mode;                               /* DW_MODE_CARD (random) or DW_MODE_DRAFT */
+    int pick_no, offer[2], left[3];         /* current offer and bucket counts remaining (1-of / 2-of / 3-of) */
+    int npicks, pk_card[DW_DRAFT_PICKS], pk_mult[DW_DRAFT_PICKS], pend_card, pend_mult;
+    int deck_n, deck_id; int8_t deck[DW_DRAFT_DECK]; int dumped_draft;
     /* selftest */
     int selftest, autostart; const char *frames_dir; Uint32 state_at; int dumped_mid, dumped_end, done_ok;
 } App;
@@ -121,7 +127,7 @@ static void do_connect(void) {
     if (dwc_connect(&A.c, A.host, port)) { snprintf(A.err, sizeof A.err, "Cannot connect to %s:%d", A.host, port); return; }
     A.connected = 1; A.err[0] = 0;
     DwMsg m; memset(&m, 0, sizeof m);
-    m.type = DW_C_HELLO; m.u.hello.proto = DW_PROTO_VERSION; m.u.hello.mode = DW_MODE_CARD; m.u.hello.kind = DW_KIND_HUMAN;
+    m.type = DW_C_HELLO; m.u.hello.proto = DW_PROTO_VERSION; m.u.hello.mode = (uint8_t)A.mode; m.u.hello.kind = DW_KIND_HUMAN;
     memcpy(m.u.hello.name, A.name, strlen(A.name) < DW_NAME_LEN ? strlen(A.name) : DW_NAME_LEN);
     if (dwc_send(&A.c, &m)) { to_menu("Connection lost"); return; }
     if (A.token[0]) {
@@ -129,7 +135,7 @@ static void do_connect(void) {
         a.type = DW_C_AUTH; a.u.auth.token_len = (uint16_t)tl; memcpy(a.u.auth.token, A.token, tl);
         if (dwc_send(&A.c, &a)) { to_menu("Connection lost"); return; }
     }
-    A.screen = S_QUEUE; A.waiting = 0; A.nlog = 0; A.have_reveal = 0; A.state_at = SDL_GetTicks();
+    A.screen = S_QUEUE; A.waiting = 0; A.nlog = 0; A.have_reveal = 0; A.state_at = SDL_GetTicks(); A.npicks = 0; A.deck_n = 0;
 }
 
 static void lock_selected(void) {
@@ -146,6 +152,19 @@ static void handle_msg(const DwMsg *m) {
     switch (m->type) {
     case DW_S_WELCOME: A.welcomed = 1; send_simple(DW_C_QUEUE); break;
     case DW_S_QUEUED: A.waiting = m->u.queued.waiting; break;
+    case DW_S_DRAFT_OFFER: {
+        int pn = m->u.draft_offer.pick_no;
+        if (pn == 0) A.npicks = 0;
+        else if (pn == A.npicks + 1 && A.npicks < DW_DRAFT_PICKS) { A.pk_card[A.npicks] = A.pend_card; A.pk_mult[A.npicks] = A.pend_mult; A.npicks++; }
+        A.pick_no = pn; A.offer[0] = m->u.draft_offer.card[0]; A.offer[1] = m->u.draft_offer.card[1];
+        for (int i = 0; i < 3; i++) A.left[i] = m->u.draft_offer.left[i];
+        A.screen = S_DRAFT; A.state_at = SDL_GetTicks();
+        break;
+    }
+    case DW_S_DRAFT_DONE:
+        A.deck_id = (int)m->u.draft_done.deck_id; A.deck_n = DW_DRAFT_DECK; memcpy(A.deck, m->u.draft_done.cards, DW_DRAFT_DECK);
+        A.screen = S_QUEUE; A.waiting = 0; A.state_at = SDL_GetTicks();
+        break;
     case DW_S_MATCH_FOUND:
         A.match_id = m->u.match_found.match_id; A.seat = m->u.match_found.seat; A.opp_kind = m->u.match_found.opp_kind;
         snprintf(A.opp, sizeof A.opp, "%s", m->u.match_found.opp_name);
@@ -258,7 +277,7 @@ static void card_box(int x, int y, int w, int h, int id, int num, int state /*0 
 }
 static void draw_menu(int mx, int my) {
     text_c(W / 2, 90, 5, C_TEXT, "DEADWEIGHT");
-    text_c(W / 2, 150, 2, C_DIM, "CARD MODE  (VS0)");
+    text_c(W / 2, 150, 2, C_DIM, "%s", A.mode == DW_MODE_DRAFT ? "DRAFT MODE" : "CARD MODE  (RANDOM)");
     const char *lab[3] = {"NAME", "HOST", "PORT"}; char *val[3] = {A.name, A.host, A.port};
     for (int i = 0; i < 3; i++) {
         int y = 250 + i * 90;
@@ -266,9 +285,27 @@ static void draw_menu(int mx, int my) {
         rect(40, y, 400, 46, C_PANEL); frame(40, y, 400, 46, i == A.focus ? C_SEL : C_LOCK, 2);
         text(52, y + 13, 3, C_TEXT, "%s%s", val[i], (i == A.focus && (SDL_GetTicks() / 500) % 2) ? "_" : "");
     }
+    button(40, 486, 400, 44, A.mode == DW_MODE_DRAFT ? "MODE: DRAFT" : "MODE: RANDOM", C_LOCK, 1, mx, my);
     button(40, 540, 400, 70, "PLAY", C_GOOD, 1, mx, my);
     if (A.err[0]) text_c(W / 2, 640, 2, C_BAD, "%s", A.err);
-    text_c(W / 2, 760, 1, C_DIM, "TAB = NEXT FIELD   ENTER = PLAY   ESC = QUIT   V%s", DW_VERSION);
+    text_c(W / 2, 760, 1, C_DIM, "TAB = NEXT FIELD   ENTER = PLAY   F2 = MODE   ESC = QUIT   V%s", DW_VERSION);
+}
+#define DRAFT_BTN_X(card, m) (20 + (card) * 240 + (m) * 70)
+static int draft_mult_ok(int m) { return A.left[m - 1] > 0; }
+static void draw_draft(int mx, int my) {
+    text_c(W / 2, 20, 3, C_TEXT, "DRAFT  PICK %d/%d", A.pick_no + 1 > DW_DRAFT_PICKS ? DW_DRAFT_PICKS : A.pick_no + 1, DW_DRAFT_PICKS);
+    text_c(W / 2, 56, 2, C_DIM, "LEFT  1X: %d   2X: %d   3X: %d", A.left[0], A.left[1], A.left[2]);
+    text_c(W / 2, 84, 1, C_DIM, "PICK A CARD AND HOW MANY COPIES: 10 SINGLES, 5 PAIRS, 1 TRIPLE = 23 CARDS");
+    for (int c = 0; c < 2; c++) {
+        card_box(20 + c * 240, 110, 200, 300, A.offer[c], 0, 0);
+        for (int m = 1; m <= 3; m++) {
+            char lb[8]; snprintf(lb, sizeof lb, "%dX", m);
+            button(DRAFT_BTN_X(c, m - 1), 420, 60, 44, lb, C_GOOD, draft_mult_ok(m), mx, my);
+        }
+    }
+    text(20, 480, 2, C_DIM, "YOUR DECK SO FAR (%d)", A.npicks);
+    for (int i = 0; i < A.npicks; i++) text(20, 506 + i * 24, 2, C_TEXT, "%dX %s", A.pk_mult[i], dw_card_name(A.pk_card[i]));
+    button(20, 906, 200, 42, "LEAVE", C_LOCK, 1, mx, my);
 }
 static void draw_queue(int mx, int my) {
     text_c(W / 2, 250, 4, C_TEXT, "SEARCHING...");
@@ -303,22 +340,38 @@ static void draw_end(int mx, int my) {
     const char *why[5] = {"HULL DESTROYED", "ROUNDS OVER", "OPPONENT FORFEIT", "SERVER", "BANKRUPT"};
     text_c(W / 2, 310, 2, C_DIM, "%s", why[A.reason > 4 ? 3 : A.reason]);
     text_c(W / 2, 350, 2, C_TEXT, "YOU %d  -  %s %d", A.hull_you < 0 ? 0 : A.hull_you, A.opp, A.hull_opp < 0 ? 0 : A.hull_opp);
-    button(60, 480, 360, 70, "PLAY AGAIN", C_GOOD, 1, mx, my);
-    button(60, 580, 360, 60, "MENU", C_LOCK, 1, mx, my);
+    if (A.mode == DW_MODE_DRAFT && A.deck_n) {
+        button(60, 450, 360, 64, "SAME DECK", C_GOOD, 1, mx, my);
+        button(60, 525, 360, 64, "REDRAFT", (Col){70, 110, 200}, 1, mx, my);
+        text_c(W / 2, 606, 1, C_DIM, "DECK %d", A.deck_id);
+    } else button(60, 480, 360, 70, "PLAY AGAIN", C_GOOD, 1, mx, my);
+    button(60, 640, 360, 56, "MENU", C_LOCK, 1, mx, my);
 }
 static void draw(int mx, int my) {
     setc(C_BG, 255); SDL_RenderClear(R);
     switch (A.screen) { case S_MENU: draw_menu(mx, my); break; case S_QUEUE: draw_queue(mx, my); break;
-                        case S_MATCH: draw_match(mx, my); break; default: draw_end(mx, my); break; }
+                        case S_MATCH: draw_match(mx, my); break; case S_DRAFT: draw_draft(mx, my); break; default: draw_end(mx, my); break; }
 }
 
 /* ---------- input ---------- */
 static char *field(int i) { return i == 0 ? A.name : i == 1 ? A.host : A.port; }
 static size_t field_cap(int i) { return i == 0 ? DW_NAME_LEN : i == 1 ? sizeof A.host - 1 : 5; }
+static void send_pick(int idx, int mult) {
+    DwMsg m; memset(&m, 0, sizeof m); m.type = DW_C_DRAFT_PICK; m.u.draft_pick.index = (uint8_t)idx; m.u.draft_pick.mult = (uint8_t)mult;
+    A.pend_card = A.offer[idx]; A.pend_mult = mult;
+    if (dwc_send(&A.c, &m)) to_menu("Connection lost");
+}
+/* Back into the queue after a match: same_deck (draft only) replays the last deck, otherwise redraft / plain requeue. */
+static void requeue(int same_deck) {
+    DwMsg m; memset(&m, 0, sizeof m); m.type = DW_C_QUEUE; m.u.queue.same_deck = (uint8_t)same_deck;
+    A.screen = S_QUEUE; A.waiting = 0; A.state_at = SDL_GetTicks();
+    if (dwc_send(&A.c, &m)) to_menu("Connection lost");
+}
 static void click(int x, int y) {
     switch (A.screen) {
     case S_MENU:
         for (int i = 0; i < 3; i++) if (in_rect(x, y, 40, 250 + i * 90, 400, 46)) A.focus = i;
+        if (in_rect(x, y, 40, 486, 400, 44)) A.mode = A.mode == DW_MODE_DRAFT ? DW_MODE_CARD : DW_MODE_DRAFT;
         if (in_rect(x, y, 40, 540, 400, 70)) do_connect();
         break;
     case S_QUEUE: if (in_rect(x, y, 140, 520, 200, 64)) { send_simple(DW_C_LEAVE); to_menu(""); } break;
@@ -327,9 +380,17 @@ static void click(int x, int y) {
         if (in_rect(x, y, 20, 906, 200, 42)) select_slot(-1);
         if (in_rect(x, y, 240, 906, 220, 42)) lock_selected();
         break;
+    case S_DRAFT:
+        for (int c = 0; c < 2; c++) for (int m = 1; m <= 3; m++)
+            if (in_rect(x, y, DRAFT_BTN_X(c, m - 1), 420, 60, 44) && draft_mult_ok(m)) send_pick(c, m);
+        if (in_rect(x, y, 20, 906, 200, 42)) { send_simple(DW_C_LEAVE); to_menu(""); }
+        break;
     default:
-        if (in_rect(x, y, 60, 480, 360, 70)) { A.screen = S_QUEUE; A.waiting = 0; send_simple(DW_C_QUEUE); }
-        if (in_rect(x, y, 60, 580, 360, 60)) to_menu("");
+        if (A.mode == DW_MODE_DRAFT && A.deck_n) {
+            if (in_rect(x, y, 60, 450, 360, 64)) requeue(1);
+            if (in_rect(x, y, 60, 525, 360, 64)) requeue(0);
+        } else if (in_rect(x, y, 60, 480, 360, 70)) requeue(0);
+        if (in_rect(x, y, 60, 640, 360, 56)) to_menu("");
         break;
     }
 }
@@ -338,12 +399,13 @@ static void key(SDL_Keycode k) {
         char *f = field(A.focus);
         if (k == SDLK_BACKSPACE && *f) f[strlen(f) - 1] = 0;
         else if (k == SDLK_TAB) A.focus = (A.focus + 1) % 3;
+        else if (k == SDLK_F2) A.mode = A.mode == DW_MODE_DRAFT ? DW_MODE_CARD : DW_MODE_DRAFT;
         else if (k == SDLK_RETURN || k == SDLK_KP_ENTER) do_connect();
     } else if (A.screen == S_MATCH) {
         if (k >= SDLK_1 && k <= SDLK_4) select_slot((int)(k - SDLK_1));
         else if (k == SDLK_p) select_slot(-1);
         else if (k == SDLK_SPACE || k == SDLK_RETURN) lock_selected();
-    } else if (A.screen == S_END && (k == SDLK_RETURN || k == SDLK_SPACE)) click(100, 500);
+    } else if (A.screen == S_END && (k == SDLK_RETURN || k == SDLK_SPACE)) click(100, A.mode == DW_MODE_DRAFT && A.deck_n ? 470 : 500);
 }
 
 /* ---------- selftest ---------- */
@@ -358,6 +420,11 @@ static void dump(const char *tag) {
 }
 static void selftest_tick(void) {
     Uint32 now = SDL_GetTicks();
+    if (A.screen == S_DRAFT && now - A.state_at > 10) {
+        if (A.pick_no >= 3 && !A.dumped_draft) { A.dumped_draft = 1; dump("draft"); }
+        int m = 1; while (m < 3 && !draft_mult_ok(m)) m++;
+        send_pick(0, m); A.state_at = now;
+    }
     if (A.screen == S_MATCH && A.round >= 3 && !A.dumped_mid && now - A.state_at > 20) { A.dumped_mid = 1; dump("match"); }
     if (A.screen == S_MATCH && !A.locked && A.round > 0 && now - A.state_at > 40) {
         int pick = -1; for (int s = 0; s < 4; s++) if (slot_legal(s)) { pick = s; break; }
@@ -379,6 +446,7 @@ int main(int argc, char **argv) {
         else if (!strcmp(a, "--token") && v) { snprintf(A.token, sizeof A.token, "%s", v); i++; }
         else if (!strcmp(a, "--frames") && v) { A.frames_dir = v; i++; }
         else if (!strcmp(a, "--autostart")) A.autostart = 1;
+        else if (!strcmp(a, "--mode") && v) { A.mode = !strcmp(v, "draft") ? DW_MODE_DRAFT : DW_MODE_CARD; i++; }
         else if (!strcmp(a, "--selftest")) A.selftest = A.autostart = 1;
         else { fprintf(stderr, "usage: dw_gui [--name N] [--host H] [--port P] [--token JWT] [--autostart] [--selftest [--frames DIR]]\n"); return 2; }
     }
