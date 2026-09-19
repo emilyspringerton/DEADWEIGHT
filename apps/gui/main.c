@@ -17,7 +17,7 @@
 #include <string.h>
 
 #define W 480
-#define H 800
+#define H 956
 #define MAX_LOG 6
 
 typedef struct { uint8_t r, g, b; } Col;
@@ -213,16 +213,46 @@ static void pips(int y, int energy, const char *label) {
     if (energy == DW_HIDDEN_U8) { text(112, y + 2, 2, C_DIM, "? (HIDDEN)"); return; }
     for (int i = 0; i < 6; i++) { rect(112 + i * 34, y, 28, 16, i < energy ? (Col){250, 210, 70} : C_PANEL); }
 }
+static int wrap_next(const char *t, int per) {
+    int n = (int)strlen(t);
+    if (n > per) { n = per; while (n > 0 && t[n] != ' ') n--; if (n == 0) n = per; }
+    return n;
+}
+static int wrap_lines(const char *t, int per) {
+    int c = 0; while (*t) { t += wrap_next(t, per); while (*t == ' ') t++; c++; }
+    return c;
+}
 static void card_box(int x, int y, int w, int h, int id, int num, int state /*0 normal 1 sel 2 disabled 3 locked*/) {
     rect(x, y, w, h, C_PANEL);
     if (id < 0) { frame(x, y, w, h, C_LOCK, 2); text_c(x + w / 2, y + h / 2 - 7, 2, C_DIM, "PASS"); return; }
     Col kc = KIND_COL[card_kind(id)];
     if (state == 2) { kc.r /= 3; kc.g /= 3; kc.b /= 3; }
+    Col tc = state == 2 ? C_DIM : C_TEXT;
+    int big = w >= 200;
+    const char *nm = dw_card_name(id);
     rect(x, y, w, 30, kc);
-    text_c(x + w / 2, y + 12, 1, C_TEXT, "%s", dw_card_name(id));
-    text_c(x + w / 2, y + 46, 2, state == 2 ? C_DIM : C_TEXT, "COST %d", card_cost(id));
-    text_c(x + w / 2, y + 68, 3, state == 2 ? C_DIM : C_TEXT, "%d", card_power(id));
-    text_c(x + w / 2, y + 96, 1, C_DIM, "%s%s", KIND_NAME[card_kind(id)], card_credit(id) ? " $" : "");
+    if (big && (int)strlen(nm) * 12 <= w - 8) text_c(x + w / 2, y + 8, 2, C_TEXT, "%s", nm);
+    else text_c(x + w / 2, y + 12, 1, C_TEXT, "%s", nm);
+    int ty;
+    if (big) {
+        text_c(x + w / 2, y + 36, 2, tc, "COST %d  PWR %d", card_cost(id), card_power(id));
+        text_c(x + w / 2, y + 54, 1, C_DIM, "%s%s", KIND_NAME[card_kind(id)], card_credit(id) ? " $" : "");
+        ty = y + 68;
+    } else {
+        text_c(x + w / 2, y + 36, 1, tc, "COST %d  PWR %d", card_cost(id), card_power(id));
+        text_c(x + w / 2, y + 48, 1, C_DIM, "%s%s", KIND_NAME[card_kind(id)], card_credit(id) ? " $" : "");
+        ty = y + 64;
+    }
+    const char *t = dw_card_text(id);
+    if (!*t) t = "NO SPECIAL EFFECT";
+    int avail = y + h - 14 - ty, sc = big ? 2 : 1;
+    if (sc == 2 && wrap_lines(t, (w - 8) / 12) * 18 > avail) sc = 1;
+    int per = (w - 8) / (6 * sc), lh = sc == 2 ? 18 : 10;
+    for (int ly = ty; *t && ly + 8 * sc <= y + h - 2; ly += lh) {
+        int n = wrap_next(t, per); char ln[48]; snprintf(ln, sizeof ln, "%.*s", n, t);
+        text(x + 4, ly, sc, tc, "%s", ln);
+        t += n; while (*t == ' ') t++;
+    }
     if (num > 0) text(x + 4, y + h - 14, 1, C_DIM, "(%d)", num);
     if (state == 1) frame(x - 3, y - 3, w + 6, h + 6, C_SEL, 3);
     if (state == 3) frame(x, y, w, h, C_GOOD, 2);
@@ -255,33 +285,18 @@ static void draw_match(int mx, int my) {
     if (A.have_reveal) {
         text_c(W / 2, 176, 2, C_DIM, "LAST ROUND (%d)", A.rv_round);
         text_c(120, 200, 2, C_DIM, "YOU"); text_c(360, 200, 2, C_DIM, "OPP");
-        card_box(50, 222, 140, 130, A.rv_you, 0, 0); card_box(290, 222, 140, 130, A.rv_opp, 0, 0);
-        text_c(120, 360, 2, A.rv_dy ? C_BAD : C_DIM, "TOOK %d", A.rv_dy); text_c(360, 360, 2, A.rv_do ? C_GOOD : C_DIM, "TOOK %d", A.rv_do);
+        card_box(20, 222, 200, 170, A.rv_you, 0, 0); card_box(260, 222, 200, 170, A.rv_opp, 0, 0);
+        text_c(120, 398, 2, A.rv_dy ? C_BAD : C_DIM, "TOOK %d", A.rv_dy); text_c(360, 398, 2, A.rv_do ? C_GOOD : C_DIM, "TOOK %d", A.rv_do);
     } else text_c(W / 2, 260, 2, C_DIM, "PICK A CARD OR PASS");
-    if (!(A.sel >= 0 && A.hand[A.sel] >= 0)) for (int i = 0; i < A.nlog; i++) text(20, 400 + i * 22, 2, C_DIM, "%s", A.log[i]);
-    if (A.sel >= 0 && A.hand[A.sel] >= 0) {
-        int id = A.hand[A.sel]; const char *t = dw_card_text(id);
-        rect(10, 392, W - 20, 152, C_PANEL); frame(10, 392, W - 20, 152, KIND_COL[card_kind(id)], 2);
-        text(20, 400, 2, C_TEXT, "%s", dw_card_name(id));
-        int y = 424, per = (W - 40) / 12;
-        if (!*t) t = "BASE CARD: NO SPECIAL RULES.";
-        while (*t && y < 536) {
-            int n = (int)strlen(t);
-            if (n > per) { n = per; while (n > 0 && t[n] != ' ') n--; if (n == 0) n = per; }
-            char ln[64]; snprintf(ln, sizeof ln, "%.*s", n, t);
-            text(20, y, 2, C_TEXT, "%s", ln);
-            t += n; while (*t == ' ') t++;
-            y += 18;
-        }
-    }
+    for (int i = 0; i < A.nlog; i++) text(20, 424 + i * 20, 2, C_DIM, "%s", A.log[i]);
     hull_bar(552, A.hull_you, "YOU", A.armor_you, A.vault_you); pips(588, A.energy_you, "ENERGY");
     for (int i = 0; i < 4; i++) {
         int st = A.hand[i] < 0 ? 2 : !slot_legal(i) ? 2 : (A.sel == i ? (A.locked ? 3 : 1) : 0);
-        card_box(20 + i * 112, 620, 104, 120, A.hand[i], i + 1, st);
+        card_box(20 + (i % 2) * 232, 620 + (i / 2) * 142, 216, 136, A.hand[i], i + 1, st);
     }
     int can = !A.locked && A.sel != -2;
-    button(20, 750, 200, 42, A.sel == -1 ? (A.locked ? "PASSED" : "PASS *") : "PASS", C_LOCK, !A.locked, mx, my);
-    button(240, 750, 220, 42, A.locked ? "LOCKED" : "LOCK IN", C_GOOD, can, mx, my);
+    button(20, 906, 200, 42, A.sel == -1 ? (A.locked ? "PASSED" : "PASS *") : "PASS", C_LOCK, !A.locked, mx, my);
+    button(240, 906, 220, 42, A.locked ? "LOCKED" : "LOCK IN", C_GOOD, can, mx, my);
 }
 static void draw_end(int mx, int my) {
     Col c = A.result == DW_RES_WIN ? C_GOOD : A.result == DW_RES_LOSS ? C_BAD : C_DIM;
@@ -309,9 +324,9 @@ static void click(int x, int y) {
         break;
     case S_QUEUE: if (in_rect(x, y, 140, 520, 200, 64)) { send_simple(DW_C_LEAVE); to_menu(""); } break;
     case S_MATCH:
-        for (int i = 0; i < 4; i++) if (in_rect(x, y, 20 + i * 112, 620, 104, 120)) select_slot(i);
-        if (in_rect(x, y, 20, 750, 200, 42)) select_slot(-1);
-        if (in_rect(x, y, 240, 750, 220, 42)) lock_selected();
+        for (int i = 0; i < 4; i++) if (in_rect(x, y, 20 + (i % 2) * 232, 620 + (i / 2) * 142, 216, 136)) select_slot(i);
+        if (in_rect(x, y, 20, 906, 200, 42)) select_slot(-1);
+        if (in_rect(x, y, 240, 906, 220, 42)) lock_selected();
         break;
     default:
         if (in_rect(x, y, 60, 480, 360, 70)) { A.screen = S_QUEUE; A.waiting = 0; send_simple(DW_C_QUEUE); }
