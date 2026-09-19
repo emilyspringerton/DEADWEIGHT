@@ -337,7 +337,7 @@ static void selftest_tick(void) {
 }
 
 int main(int argc, char **argv) {
-    snprintf(A.name, sizeof A.name, "Player"); snprintf(A.host, sizeof A.host, "127.0.0.1"); snprintf(A.port, sizeof A.port, "7700");
+    snprintf(A.name, sizeof A.name, "Player"); snprintf(A.host, sizeof A.host, "okemily.com"); snprintf(A.port, sizeof A.port, "6980");
     A.sel = -2; for (int i = 0; i < 4; i++) A.hand[i] = -1;
     const char *envt = getenv("DW_TOKEN"); if (envt) snprintf(A.token, sizeof A.token, "%s", envt);
     for (int i = 1; i < argc; i++) {
