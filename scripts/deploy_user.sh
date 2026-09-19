@@ -9,10 +9,10 @@ BIN="$HOME/.local/opt/deadweight/bin"; CONF="$HOME/.config/deadweight"; UNITS="$
 mkdir -p "$BIN" "$CONF" "$UNITS" "$HOME/DEADWEIGHT/var/matches"
 install -m 0755 build/dw_server build/dw_bot "$BIN/"
 if [ ! -f "$CONF/dw.env" ]; then sed "s|/home/USER|$HOME|" ops/systemd/dw.env.example > "$CONF/dw.env"; fi
-cp ops/systemd/dw-server.service 'ops/systemd/dw-bot@.service' "$UNITS/"
+cp ops/systemd/dw-server.service 'ops/systemd/dw-bot@.service' 'ops/systemd/dw-draft-bot@.service' "$UNITS/"
 systemctl --user daemon-reload
 systemctl --user enable dw-server; systemctl --user restart dw-server
-for a in ripper wall mirror; do systemctl --user enable "dw-bot@$a"; systemctl --user restart "dw-bot@$a"; done
+for a in ripper wall mirror; do systemctl --user enable "dw-bot@$a"; systemctl --user restart "dw-bot@$a"; systemctl --user enable "dw-draft-bot@$a"; systemctl --user restart "dw-draft-bot@$a"; done   # random pool + draft pool
 sleep 1
 systemctl --user --no-pager --failed || true
 ss -ltn | grep ":$(grep ^DW_PORT "$CONF/dw.env" | cut -d= -f2 | cut -d' ' -f1) " || echo "WARNING: dw_server not listening"
