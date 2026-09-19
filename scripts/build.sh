@@ -30,6 +30,11 @@ gcc $CFLAGS_BASE -g -fsanitize=address,undefined -fno-sanitize-recover=all \
     tests/test_draft.c core/draft.c core/match.c core/card_rules.c -o build/test_draft
 ./build/test_draft
 
+echo "== C: synthesized sound design tests (ASan+UBSan) =="
+gcc $CFLAGS_BASE -g -fsanitize=address,undefined -fno-sanitize-recover=all -DDW_SFX_NO_SDL \
+    tests/test_sfx.c apps/gui/sfx.c -lm -o build/test_sfx
+./build/test_sfx
+
 echo "== C: bot brain tests (ASan+UBSan) =="
 BRAIN_SRC="core/brain.c core/bot_brain.c core/brain_default.c core/runtime/parena_runtime.c"
 gcc $CFLAGS_BASE -include card_rules.h -g -fsanitize=address,undefined -fno-sanitize-recover=all \
@@ -70,8 +75,8 @@ fi
 if [[ "$ARGS" == *" --gui "* ]]; then
   echo "== GUI: dw_gui (SDL2) + headless selftest =="
   command -v pkg-config >/dev/null && pkg-config --exists sdl2 || { echo "--gui requires libsdl2-dev (pkg-config sdl2)"; exit 1; }
-  GUI_SRC="apps/gui/main.c core/client.c core/policy.c core/protocol.c core/card_rules.c core/card_text.c core/iduna.c core/http.c"
-  gcc $CFLAGS_BASE -O2 $(pkg-config --cflags sdl2) $GUI_SRC $(pkg-config --libs sdl2) -o build/dw_gui
+  GUI_SRC="apps/gui/main.c apps/gui/fx.c apps/gui/sfx.c core/client.c core/policy.c core/protocol.c core/card_rules.c core/card_text.c core/iduna.c core/http.c"
+  gcc $CFLAGS_BASE -O2 $(pkg-config --cflags sdl2) $GUI_SRC $(pkg-config --libs sdl2) -lm -o build/dw_gui
   ./build/dw_gui --version
   tests/test_gui_selftest.sh
   if [[ "$ARGS" == *" --windows "* ]]; then

@@ -13,6 +13,9 @@
 #include "version.h"
 #define SDL_MAIN_HANDLED
 #include <SDL.h>
+#include <math.h>
+#include "fx.h"
+#include "sfx.h"
 #include <stdarg.h>
 #include <stdlib.h>
 #include <string.h>
@@ -66,14 +69,18 @@ static void rect(int x, int y, int w, int h, Col c) { SDL_Rect r = {x, y, w, h};
 static void frame(int x, int y, int w, int h, Col c, int t) {
     rect(x, y, w, t, c); rect(x, y + h - t, w, t, c); rect(x, y, t, h, c); rect(x + w - t, y, t, h, c);
 }
-static void text(int x, int y, int scale, Col c, const char *fmt, ...) {
-    char buf[128]; va_list ap; va_start(ap, fmt); vsnprintf(buf, sizeof buf, fmt, ap); va_end(ap);
-    setc(c, 255);
-    for (const char *p = buf; *p; p++, x += 6 * scale) {
+static void text_a(int x, int y, int scale, Col c, int alpha, const char *s) {
+    SDL_SetRenderDrawBlendMode(R, SDL_BLENDMODE_BLEND);
+    setc(c, alpha);
+    for (const char *p = s; *p; p++, x += 6 * scale) {
         const uint8_t *g = glyph(*p);
         for (int cx = 0; cx < 5; cx++) for (int cy = 0; cy < 7; cy++)
             if (g[cx] & (1 << cy)) { SDL_Rect d = {x + cx * scale, y + cy * scale, scale, scale}; SDL_RenderFillRect(R, &d); }
     }
+}
+static void text(int x, int y, int scale, Col c, const char *fmt, ...) {
+    char buf[128]; va_list ap; va_start(ap, fmt); vsnprintf(buf, sizeof buf, fmt, ap); va_end(ap);
+    text_a(x, y, scale, c, 255, buf);
 }
 static void text_c(int cx, int y, int scale, Col c, const char *fmt, ...) {
     char buf[128]; va_list ap; va_start(ap, fmt); vsnprintf(buf, sizeof buf, fmt, ap); va_end(ap);
@@ -98,6 +105,10 @@ typedef struct {
     char log[MAX_LOG][64]; int nlog;
     int result, reason, waiting;
     int qcount_at_end;
+    /* round-resolution animation plumbing (fx.c) */
+    int rs_hull[2], rs_armor[2], rs_vault[2], rs_energy[2], status[2];   /* meters at the start of the current round (you, opp) */
+    FxRound pend; int pend_valid, end_wait, muted_hint;
+    float sh_hull[2], sh_armor[2], sh_energy[2], sh_vault[2];
     /* draft mode */
     int mode;                               /* DW_MODE_CARD (random) or DW_MODE_DRAFT */
     int pick_no, offer[2], left[3];         /* current offer and bucket counts remaining (1-of / 2-of / 3-of) */
@@ -148,6 +159,40 @@ static void lock_selected(void) {
 static int slot_legal(int s) { return s >= 0 && s < 4 && A.hand[s] >= 0 && !((A.lock_mask >> s) & 1) && is_legal_play(A.hand[s], A.energy_you, A.vault_you); }
 static void select_slot(int s) { if (A.screen == S_MATCH && !A.locked && (s == -1 || slot_legal(s))) A.sel = s; }
 
+/* ---------- round-resolution animation plumbing ---------- */
+static void fx_targets(int snap) {
+    float h[2] = {(float)(A.hull_you < 0 ? 0 : A.hull_you), (float)(A.hull_opp < 0 ? 0 : A.hull_opp)};
+    float ar[2] = {(float)A.armor_you, A.armor_opp == DW_HIDDEN_U8 ? 0.0f : (float)A.armor_opp};
+    float en[2] = {(float)A.energy_you, A.energy_opp == DW_HIDDEN_U8 ? 0.0f : (float)A.energy_opp};
+    float v[2] = {(float)A.vault_you, A.vault_opp == DW_HIDDEN_I8 ? 0.0f : (float)A.vault_opp};
+    fx_set_meters(h, ar, en, v, snap);
+}
+static int fx_has_channel(int id, int ch) { return id >= 0 && (fx_ch(card_fx_a(id)) == ch || fx_ch(card_fx_b(id)) == ch); }
+/* energy effect estimate: what the next ROUND_START energy is vs what paying/banking + the +2 regen alone would give */
+static int fx_energy_estimate(int seat, int energy_next, int *capped) {
+    *capped = 0;
+    if (energy_next == DW_HIDDEN_U8 || A.rs_energy[seat] == DW_HIDDEN_U8) return FX_UNKNOWN;
+    int card = seat == 0 ? A.pend.card[0] : A.pend.card[1];
+    int base = card < 0 ? (A.rs_energy[seat] + 1 > 6 ? 6 : A.rs_energy[seat] + 1) : A.rs_energy[seat] - card_cost(card);
+    int expect = base + 2 > 6 ? 6 : base + 2;
+    int d = energy_next - expect;
+    if (energy_next >= 6 && expect >= 6 && fx_has_channel(A.pend.eff[seat] >= 0 ? A.pend.eff[seat] : card, 23)) *capped = 1;
+    return d;
+}
+static void fx_finish_round(int have_next, const DwMsg *next) {
+    if (!A.pend_valid) return;
+    FxRound *r = &A.pend;
+    for (int s = 0; s < 2; s++) { r->energy_delta[s] = FX_UNKNOWN; r->energy_capped[s] = 0; r->status_after[s] = r->status_before[s]; }
+    r->lock_after = 0;
+    if (have_next) {
+        int en[2] = {next->u.round_start.energy_you, next->u.round_start.energy_opp};
+        for (int s = 0; s < 2; s++) r->energy_delta[s] = fx_energy_estimate(s, en[s], &r->energy_capped[s]);
+        r->status_after[0] = next->u.round_start.status_you; r->status_after[1] = next->u.round_start.status_opp; r->lock_after = next->u.round_start.lock_mask;
+    }
+    fx_begin(r);
+    A.pend_valid = 0;
+}
+
 static void handle_msg(const DwMsg *m) {
     switch (m->type) {
     case DW_S_WELCOME: A.welcomed = 1; send_simple(DW_C_QUEUE); break;
@@ -171,6 +216,9 @@ static void handle_msg(const DwMsg *m) {
         A.screen = S_MATCH; A.nlog = 0; A.have_reveal = 0; A.round = 0; A.sel = -2; A.locked = 0;
         A.hull_you = A.hull_opp = start_hull(); A.armor_you = A.armor_opp = 0; A.vault_you = A.vault_opp = start_vault(); A.lock_mask = 0;
         A.state_at = SDL_GetTicks(); A.dumped_mid = 0;
+        A.pend_valid = 0; A.end_wait = 0; memset(A.status, 0, sizeof A.status);
+        for (int i = 0; i < 2; i++) { A.rs_hull[i] = start_hull(); A.rs_armor[i] = 0; A.rs_vault[i] = start_vault(); A.rs_energy[i] = start_energy(); }
+        fx_reset(); fx_targets(1);
         break;
     case DW_S_ROUND_START:
         A.round = m->u.round_start.round; A.hull_you = m->u.round_start.hull_you; A.hull_opp = m->u.round_start.hull_opp;
@@ -180,6 +228,13 @@ static void handle_msg(const DwMsg *m) {
         A.vault_you = m->u.round_start.vault_you; A.vault_opp = m->u.round_start.vault_opp; A.lock_mask = m->u.round_start.lock_mask;
         A.deadline_at = m->u.round_start.deadline_ms ? SDL_GetTicks() + m->u.round_start.deadline_ms : 0;
         A.sel = -2; A.locked = 0; A.state_at = SDL_GetTicks();
+        fx_finish_round(1, m);                                   /* the previous round's animation, now that its energy/status outcome is known */
+        A.status[0] = m->u.round_start.status_you; A.status[1] = m->u.round_start.status_opp;
+        fx_targets(!fx_active());
+        fx_status_changed(A.status[0], A.status[1], A.lock_mask, 1);
+        fx_set_redline(A.hull_you, A.hull_opp);
+        A.rs_hull[0] = A.hull_you; A.rs_hull[1] = A.hull_opp; A.rs_armor[0] = A.armor_you; A.rs_armor[1] = A.armor_opp;
+        A.rs_vault[0] = A.vault_you; A.rs_vault[1] = A.vault_opp; A.rs_energy[0] = A.energy_you; A.rs_energy[1] = A.energy_opp;
         break;
     case DW_S_PLAY_ACK: A.locked = 1; break;
     case DW_S_PLAY_REJECT:
@@ -194,10 +249,28 @@ static void handle_msg(const DwMsg *m) {
         A.rv_opp = m->u.round_result.eff_opp >= 0 ? m->u.round_result.eff_opp : m->u.round_result.card_opp;
         logline("R%d  YOU -%d +%d  OPP -%d +%d", m->u.round_result.round, m->u.round_result.dmg_you, m->u.round_result.heal_you,
                 m->u.round_result.dmg_opp, m->u.round_result.heal_opp);
+        {   /* remember everything the animation needs; it starts at the next ROUND_START (energy/status outcomes) or at MATCH_END */
+            if (A.pend_valid) fx_finish_round(0, NULL);
+            FxRound *r = &A.pend; memset(r, 0, sizeof *r); r->round = m->u.round_result.round;
+            r->card[0] = m->u.round_result.card_you; r->card[1] = m->u.round_result.card_opp; r->eff[0] = m->u.round_result.eff_you; r->eff[1] = m->u.round_result.eff_opp;
+            r->dmg[0] = m->u.round_result.dmg_you; r->dmg[1] = m->u.round_result.dmg_opp; r->heal[0] = m->u.round_result.heal_you; r->heal[1] = m->u.round_result.heal_opp;
+            r->hull_before[0] = A.rs_hull[0]; r->hull_before[1] = A.rs_hull[1]; r->hull_after[0] = m->u.round_result.hull_you; r->hull_after[1] = m->u.round_result.hull_opp;
+            r->armor_before[0] = A.rs_armor[0]; r->armor_before[1] = A.rs_armor[1] == DW_HIDDEN_U8 ? 0 : A.rs_armor[1];
+            r->armor_after[0] = m->u.round_result.armor_you; r->armor_after[1] = m->u.round_result.armor_opp == DW_HIDDEN_U8 ? r->armor_before[1] : m->u.round_result.armor_opp;
+            r->vault_before[0] = A.rs_vault[0]; r->vault_before[1] = A.rs_vault[1]; r->vault_after[0] = m->u.round_result.vault_you; r->vault_after[1] = m->u.round_result.vault_opp;
+            r->flags[0] = m->u.round_result.flags_you; r->flags[1] = m->u.round_result.flags_opp;
+            r->status_before[0] = A.status[0]; r->status_before[1] = A.status[1];
+            r->seed = (A.match_id * 2654435761u) ^ (uint32_t)m->u.round_result.round * 40503u ^ (uint32_t)m->u.round_result.roll_you;
+            A.pend_valid = 1;
+        }
         break;
     case DW_S_MATCH_END:
-        A.result = m->u.match_end.result; A.reason = m->u.match_end.reason; A.screen = S_END; A.state_at = SDL_GetTicks();
-        A.dumped_end = 0; break;
+        A.result = m->u.match_end.result; A.reason = m->u.match_end.reason; A.state_at = SDL_GetTicks();
+        A.dumped_end = 0;
+        if (A.pend_valid) { A.pend.lethal = 1; fx_targets(0); fx_finish_round(0, NULL); }
+        if (fx_active() && A.screen == S_MATCH) A.end_wait = 1;   /* let the final clash land before the result screen */
+        else A.screen = S_END;
+        break;
     case DW_S_ERROR: to_menu(m->u.error.code == DW_ERR_AUTH ? "Server rejected login" : "Server error"); break;
     default: break;
     }
@@ -219,18 +292,26 @@ static void button(int x, int y, int w, int h, const char *label, Col c, int ena
     if (enabled && in_rect(mx, my, x, y, w, h)) { f.r = (uint8_t)(f.r + (255 - f.r) / 4); f.g = (uint8_t)(f.g + (255 - f.g) / 4); f.b = (uint8_t)(f.b + (255 - f.b) / 4); }
     rect(x, y, w, h, f); text_c(x + w / 2, y + h / 2 - 10, 3, enabled ? C_TEXT : C_DIM, "%s", label);
 }
-static void hull_bar(int y, int hull, const char *label, int armor, int vault) {
-    int hp = hull < 0 ? 0 : hull, mx = start_hull();
+/* Meters draw the animated ("shown") values, which lag the server's until the resource stage of the round animation. */
+static void hull_bar(int y, float hull, const char *label, float armor, float vault, int hidden, int seat) {
+    float hp = hull < 0 ? 0 : hull; int mx = start_hull();
     rect(20, y, 440, 26, C_PANEL);
-    rect(20, y, 440 * (hp > mx ? mx : hp) / mx, 26, hp * 3 <= mx ? C_BAD : C_GOOD);
-    text(28, y + 5, 2, C_TEXT, "%s %d/%d", label, hull < 0 ? 0 : hull, mx);
-    if (armor == DW_HIDDEN_U8) text(300, y + 5, 2, C_TEXT, "A? $?");
-    else text(300, y + 5, 2, C_TEXT, "A%d $%d", armor, vault);
+    rect(20, y, (int)(440 * (hp > mx ? mx : hp) / mx + 0.5f), 26, hp * 3 <= mx ? C_BAD : C_GOOD);
+    float pl = fx_pulse(seat, 0); if (pl > 0) frame(19, y - 1, 442, 28, C_BAD, 2);
+    text(28, y + 5, 2, C_TEXT, "%s %d/%d", label, (int)(hp + 0.5f), mx);
+    Col ca = fx_pulse(seat, 1) > 0 ? (Col){200, 210, 225} : C_TEXT, cv = fx_pulse(seat, 3) > 0 ? (Col){255, 215, 80} : C_TEXT;
+    if (hidden) text(300, y + 5, 2, C_TEXT, "A? $?");
+    else { text(300, y + 5, 2, ca, "A%d", (int)(armor + 0.5f)); text(300 + 6 * 2 * 4, y + 5, 2, cv, "$%d", (int)(vault + (vault < 0 ? -0.5f : 0.5f))); }
+    fx_draw_status_panel(seat, 20, y, 440, 26);
 }
-static void pips(int y, int energy, const char *label) {
+static void pips(int y, float energy, const char *label, int hidden, int seat) {
     text(20, y + 2, 2, C_DIM, "%s", label);
-    if (energy == DW_HIDDEN_U8) { text(112, y + 2, 2, C_DIM, "? (HIDDEN)"); return; }
-    for (int i = 0; i < 6; i++) { rect(112 + i * 34, y, 28, 16, i < energy ? (Col){250, 210, 70} : C_PANEL); }
+    if (hidden) { text(112, y + 2, 2, C_DIM, "? (HIDDEN)"); return; }
+    int grow = fx_pulse(seat, 2) > 0 ? 2 : 0;
+    for (int i = 0; i < 6; i++) {
+        float f = energy - i; Col c = f >= 1 ? (Col){250, 210, 70} : f > 0.5f ? (Col){200, 170, 60} : C_PANEL;
+        rect(112 + i * 34 - grow, y - grow, 28 + 2 * grow, 16 + 2 * grow, c);
+    }
 }
 static int wrap_next(const char *t, int per) {
     int n = (int)strlen(t);
@@ -251,7 +332,7 @@ static void card_box(int x, int y, int w, int h, int id, int num, int state /*0 
     const char *nm = dw_card_name(id);
     rect(x, y, w, 30, kc);
     if (big && (int)strlen(nm) * 12 <= w - 8) text_c(x + w / 2, y + 8, 2, C_TEXT, "%s", nm);
-    else text_c(x + w / 2, y + 12, 1, C_TEXT, "%s", nm);
+    else { int mc = (w - 4) / 6; text_c(x + w / 2, y + 12, 1, C_TEXT, "%.*s", mc, nm); }   /* long names are cut to the card width */
     int ty;
     if (big) {
         text_c(x + w / 2, y + 36, 2, tc, "COST %d  PWR %d", card_cost(id), card_power(id));
@@ -259,7 +340,7 @@ static void card_box(int x, int y, int w, int h, int id, int num, int state /*0 
         ty = y + 68;
     } else {
         text_c(x + w / 2, y + 36, 1, tc, "COST %d  PWR %d", card_cost(id), card_power(id));
-        text_c(x + w / 2, y + 48, 1, C_DIM, "%s%s%s%s", KIND_NAME[card_kind(id)], card_keyword(id) ? " / " : "", dw_keyword_name(card_keyword(id)), card_credit(id) ? " $" : "");
+        text_c(x + w / 2, y + 48, 1, C_DIM, "%s%s", card_keyword(id) ? dw_keyword_name(card_keyword(id)) : KIND_NAME[card_kind(id)], card_credit(id) ? " $" : "");   /* small cards: keyword (Operations) or kind */
         ty = y + 64;
     }
     const char *t = dw_card_text(id);
@@ -314,25 +395,36 @@ static void draw_queue(int mx, int my) {
     button(140, 520, 200, 64, "CANCEL", C_BAD, 1, mx, my);
 }
 static void draw_match(int mx, int my) {
+    FxShown sh = fx_shown();
+    int dx = 0, dy = 0; fx_get_shake(&dx, &dy);
+    SDL_Rect vp = {dx, dy, W, H}; SDL_RenderSetViewport(R, (dx || dy) ? &vp : NULL);
     text(20, 14, 2, C_TEXT, "%s%s", A.opp, A.opp_kind ? " (BOT)" : "");
-    hull_bar(44, A.hull_opp, "HULL", A.armor_opp, A.vault_opp); pips(80, A.energy_opp, "ENERGY"); text(350, 82, 2, C_DIM, "HAND %d", A.opp_hand);
+    text(330, 14, 1, C_DIM, "M = SOUND %s", sfx_is_muted() ? "OFF" : sfx_is_open() ? "ON" : "N/A");
+    hull_bar(44, sh.hull[1], "HULL", sh.armor[1], sh.vault[1], A.armor_opp == DW_HIDDEN_U8, 1);
+    pips(80, sh.energy[1], "ENERGY", A.energy_opp == DW_HIDDEN_U8, 1); text(350, 82, 2, C_DIM, "HAND %d", A.opp_hand);
     text_c(W / 2, 118, 3, C_TEXT, "ROUND %d/%d", A.round, max_rounds());
     if (A.deadline_at) { int left = (int)(A.deadline_at - SDL_GetTicks()); if (left < 0) left = 0; text_c(W / 2, 148, 2, left < 5000 ? C_BAD : C_DIM, "%d S", left / 1000); }
-    if (A.have_reveal) {
+    if (fx_active()) {
+        fx_draw_arena(A.rv_you, A.rv_opp, A.have_reveal);
+    } else if (A.have_reveal) {
         text_c(W / 2, 176, 2, C_DIM, "LAST ROUND (%d)", A.rv_round);
         text_c(120, 200, 2, C_DIM, "YOU"); text_c(360, 200, 2, C_DIM, "OPP");
         card_box(20, 222, 200, 170, A.rv_you, 0, 0); card_box(260, 222, 200, 170, A.rv_opp, 0, 0);
         text_c(120, 398, 2, A.rv_dy ? C_BAD : C_DIM, "TOOK %d", A.rv_dy); text_c(360, 398, 2, A.rv_do ? C_GOOD : C_DIM, "TOOK %d", A.rv_do);
     } else text_c(W / 2, 260, 2, C_DIM, "PICK A CARD OR PASS");
     for (int i = 0; i < A.nlog; i++) text(20, 424 + i * 20, 2, C_DIM, "%s", A.log[i]);
-    hull_bar(552, A.hull_you, "YOU", A.armor_you, A.vault_you); pips(588, A.energy_you, "ENERGY");
+    hull_bar(552, sh.hull[0], "YOU", sh.armor[0], sh.vault[0], 0, 0); pips(588, sh.energy[0], "ENERGY", 0, 0);
     for (int i = 0; i < 4; i++) {
         int st = A.hand[i] < 0 ? 2 : !slot_legal(i) ? 2 : (A.sel == i ? (A.locked ? 3 : 1) : 0);
-        card_box(20 + (i % 2) * 232, 620 + (i / 2) * 142, 216, 136, A.hand[i], i + 1, st);
+        int cx = 20 + (i % 2) * 232, cy = 620 + (i / 2) * 142;
+        card_box(cx, cy, 216, 136, A.hand[i], i + 1, st);
+        if (A.hand[i] >= 0 && ((A.lock_mask >> i) & 1)) fx_draw_disabled_card(cx, cy, 216, 136);   /* EMP: desaturated, scanlined, chained */
     }
     int can = !A.locked && A.sel != -2;
     button(20, 906, 200, 42, A.sel == -1 ? (A.locked ? "PASSED" : "PASS *") : "PASS", C_LOCK, !A.locked, mx, my);
     button(240, 906, 220, 42, A.locked ? "LOCKED" : "LOCK IN", C_GOOD, can, mx, my);
+    fx_draw_overlay();
+    SDL_RenderSetViewport(R, NULL);
 }
 static void draw_end(int mx, int my) {
     Col c = A.result == DW_RES_WIN ? C_GOOD : A.result == DW_RES_LOSS ? C_BAD : C_DIM;
@@ -402,7 +494,8 @@ static void key(SDL_Keycode k) {
         else if (k == SDLK_F2) A.mode = A.mode == DW_MODE_DRAFT ? DW_MODE_CARD : DW_MODE_DRAFT;
         else if (k == SDLK_RETURN || k == SDLK_KP_ENTER) do_connect();
     } else if (A.screen == S_MATCH) {
-        if (k >= SDLK_1 && k <= SDLK_4) select_slot((int)(k - SDLK_1));
+        if (k == SDLK_m) sfx_set_muted(!sfx_is_muted());
+        else if (k >= SDLK_1 && k <= SDLK_4) select_slot((int)(k - SDLK_1));
         else if (k == SDLK_p) select_slot(-1);
         else if (k == SDLK_SPACE || k == SDLK_RETURN) lock_selected();
     } else if (A.screen == S_END && (k == SDLK_RETURN || k == SDLK_SPACE)) click(100, A.mode == DW_MODE_DRAFT && A.deck_n ? 470 : 500);
@@ -433,9 +526,117 @@ static void selftest_tick(void) {
     if (A.screen == S_END && !A.dumped_end && now - A.state_at > 20) { A.dumped_end = 1; dump("end"); A.done_ok = 1; }
 }
 
+
+/* ---------- fx host callbacks + the offline animation/audio demo (dw_gui --fx-demo DIR) ---------- */
+static void fx_text_cb(int x, int y, int scale, uint8_t r, uint8_t g, uint8_t b, uint8_t a, const char *str) { Col c = {r, g, b}; text_a(x, y, scale, c, a, str); }
+static int fx_text_w_cb(int scale, const char *str) { return text_w(scale, str); }
+static void fx_card_cb(int x, int y, int w, int h, int id, int state) { card_box(x, y, w, h, id, 0, state); }
+static void fx_host_init(void) { FxHost h = {R, fx_text_cb, fx_text_w_cb, fx_card_cb}; fx_init(&h); }
+
+typedef struct {
+    const char *name; int c0, c1, dmg0, dmg1, heal0, heal1, h0b, h1b, h0a, h1a, a0b, a1b, a0a, a1a, v0b, v1b, v0a, v1a, ed0, ed1, cap0, cap1, fl0, fl1, sb0, sb1, sa0, sa1, lock;
+} DemoRound;
+/* Offense: Bolt 1, Railgun 2, Spark 0 | Operations: Interceptor 4, Stormwing 5, Piercing Round 25, Sunfire Aegis 40, Corporate Espionage 37,
+ * Hush Money 72, Quick Draw 23, Power Tap 83, Glacial Prison 70 | Defense: Barrier 7, Bastion 8, Seraph's Embrace 61, Dividend Stock 44 */
+static const DemoRound DEMOS[] = {
+    /* name              you opp  dmg     heal   hull b   hull a    armor b   armor a    vault b   vault a  energy  cap   flags  st b  st a  lock */
+    {"blitz",             1, 4,   0, 6,   0, 0,  20, 20, 20, 14,  0, 0,  0, 0,   3, 3,   3, 3,   0, 0,  0, 0,  0, 0,  0, 0, 0, 0, 0},
+    {"blitz_crit",        2, 5,   0, 13,  0, 0,  20, 20, 20, 7,   0, 0,  0, 0,   3, 3,   3, 3,   0, 0,  0, 0,  0, 0,  0, 0, 0, 0, 0},
+    {"blitz_opp_wins",    4, 1,   6, 0,   0, 0,  20, 20, 14, 20,  0, 0,  0, 0,   3, 3,   3, 3,   0, 0,  0, 0,  0, 0,  0, 0, 0, 0, 0},
+    {"block_absorbed",    7, 1,   0, 0,   0, 0,  20, 20, 20, 20,  0, 0,  0, 0,   3, 3,   3, 3,   0, 0,  0, 0,  0, 0,  0, 0, 0, 0, 0},
+    {"block_reflected",   7, 1,   0, 3,   0, 0,  20, 20, 20, 17,  0, 0,  0, 0,   3, 3,   3, 3,   0, 0,  0, 0,  0, 0,  0, 0, 0, 0, 0},
+    {"block_crit",        8, 0,   0, 0,   0, 0,  20, 20, 20, 20,  0, 0,  0, 0,   3, 3,   3, 3,   2, 0,  0, 0,  0, 0,  0, 0, 0, 0, 0},
+    {"bypass_lock",       25, 7,  0, 5,   0, 0,  20, 20, 20, 15,  0, 4,  0, 4,   3, 3,   3, 3,   0, 0,  0, 0,  0, 0,  0, 0, 0, 0, 0},
+    {"bypass_sabotage",   40, 7,  0, 2,   0, 0,  20, 20, 20, 18,  0, 0,  0, 0,   3, 3,   3, 3,   0, 0,  0, 0,  0, 0,  0, 0, 0, 1, 0},
+    {"bypass_flank",      4, 7,   0, 8,   0, 0,  20, 20, 20, 12,  0, 0,  0, 0,   3, 3,   3, 3,   0, 0,  0, 0,  0, 0,  0, 0, 0, 0, 0},
+    {"bypass_scan",       37, 7,  0, 4,   0, 0,  20, 20, 20, 16,  0, 0,  0, 0,   3, 3,   3, 3,   0, 0,  0, 0,  0, 0,  0, 0, 0, 0, 0},
+    {"bypass_siphon",     72, 7,  0, 1,   0, 0,  20, 20, 20, 19,  0, 0,  0, 0,   3, 3,   5, 1,   0, -2, 0, 0,  0, 0,  0, 0, 0, 0, 0},
+    {"bypass_crit_flank", 5, 7,   0, 13,  0, 0,  20, 20, 20, 7,   0, 0,  0, 0,   3, 3,   3, 3,   0, 0,  0, 0,  0, 0,  0, 0, 0, 0, 0},
+    {"bypass_opp_scan",   7, 37,  4, 0,   0, 0,  20, 20, 16, 20,  0, 0,  0, 0,   3, 3,   3, 3,   0, 0,  0, 0,  0, 0,  0, 0, 0, 0, 0},
+    {"mirror_offense",    1, 1,   6, 6,   0, 0,  20, 20, 14, 14,  0, 0,  0, 0,   3, 3,   3, 3,   0, 0,  0, 0,  0, 0,  0, 0, 0, 0, 0},
+    {"mirror_operations", 4, 4,   3, 3,   0, 0,  20, 20, 17, 17,  0, 0,  0, 0,   3, 3,   3, 3,   0, 0,  0, 0,  0, 0,  0, 0, 0, 0, 0},
+    {"mirror_defense",    7, 7,   0, 0,   0, 0,  20, 20, 20, 20,  0, 0,  0, 0,   3, 3,   3, 3,   0, 0,  0, 0,  0, 0,  0, 0, 0, 0, 0},
+    {"unopposed",         1, -1,  0, 3,   0, 0,  20, 20, 20, 17,  0, 0,  0, 0,   3, 3,   3, 3,   1, 0,  0, 0,  0, 0,  0, 0, 0, 0, 0},
+    {"both_pass",        -1, -1,  0, 0,   0, 0,  20, 20, 20, 20,  0, 0,  0, 0,   3, 3,   3, 3,   1, 1,  0, 0,  0, 0,  0, 0, 0, 0, 0},
+    {"armor_both",       61, 61,  0, 0,   0, 0,  20, 20, 20, 20,  0, 0,  4, 4,   3, 3,   3, 3,   0, 0,  0, 0,  0, 0,  0, 0, 0, 0, 0},
+    {"armor_soak",        7, 25,  0, 0,   0, 0,  20, 20, 20, 20,  6, 0,  1, 0,   3, 3,   3, 3,   0, 0,  0, 0,  0, 0,  0, 0, 0, 0, 0},
+    {"credits_gain",     44, -1,  0, 0,   0, 0,  20, 20, 20, 20,  0, 0,  0, 0,   3, 3,   5, 3,   0, 0,  0, 0,  0, 0,  0, 0, 0, 0, 0},
+    {"overload",         43, -1,  0, 0,   0, 0,  20, 20, 20, 20,  0, 0,  0, 0,   3, 3,   3, 3,   2, 0,  1, 0,  0, 0,  0, 0, 0, 0, 0},
+    {"burn_ignite",      40, 7,   0, 2,   0, 0,  20, 20, 20, 18,  0, 0,  0, 0,   3, 3,   3, 3,   0, 0,  0, 0,  0, 0,  0, 0, 0, 1, 0},
+    {"emp_disable",      70, 7,   0, 2,   0, 0,  20, 20, 20, 18,  0, 0,  0, 0,   3, 3,   3, 3,   0, 0,  0, 0,  8, 0,  0, 0, 0, 0, 0},
+    {"emp_on_me",         7, 70,  0, 0,   0, 0,  20, 20, 20, 20,  0, 0,  0, 0,   3, 3,   3, 3,   0, 0,  0, 0,  0, 8,  0, 0, 0, 0, 5},
+    {"cancelled",        36, 1,   0, 0,   0, 0,  20, 20, 20, 20,  0, 0,  0, 0,   3, 3,   3, 3,   0, 0,  0, 0,  1, 0,  0, 0, 0, 0, 0},
+    {"redline",           5, 1,   0, 0,   0, 0,  20, 20, 20, 20,  0, 0,  0, 0,   3, 3,   3, 3,   0, 0,  0, 0,  0, 0,  0, 0, 0, 0, 0},
+    {"lethal_blitz",      2, 5,   0, 13,  0, 0,  20, 8,  20, 0,   0, 0,  0, 0,   3, 3,   3, 3,   0, 0,  0, 0,  0, 0,  0, 0, 0, 0, 0},
+};
+static FxRound demo_round(const DemoRound *d) {
+    FxRound r; memset(&r, 0, sizeof r);
+    r.round = 5; r.card[0] = d->c0; r.card[1] = d->c1; r.eff[0] = d->c0; r.eff[1] = d->c1;
+    if (d->fl0 & 1) r.eff[0] = -1;
+    r.dmg[0] = d->dmg0; r.dmg[1] = d->dmg1; r.heal[0] = d->heal0; r.heal[1] = d->heal1;
+    r.hull_before[0] = d->h0b; r.hull_before[1] = d->h1b; r.hull_after[0] = d->h0a; r.hull_after[1] = d->h1a;
+    r.armor_before[0] = d->a0b; r.armor_before[1] = d->a1b; r.armor_after[0] = d->a0a; r.armor_after[1] = d->a1a;
+    r.vault_before[0] = d->v0b; r.vault_before[1] = d->v1b; r.vault_after[0] = d->v0a; r.vault_after[1] = d->v1a;
+    r.energy_delta[0] = d->ed0; r.energy_delta[1] = d->ed1; r.energy_capped[0] = d->cap0; r.energy_capped[1] = d->cap1;
+    r.flags[0] = d->fl0; r.flags[1] = d->fl1; r.status_before[0] = d->sb0; r.status_before[1] = d->sb1; r.status_after[0] = d->sa0; r.status_after[1] = d->sa1; r.lock_after = d->lock;
+    r.seed = 12345u + (uint32_t)d->c0 * 31u + (uint32_t)d->c1; r.lethal = d->h0a <= 0 || d->h1a <= 0;
+    return r;
+}
+static int demo_setup(const DemoRound *d, const FxRound *r) {
+    A.screen = S_MATCH; snprintf(A.opp, sizeof A.opp, "BOT-DEMO"); A.opp_kind = 1; A.round = r->round; A.have_reveal = 1;
+    A.hand[0] = 1; A.hand[1] = 25; A.hand[2] = 7; A.hand[3] = 40; A.energy_you = 4; A.energy_opp = 4; A.opp_hand = 4;
+    A.hull_you = r->hull_after[0]; A.hull_opp = r->hull_after[1]; A.armor_you = r->armor_after[0]; A.armor_opp = r->armor_after[1];
+    A.vault_you = r->vault_after[0]; A.vault_opp = r->vault_after[1]; A.lock_mask = d->lock; A.status[0] = r->status_after[0]; A.status[1] = r->status_after[1];
+    fx_reset();
+    float hb[2] = {(float)r->hull_before[0], (float)r->hull_before[1]}, ab[2] = {(float)r->armor_before[0], (float)r->armor_before[1]}, eb[2] = {4, 4}, vb[2] = {(float)r->vault_before[0], (float)r->vault_before[1]};
+    fx_set_meters(hb, ab, eb, vb, 1);
+    return 0;
+}
+static void demo_targets(const FxRound *r) {
+    float ha[2] = {(float)(r->hull_after[0] < 0 ? 0 : r->hull_after[0]), (float)(r->hull_after[1] < 0 ? 0 : r->hull_after[1])}, aa[2] = {(float)r->armor_after[0], (float)r->armor_after[1]}, ea[2] = {4.0f + (r->energy_delta[0] == FX_UNKNOWN ? 0 : r->energy_delta[0]), 4.0f + (r->energy_delta[1] == FX_UNKNOWN ? 0 : r->energy_delta[1])}, va[2] = {(float)r->vault_after[0], (float)r->vault_after[1]};
+    fx_set_meters(ha, aa, ea, va, 0);
+}
+static int run_fx_demo(const char *dir) {
+    static const int SNAP_MS[] = {250, 700, 1100, 1600, 2100, 2700, 3400, 4100, 4900, 5700};
+    int bad = 0; int n = (int)(sizeof DEMOS / sizeof DEMOS[0]);
+    printf("fx-demo: %d scenarios\n", n);
+    for (int i = 0; i < n; i++) {
+        const DemoRound *d = &DEMOS[i]; FxRound r = demo_round(d);
+        /* audio: schedule the same cues the animation schedules, render offline, check the bounds */
+        demo_setup(d, &r); sfx_offline_begin(); fx_begin(&r); demo_targets(&r);
+        float total = fx_total_ms(); int frames = (int)(total / 1000.0f * SFX_RATE) + SFX_RATE; static int16_t big[SFX_RATE * 12 * 2];
+        if (frames > SFX_RATE * 12) frames = SFX_RATE * 12;
+        sfx_render(big, frames); float pk, rms; int last; sfx_stats(big, frames, 0.004f, &pk, &rms, &last);
+        char name[64]; snprintf(name, sizeof name, "%s", fx_scenario_name());
+        char path[600]; snprintf(path, sizeof path, "%s/%s.wav", dir, d->name); sfx_write_wav(path, big, last > 0 ? last + SFX_RATE / 10 : 1);
+        sfx_offline_end();
+        int ok = total <= 9000.0f && pk <= 0.99f && last >= 0;
+        printf("  %-20s -> %-26s length %5.0f ms  audio peak %.2f  audio ends %.2f s  %s\n", d->name, name, total, pk, last < 0 ? 0.0f : (float)last / SFX_RATE, ok ? "ok" : "BAD");
+        if (!ok) bad++;
+        /* visuals: step the clock at 60 fps and dump the arena band at key moments */
+        demo_setup(d, &r); fx_set_speed(1); fx_begin(&r); demo_targets(&r);
+        if (d->name[0] == 'r' && d->name[1] == 'e') fx_set_redline(3, 10);
+        int k = 0; unsigned t = 0;
+        while (fx_active() && t < 9500) {
+            fx_update(16); t += 16;
+            if (k < 10 && t >= (unsigned)SNAP_MS[k] && t < (unsigned)SNAP_MS[k] + 16) {
+                setc(C_BG, 255); SDL_RenderClear(R); draw_match(0, 0);
+                SDL_Rect rc = {0, 168, 480, 262}; SDL_Surface *sf = SDL_CreateRGBSurfaceWithFormat(0, rc.w, rc.h, 32, SDL_PIXELFORMAT_ARGB8888);
+                if (sf) { if (SDL_RenderReadPixels(R, &rc, SDL_PIXELFORMAT_ARGB8888, sf->pixels, sf->pitch) == 0) { char p2[600]; snprintf(p2, sizeof p2, "%s/%s_%02d.bmp", dir, d->name, k); SDL_SaveBMP(sf, p2); } SDL_FreeSurface(sf); }
+                k++;
+            }
+        }
+        if (fx_active()) { printf("  %s: did not finish\n", d->name); bad++; }
+        fx_reset();
+    }
+    printf("fx-demo: %s\n", bad ? "PROBLEMS" : "ok");
+    return bad ? 1 : 0;
+}
+
 int main(int argc, char **argv) {
     snprintf(A.name, sizeof A.name, "Player"); snprintf(A.host, sizeof A.host, "okemily.com"); snprintf(A.port, sizeof A.port, "6980");
     A.sel = -2; for (int i = 0; i < 4; i++) A.hand[i] = -1;
+    const char *demo_dir = NULL; int no_sound = 0;
     const char *envt = getenv("DW_TOKEN"); if (envt) snprintf(A.token, sizeof A.token, "%s", envt);
     for (int i = 1; i < argc; i++) {
         const char *a = argv[i], *v = i + 1 < argc ? argv[i + 1] : NULL;
@@ -448,9 +649,11 @@ int main(int argc, char **argv) {
         else if (!strcmp(a, "--autostart")) A.autostart = 1;
         else if (!strcmp(a, "--mode") && v) { A.mode = !strcmp(v, "draft") ? DW_MODE_DRAFT : DW_MODE_CARD; i++; }
         else if (!strcmp(a, "--selftest")) A.selftest = A.autostart = 1;
+        else if (!strcmp(a, "--fx-demo") && v) { demo_dir = v; i++; }
+        else if (!strcmp(a, "--no-sound")) no_sound = 1;
         else { fprintf(stderr, "usage: dw_gui [--name N] [--host H] [--port P] [--token JWT] [--autostart] [--selftest [--frames DIR]]\n"); return 2; }
     }
-    if (A.selftest) SDL_setenv("SDL_VIDEODRIVER", "dummy", 1);
+    if (A.selftest || demo_dir) SDL_setenv("SDL_VIDEODRIVER", "dummy", 1);
     dw_net_init();
     SDL_SetMainReady();
     if (SDL_Init(SDL_INIT_VIDEO) != 0) { fprintf(stderr, "SDL_Init: %s\n", SDL_GetError()); return 1; }
@@ -460,13 +663,19 @@ int main(int argc, char **argv) {
     if (!R) R = SDL_CreateRenderer(win, -1, SDL_RENDERER_SOFTWARE);
     if (!R) { fprintf(stderr, "SDL_CreateRenderer: %s\n", SDL_GetError()); return 1; }
     SDL_RenderSetLogicalSize(R, W, H);
+    SDL_SetRenderDrawBlendMode(R, SDL_BLENDMODE_BLEND);
     SDL_StartTextInput();
+    fx_host_init();
+    if (demo_dir) { int rc2 = run_fx_demo(demo_dir); SDL_DestroyRenderer(R); SDL_DestroyWindow(win); SDL_Quit(); return rc2; }
+    if (A.selftest) fx_set_speed(40.0f);                    /* headless: play the animations ~40x so a full match still finishes in seconds */
+    else if (!no_sound && sfx_open() != 0) fprintf(stderr, "dw_gui: no audio device; continuing silent\n");
 
     if (A.autostart) do_connect();
     if (A.selftest && A.screen != S_QUEUE) { fprintf(stderr, "selftest: %s\n", A.err); return 1; }
 
-    int running = 1, mx = 0, my = 0, rc = 0; Uint32 t0 = SDL_GetTicks();
+    int running = 1, mx = 0, my = 0, rc = 0; Uint32 t0 = SDL_GetTicks(), tprev = t0;
     while (running) {
+        Uint32 tnow = SDL_GetTicks(); unsigned dtms = tnow - tprev > 100 ? 100 : tnow - tprev; tprev = tnow;
         SDL_Event e;
         while (SDL_PollEvent(&e)) {
             if (e.type == SDL_QUIT) running = 0;
@@ -480,6 +689,8 @@ int main(int argc, char **argv) {
             else if (e.type == SDL_KEYDOWN) { if (e.key.keysym.sym == SDLK_ESCAPE && A.screen == S_MENU) running = 0; else key(e.key.keysym.sym); }
         }
         pump();
+        fx_update(dtms);
+        if (A.end_wait && !fx_active()) { A.end_wait = 0; A.screen = S_END; A.state_at = SDL_GetTicks(); }
         if (A.selftest) {
             selftest_tick();
             if (A.done_ok) { printf("selftest: full match played, result=%d reason=%d\n", A.result, A.reason); break; }
@@ -491,6 +702,7 @@ int main(int argc, char **argv) {
         if (A.selftest) SDL_Delay(8); else if (!(SDL_GetWindowFlags(win) & SDL_WINDOW_SHOWN)) SDL_Delay(16);
     }
     if (A.connected) dwc_close(&A.c);
+    sfx_close();
     SDL_DestroyRenderer(R); SDL_DestroyWindow(win); SDL_Quit();
     return rc;
 }
