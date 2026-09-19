@@ -35,8 +35,8 @@ can't stall the pair) plays the PFSP-sampled league member against the trainee (
 
 ## Colab
 
-Paste `colab_train.py` into one cell (or run the notebook). It asks for a GitHub token (repo read) and, optionally, the
-`DEADWEIGHT-RL` agent secret; with a secret it lists the registry, resumes each role from its newest checkpoint (always,
+Paste `colab_train.py` into one cell (or run the notebook). No GitHub token needed (public repo, plain https clone). It asks only for the
+`DEADWEIGHT-RL` agent secret (optional); with a secret it lists the registry, resumes each role from its newest checkpoint (always,
 like BRAWLPIT) and pushes every generation back. `dw_train.py --resume-from-registry` is the flag it uses; registry
 listing/push failures print loudly and never stop training (checkpoints stay in `league_data/`).
 

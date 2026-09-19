@@ -18,7 +18,7 @@ agent was provisioned; a real push (3 roles) and a real resume-from-registry (ne
 end to end against https://okemily.com from a local run. This script itself has not been run inside a Colab runtime. A
 registry error still never kills training: it warns and carries on locally.
 
-Prereqs: a GitHub personal access token with repo read scope (private repo); the DEADWEIGHT-RL secret (IDUNA/var/agent-secrets.env: IDUNA_SECRET_DEADWEIGHT_RL) to join the shared registry.
+Prereqs: none for the clone (public repo, plain https); the DEADWEIGHT-RL secret (IDUNA/var/agent-secrets.env: IDUNA_SECRET_DEADWEIGHT_RL) to join the shared registry.
 Tunables (env vars, all optional): DEADWEIGHT_GENERATIONS (default 100000: "until the runtime dies"),
 DEADWEIGHT_TIMESTEPS (PPO steps per role per generation, default 4096), DEADWEIGHT_SAVE_FREQ (generations between
 snapshots, default 1), DEADWEIGHT_BASE_PORT (default 7100; each role uses its own port), IDUNA_BASE_URL.
@@ -29,7 +29,7 @@ import os
 import subprocess
 import sys
 
-REPO_URL_TEMPLATE = "https://{token}@github.com/emilyspringerton/DEADWEIGHT.git"
+REPO_URL = "https://github.com/emilyspringerton/DEADWEIGHT.git"
 IDUNA_BASE_URL = os.environ.get("IDUNA_BASE_URL", "https://okemily.com")
 
 
@@ -50,7 +50,7 @@ def _stream(cmd, env=None, cwd=None):
     return proc.returncode
 
 
-def _bootstrap_repo(github_token):
+def _bootstrap_repo():
     """Clone if absent, else force the real latest remote state every run (BRAWLPIT S438: `git pull --ff-only` silently
     leaves a stale checkout). Prints the resulting commit so every report carries its own version proof."""
     if os.path.isdir("DEADWEIGHT"):
@@ -58,7 +58,7 @@ def _bootstrap_repo(github_token):
         _run(["git", "-C", "DEADWEIGHT", "fetch", "origin", "main"])
         _run(["git", "-C", "DEADWEIGHT", "reset", "--hard", "origin/main"])
     else:
-        _run(["git", "clone", REPO_URL_TEMPLATE.format(token=github_token), "DEADWEIGHT"])
+        _run(["git", "clone", REPO_URL, "DEADWEIGHT"])
     os.chdir("DEADWEIGHT")
     _run(["git", "log", "--oneline", "-1"])
 
@@ -72,12 +72,10 @@ def _bootstrap_build():
 
 
 def main():
-    github_token = os.environ.get("GITHUB_TOKEN") or getpass.getpass("GitHub personal access token (repo read scope): ")
     iduna_agent_secret = os.environ.get("IDUNA_AGENT_SECRET") or getpass.getpass(
         "DEADWEIGHT-RL agent secret (blank to skip the shared registry -- local-only run): ")
 
-    _bootstrap_repo(github_token)
-    del github_token  # don't keep the token in memory longer than the clone needs it
+    _bootstrap_repo()
     _bootstrap_build()
     os.chdir("training")
     sys.path.insert(0, os.getcwd())
