@@ -244,7 +244,6 @@ static void card_box(int x, int y, int w, int h, int id, int num, int state /*0 
         ty = y + 64;
     }
     const char *t = dw_card_text(id);
-    if (!*t) t = "NO SPECIAL EFFECT";
     int avail = y + h - 14 - ty, sc = big ? 2 : 1;
     if (sc == 2 && wrap_lines(t, (w - 8) / 12) * 18 > avail) sc = 1;
     int per = (w - 8) / (6 * sc), lh = sc == 2 ? 18 : 10;
