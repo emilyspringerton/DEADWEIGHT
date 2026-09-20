@@ -1,5 +1,10 @@
 # CHANGELOG
 
+## 2026-09-20
+
+- EMP visual effect redesigned for photosensitivity safety (pulsed flicker + scanlines + glitch bars); text drop shadows added for contrast (sess-20260920-1908-24cb3558)
+
+
 ## 2026-09-19
 - feat(gui): round-resolution animations + synthesized audio in the SDL2 client (fx.c/sfx.c), --fx-demo, test_sfx, docs/ANIMATION_AND_AUDIO.md; Windows/Linux only (sess-20260918-1725-497f394f)
 - ops: deployed the retheme (server + bots, proto 3); archived pre-retheme deck/match logs; server continues deck ids across restarts (sess-20260918-1725-497f394f)
