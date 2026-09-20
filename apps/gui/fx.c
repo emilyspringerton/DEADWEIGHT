@@ -90,7 +90,15 @@ static void hex_outline(float cx, float cy, float r, float rot, float th, C3 c, 
     float p[12]; hexpts(cx, cy, r, rot, p);
     for (int i = 0; i < 6; i++) { int j = (i + 1) % 6; fline(p[2 * i], p[2 * i + 1], p[2 * j], p[2 * j + 1], th, c, a); }
 }
-static void txt(float x, float y, int scale, C3 c, float a, const char *s) { if (a > 0.02f && H.text) H.text((int)x, (int)y, scale, (uint8_t)c.r, (uint8_t)c.g, (uint8_t)c.b, (uint8_t)(fclampf(a, 0, 1) * 255), s); }
+static void txt(float x, float y, int scale, C3 c, float a, const char *s) {
+    if (a > 0.02f && H.text) {
+        /* Thin hard drop shadow: 1px offset down-right for contrast on white text */
+        uint8_t shadow_alpha = (uint8_t)(fclampf(a * 0.6f, 0, 1) * 255);
+        H.text((int)(x + 1), (int)(y + 1), scale, 0, 0, 0, shadow_alpha, s);
+        /* Main text */
+        H.text((int)x, (int)y, scale, (uint8_t)c.r, (uint8_t)c.g, (uint8_t)c.b, (uint8_t)(fclampf(a, 0, 1) * 255), s);
+    }
+}
 static void txt_c(float cx, float y, int scale, C3 c, float a, const char *s) { int w = H.text_w ? H.text_w(scale, s) : (int)strlen(s) * 6 * scale; txt(cx - w * 0.5f, y, scale, c, a, s); }
 
 /* --------------------------------------------------------------------------------------------------------- particles */
@@ -757,6 +765,50 @@ void fx_draw_overlay(void) {
         frect(0, 0, 480, 5, RED, a); frect(0, 951, 480, 5, RED, a); frect(0, 0, 5, 956, RED, a); frect(476, 0, 5, 956, RED, a);
         frect(0, 0, 480, 22, RED, a * 0.25f); frect(0, 934, 480, 22, RED, a * 0.25f);
     }
-    if (emp_flash > 0) { float k = emp_flash / 700.0f; for (int yy = 620; yy < 900; yy += 6) fline(0, yy + (int)(k * 20) % 6, 480, yy + (int)(k * 20) % 6, 1, WHT, 0.25f * k); frect(0, 620, 480, 280, (C3){60, 62, 70}, 0.25f * k); }
+    if (emp_flash > 0) {
+        /* EMP disabled state: photosensitive-safer screen corruption effect.
+         * Pulsed scanlines + glitch bar + subtle interference overlay, mixing disabled-card aesthetics.
+         * Duration: 700ms total, but uses pulsed opacity (3 strong flickers early, then fade) instead of constant flash. */
+        float k = emp_flash / 700.0f;
+        float progress = 1.0f - k;  /* 0 (start) -> 1 (end) */
+
+        /* Pulsed intensity: 3 quick pulses in the first 300ms, then fade. Creates perception of data corruption
+         * without sustained bright flicker. Safest for photosensitive viewers. */
+        float pulse_phase = progress * 8.0f;  /* 0..8 over 700ms */
+        float pulse_alpha = 0.0f;
+        if (pulse_phase < 3.0f) {
+            /* First 3 pulses (0-300ms): on/off at ~100ms each */
+            int pulse_idx = (int)pulse_phase;
+            float pulse_frac = pulse_phase - pulse_idx;
+            pulse_alpha = pulse_frac < 0.5f ? 0.12f : 0.04f;  /* reduced from 0.25f */
+        } else {
+            /* Fade to static (300-700ms): subtle scanline corruption persists as glitchy trails */
+            float fade = fmaxf(0, 1.0f - (pulse_phase - 3.0f) / 5.0f);
+            pulse_alpha = 0.04f * fade;
+        }
+
+        /* CRT scanlines: horizontal scan corruption, spacing varies with time for glitch effect */
+        int line_offset = (int)(progress * 120) % 4;
+        for (int yy = 0; yy < 956; yy += 4) {
+            int scan_y = yy + line_offset;
+            float scan_alpha = pulse_alpha * (0.8f + 0.2f * sinf((yy + progress * 50) * 0.1f));
+            fline(0, scan_y, 480, scan_y, 1, (C3){80, 90, 110}, scan_alpha);
+        }
+
+        /* Moving glitch bar: bright stripe that traverses down then back up, like disabled card effect */
+        float bar_phase = fmodf(progress * 1.5f, 1.0f);
+        int bar_y = (int)(bar_phase * 956);
+        frect(0, bar_y, 480, 2, (C3){150, 160, 180}, pulse_alpha * 1.2f);
+
+        /* Faint static-lock diagonal corruption lines (every 40px), adding to the "disabled system" feel */
+        for (int x = 0; x < 480; x += 40) {
+            int offset = (int)(progress * 40) % 40;
+            fline(x + offset, 0, x + offset + 200, 956, 1, (C3){100, 110, 130}, pulse_alpha * 0.6f);
+        }
+
+        /* Very subtle background desaturation (peak at start, fades) */
+        float bg_alpha = fmaxf(0.05f, pulse_alpha * 0.3f);
+        frect(0, 0, 480, 956, (C3){60, 62, 70}, bg_alpha);
+    }
     for (int s = 0; s < 2; s++) if (overload[s] > 0) { float k = overload[s] / 800.0f; fring(ENERGY_XY[s][0] + 10, ENERGY_XY[s][1], 60 + 14 * (1 - k), 3, YEL, 0.5f * k); txt_c(overload_x[s] + 20, ENERGY_XY[s][1] - 8, 2, YEL, k, "MAX"); }
 }
