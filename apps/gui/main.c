@@ -576,12 +576,25 @@ static void click(int x, int y) {
         break;
     }
 }
+/* Shared by SDL_TEXTINPUT (typing) and Ctrl+V (paste, S508d -- "ensure the text input box fully
+ * supports OS-level copy/paste so players do not have to type" the 29-char redeem code by hand). */
+static void append_to_field(int focus, const char *text) {
+    char *f = field(focus); size_t n = strlen(f);
+    for (const char *p = text; *p && n < field_cap(focus); p++)
+        if ((unsigned char)*p >= 32 && (unsigned char)*p < 127 && (focus != 2 || (*p >= '0' && *p <= '9'))) { f[n++] = *p; f[n] = 0; }
+}
 static void key(SDL_Keycode k) {
     if (A.screen == S_MENU) {
         char *f = field(A.focus);
         if (k == SDLK_BACKSPACE && *f) f[strlen(f) - 1] = 0;
         else if (k == SDLK_TAB) A.focus = (A.focus + 1) % MENU_FIELDS;
         else if (k == SDLK_F2) A.mode = A.mode == DW_MODE_DRAFT ? DW_MODE_CARD : DW_MODE_DRAFT;
+        else if (k == SDLK_v && (SDL_GetModState() & KMOD_CTRL)) {
+            if (SDL_HasClipboardText()) {
+                char *clip = SDL_GetClipboardText();
+                if (clip) { append_to_field(A.focus, clip); SDL_free(clip); }
+            }
+        }
         else if (k == SDLK_RETURN || k == SDLK_KP_ENTER) {
             if (A.focus == 3) { if (A.redeem_code[0]) do_redeem(); }
             else if (A.focus == 4 || A.focus == 5) { if (A.link_email[0] && A.link_pass[0]) do_link_email(); }
@@ -785,11 +798,7 @@ int main(int argc, char **argv) {
             if (e.type == SDL_QUIT) running = 0;
             else if (e.type == SDL_MOUSEMOTION) { mx = e.motion.x; my = e.motion.y; }
             else if (e.type == SDL_MOUSEBUTTONDOWN && e.button.button == SDL_BUTTON_LEFT) click(e.button.x, e.button.y);
-            else if (e.type == SDL_TEXTINPUT && A.screen == S_MENU) {
-                char *f = field(A.focus); size_t n = strlen(f);
-                for (const char *p = e.text.text; *p && n < field_cap(A.focus); p++)
-                    if ((unsigned char)*p >= 32 && (unsigned char)*p < 127 && (A.focus != 2 || (*p >= '0' && *p <= '9'))) { f[n++] = *p; f[n] = 0; }
-            }
+            else if (e.type == SDL_TEXTINPUT && A.screen == S_MENU) append_to_field(A.focus, e.text.text);
             else if (e.type == SDL_KEYDOWN) { if (e.key.keysym.sym == SDLK_ESCAPE && A.screen == S_MENU) running = 0; else key(e.key.keysym.sym); }
         }
         pump();
