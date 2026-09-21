@@ -2,6 +2,7 @@
 
 ## 2026-09-21
 
+- feat(web): real, working browser client (VS0.5-web, dev) dogfooding PARENA's TypeScript emitter -- card_rules.prn now also compiles to web/src/generated/CardRules.ts (scripts/gen_rules.sh), a hand-written WebSocket wire-protocol client (web/src/proto.ts, web/src/client.ts) speaks docs/WIRE_PROTOCOL.md directly, and a dumb WS<->TCP bridge (web/bridge/ws-tcp-bridge.js) reaches the real dw_server (still TCP-only). Verified end-to-end: a real 11-round match played through the compiled client against a live bot (web/bridge/e2e_test.mjs). Random queue only, no auth, no animation -- see web/README.md. Found and fixed two real, load-bearing PARENA TypeScript-emitter bugs along the way (I32 division truncation, a 511-char tb_appendf buffer overflow) plus a `(not x)` gap -- see PARENA/STDLIB.md
 - docs(readme): full marketing rewrite of README.md for the card battler (triangle, keywords, draft/random queues, real online multiplayer from day one); backpack battler/VS1 mentioned only as the closing line, explicitly flagged as not built yet; honest-status section preserved from the prior README (draft not deployed live, Android draft screens untested on device, constructed decks not built)
 
 ## 2026-09-20

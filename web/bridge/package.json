@@ -1,0 +1,10 @@
+{
+  "name": "deadweight-ws-tcp-bridge",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Dumb WebSocket<->TCP relay so DEADWEIGHT's browser client can reach dw_server (raw TCP only, docs/WIRE_PROTOCOL.md). See ws-tcp-bridge.js's own header comment.",
+  "main": "ws-tcp-bridge.js",
+  "dependencies": {
+    "ws": "^8.18.0"
+  }
+}

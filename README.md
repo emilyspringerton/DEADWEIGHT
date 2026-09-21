@@ -94,16 +94,27 @@ no-sudo SDK install), and `BAZEL=/path/to/bazelisk` if `bazel` isn't on PATH. **
 KARAMBIT): this repo sits under `/home/fatbaby`, whose `go.work` leaks into rules_android's Go tool bootstrap —
 run Bazel with `HOME=/tmp/dw-home` (`mkdir -p` it first). Not needed on CI or any machine without a parent `go.work`.
 
-## One rules source, two targets, zero FFI
+## One rules source, three targets, zero FFI
 
 `PARENA/stdlib/deadweight/card_rules.prn` (scalar-only) compiles to `core/card_rules.c` (server/Windows/bots/
-training) and `android/.../generated/CardRules.java` (Android). The card catalog and every card effect are *data* in that
-file (packed effect words + one `fx-amount` function); `core/match.c` only sequences them. `tests/parity_vectors.txt`
-(~14.7k vectors, generated from the C build, including a seeded sample of every card's effect amounts) is verified by
-`tests/test_rules.c`, `android/.../ParityTest.java` and the Python port in `training/dw_rules.py`; `test_rules.c` also
-carries a hand-typed oracle from the rules doc so the generated code can't grade itself. Retuning or adding a card =
-edit the table + `scripts/gen_rules.sh`. (Regenerating needs a PARENA built after 2026-09-19: its Java emitter used to
-truncate expressions longer than 511 characters.)
+training), `android/.../generated/CardRules.java` (Android), and `web/src/generated/CardRules.ts` (browser). The card
+catalog and every card effect are *data* in that file (packed effect words + one `fx-amount` function); `core/match.c`
+only sequences them. `tests/parity_vectors.txt` (~14.7k vectors, generated from the C build, including a seeded sample
+of every card's effect amounts) is verified by `tests/test_rules.c`, `android/.../ParityTest.java`, the Python port in
+`training/dw_rules.py`, and (manually, via `web/bridge/e2e_test.mjs`) the TypeScript build; `test_rules.c` also carries
+a hand-typed oracle from the rules doc so the generated code can't grade itself. Retuning or adding a card = edit the
+table + `scripts/gen_rules.sh`.
+
+## Browser client (dev, VS0.5-web)
+
+`web/` is a real, working browser client, dogfooding PARENA's TypeScript emitter against this repo's own
+`card_rules.prn` — connects over a WebSocket↔TCP bridge to the real `dw_server`, plays the real wire protocol, and
+calls the PARENA-compiled `isLegalPlay`/`cardKind`/`cardKeyword` directly rather than re-implementing rules in hand-
+written JS. Verified end-to-end: a real match played start to finish against a live bot through the compiled client
+(`web/bridge/e2e_test.mjs`). Random queue only, no auth, no animation, not deployed anywhere — see `web/README.md`
+for the full honest status and how to run it locally. Two real, load-bearing bugs in PARENA's TypeScript emitter
+were found and fixed getting this far (I32 division truncation, a 511-character buffer overflow) — see
+`PARENA/STDLIB.md`'s own TypeScript emitter section.
 
 ## CI / releases
 

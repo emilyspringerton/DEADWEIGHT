@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>DEADWEIGHT — browser client (VS0.5-web, dev)</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  :root { color-scheme: dark; }
+  body { background: #12141a; color: #e8e6df; font-family: system-ui, sans-serif; max-width: 760px; margin: 0 auto; padding: 16px; }
+  h1 { font-size: 1.3rem; }
+  .warn { background: #3a2a12; border: 1px solid #a06a1a; padding: 8px 12px; border-radius: 6px; font-size: 0.85rem; margin-bottom: 16px; }
+  label { display: block; margin: 8px 0 4px; font-size: 0.85rem; opacity: 0.8; }
+  input { width: 100%; box-sizing: border-box; padding: 6px 8px; background: #1c1f28; border: 1px solid #333; color: #e8e6df; border-radius: 4px; }
+  button { cursor: pointer; padding: 8px 14px; border-radius: 6px; border: 1px solid #555; background: #232732; color: #e8e6df; margin-top: 10px; }
+  button:disabled { opacity: 0.4; cursor: default; }
+  #status { font-weight: bold; }
+  #stats { display: flex; gap: 16px; margin: 10px 0; font-size: 0.9rem; }
+  #hand { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; margin-top: 12px; }
+  .card-btn { text-align: left; white-space: normal; }
+  .rules-text { opacity: 0.75; }
+  #log { margin-top: 16px; height: 220px; overflow-y: auto; background: #0c0e12; border: 1px solid #2a2d36; padding: 8px; font-size: 0.8rem; font-family: monospace; }
+  #match, #game { display: none; }
+</style>
+</head>
+<body>
+<h1>DEADWEIGHT — card battler (browser client, dev build)</h1>
+<div class="warn">
+  <b>VS0.5-web, not a shipped client.</b> This is a real, working proof that PARENA's TypeScript
+  emitter can drive a live browser client against the real dw_server over the real wire protocol —
+  see <code>web/README.md</code> for honest status, limits, and how to run it. No account linking,
+  no draft mode, no animation/audio yet.
+</div>
+
+<div id="setup">
+  <label for="name">Player name</label>
+  <input id="name" value="BrowserPlayer" maxlength="16">
+  <label for="bridge-url">WebSocket bridge URL</label>
+  <input id="bridge-url" value="ws://localhost:8765">
+  <button id="start-btn">Connect</button>
+</div>
+
+<div id="game">
+  <p>Status: <span id="status">—</span> <button id="queue-btn">Queue (random)</button></p>
+
+  <div id="match">
+    <div id="stats">
+      <div>Round <b id="round-num">0</b></div>
+      <div>Hull You <b id="hull-you">-</b> / Opp <b id="hull-opp">-</b></div>
+      <div>Energy <b id="energy-you">-</b></div>
+      <div>Credits <b id="vault-you">-</b></div>
+      <div>Armor <b id="armor-you">-</b></div>
+    </div>
+    <div id="hand"></div>
+    <button id="requeue" style="display:none">Queue again</button>
+  </div>
+
+  <div id="log"></div>
+</div>
+
+<script type="module" src="./dist/main.js"></script>
+</body>
+</html>

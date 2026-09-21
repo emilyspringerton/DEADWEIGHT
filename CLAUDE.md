@@ -30,7 +30,10 @@ why, before any of it gets built.
   authoritative; bots (`dw_bot`, pool of 3) and the training env speak the same wire protocol as humans
   (`docs/WIRE_PROTOCOL.md`). Training league = same binary on separate ports, PFSP 3-role (BRAWLPIT's `rl_league.py`).
 - **Clients**: Android = hand-written Java shell (Bazel + rules_android, KARAMBIT precedent) over a plain-JVM
-  `core_lib`; Windows = C (headless in VS0, SDL2 UI in VS0.5).
+  `core_lib`; Windows = C (headless in VS0, SDL2 UI in VS0.5); Browser (`web/`, dev/VS0.5-web) = hand-written
+  TypeScript over a WebSocket↔TCP bridge (`web/bridge/ws-tcp-bridge.js`, dumb byte relay — `dw_server` stays TCP-only),
+  calling `web/src/generated/CardRules.ts` (PARENA's TypeScript emitter, `scripts/gen_rules.sh`) directly. See
+  `web/README.md` for honest status/limits.
 - **IDUNA**: `game='deadweight'` scope, `DEADWEIGHT-BOTS`/`DEADWEIGHT-RL` M2M agents, guest accounts
   (`provider="guest"`), game-scoped checkpoint registry — multi-tenant by default. Art via NOCK, not PARENA FFI.
 - **Build**: `scripts/build.sh [--windows|--android|--all]`; CI in `.github/workflows/ci.yml`, auto minor-version

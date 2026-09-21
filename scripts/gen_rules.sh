@@ -7,8 +7,14 @@ cd "$(dirname "$0")/.."
 PARENA_BIN="${PARENA_BIN:-/home/fatbaby/PARENA/parena}"
 PRN="${PARENA_PRN:-/home/fatbaby/PARENA/stdlib/deadweight/card_rules.prn}"
 JAVA_OUT=android/src/main/java/industrial/einhorn/deadweight/generated/CardRules.java
+TS_OUT=web/src/generated/CardRules.ts
 "$PARENA_BIN" build "$PRN" -o core/card_rules.c
 "$PARENA_BIN" build "$PRN" -o "$JAVA_OUT"
+# Browser client (web/): same one-source-two-targets discipline as the Java build above, using
+# PARENA's real TypeScript emitter (src/emit_ts.c). Checked in, not built at web-client build time
+# -- same KARAMBIT/SPIDERBEETLE convention the Java output above already follows.
+mkdir -p "$(dirname "$TS_OUT")"
+"$PARENA_BIN" build "$PRN" -o "$TS_OUT"
 # Java emitter derives the package from the output path; verify rather than assume.
 grep -q '^package industrial.einhorn.deadweight.generated;' "$JAVA_OUT" || {
   sed -i '1a\\npackage industrial.einhorn.deadweight.generated;' "$JAVA_OUT"; }

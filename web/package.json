@@ -1,0 +1,14 @@
+{
+  "name": "deadweight-web",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "DEADWEIGHT browser client (VS0.5-web, dev) -- see README.md for honest status/limits.",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "serve": "python3 -m http.server 8080"
+  },
+  "devDependencies": {
+    "typescript": "^7.0.2"
+  }
+}
