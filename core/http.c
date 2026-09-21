@@ -29,6 +29,21 @@ int dw_json_str(const char *json, const char *key, char *out, size_t n) {
     return 1;
 }
 
+int dw_json_int(const char *json, const char *key, int *out) {
+    char pat[80]; snprintf(pat, sizeof pat, "\"%s\"", key);
+    const char *p = strstr(json, pat);
+    if (!p) return 0;
+    p += strlen(pat);
+    while (*p == ' ' || *p == ':') p++;
+    if (!strncmp(p, "true", 4)) { *out = 1; return 1; }
+    if (!strncmp(p, "false", 5)) { *out = 0; return 1; }
+    char *end = NULL;
+    long v = strtol(p, &end, 10);
+    if (end == p) return 0;
+    *out = (int)v;
+    return 1;
+}
+
 static int wait_readable(dw_sock s, int timeout_ms) {
     struct pollfd p; p.fd = s; p.events = POLLIN; p.revents = 0;
     return dw_poll(&p, 1, timeout_ms);

@@ -92,3 +92,35 @@ int dwi_guest_login(DwIduna *d, const char *pid, const char *secret, char *tok, 
     if (dw_http("POST", d->host, d->port, GAME "/guest-login", NULL, body, resp, sizeof resp, &st, TMO) != 0 || st != 200) return -1;
     return dw_json_str(resp, "token", tok, tn) ? 0 : -1;
 }
+
+int dwi_steam_login(DwIduna *d, const char *ticket_hex, char *pid, size_t pn, char *tok, size_t tn, int *out_tickets, int *out_is_new) {
+    char body[2048], resp[4096]; int st = 0;
+    snprintf(body, sizeof body, "{\"ticket\":\"%s\"}", ticket_hex);
+    if (dw_http("POST", d->host, d->port, GAME "/steam-login", NULL, body, resp, sizeof resp, &st, TMO) != 0) return -1;
+    if (st != 200) return -2; /* 404 not configured, 401 rejected ticket, 403 banned, 501 server not configured */
+    if (!dw_json_str(resp, "player_id", pid, pn) || !dw_json_str(resp, "token", tok, tn)) return -1;
+    if (out_tickets) { int v = 0; dw_json_int(resp, "tickets", &v); *out_tickets = v; }
+    if (out_is_new) { int v = 0; dw_json_int(resp, "is_new", &v); *out_is_new = v; }
+    return 0;
+}
+
+int dwi_ticket_balance(DwIduna *d, const char *pid, int *out_tickets) {
+    char path[128], resp[512]; int st = 0;
+    snprintf(path, sizeof path, GAME "/players/%s/tickets", pid);
+    if (dw_http("GET", d->host, d->port, path, NULL, NULL, resp, sizeof resp, &st, TMO) != 0 || st != 200) return -1;
+    return dw_json_int(resp, "tickets", out_tickets) ? 0 : -1;
+}
+
+int dwi_ticket_consume(DwIduna *d, const char *pid, int *out_tickets) {
+    char body[128], resp[512]; int st = 0;
+    snprintf(body, sizeof body, "{\"player_id\":\"%s\"}", pid);
+    for (int attempt = 0; attempt < 2; attempt++) {
+        if (!d->token[0] && dwi_agent_login(d) != 0) return -1;
+        if (dw_http("POST", d->host, d->port, GAME "/tickets/consume", d->token, body, resp, sizeof resp, &st, TMO) != 0) return -1;
+        if (st == 401) { d->token[0] = 0; continue; }
+        if (st == 402) return -2;
+        if (st != 200) return -1;
+        return dw_json_int(resp, "tickets", out_tickets) ? 0 : -1;
+    }
+    return -1;
+}

@@ -8,6 +8,8 @@ int dw_http(const char *method, const char *host, int port, const char *path, co
             const char *json_body, char *resp, size_t resp_n, int *status, int timeout_ms);
 /* Extract a simple (escape-free) JSON string value: "key":"value". 1 if found and fits, else 0. */
 int dw_json_str(const char *json, const char *key, char *out, size_t n);
+/* Extract a JSON integer/bool value: "key":123 or "key":true/false (true/false -> 1/0). 1 if found, else 0. */
+int dw_json_int(const char *json, const char *key, int *out);
 /* Parse http://host[:port][/...] -> host/port. 0 ok. */
 int dw_parse_url(const char *url, char *host, size_t hn, int *port);
 #endif

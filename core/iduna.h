@@ -29,4 +29,19 @@ int dwi_report(DwIduna *d, const DwMatchReport *r);
 /* Guest accounts. Return 0 ok; token written to tok (>= 1536 bytes). */
 int dwi_guest_register(DwIduna *d, const char *display_name, char *player_id, size_t pn, char *secret, size_t sn, char *tok, size_t tn);
 int dwi_guest_login(DwIduna *d, const char *player_id, const char *secret, char *tok, size_t tn);
+
+/* Steam zero-friction login (S507). `ticket_hex` is the hex-encoded ISteamUser::GetAuthSessionTicket
+ * blob -- obtaining it is real Steamworks-SDK client work this function does NOT do (the SDK is
+ * proprietary/Valve-partner-gated and not vendored in this repo; see docs/STEAM_AUTH.md). This
+ * function only speaks the already-real IDUNA HTTP contract (docs/IDUNA_CONTRACT.md), same shape
+ * as dwi_guest_login. 0 ok (fills player_id/tok/out_tickets); is_new set 1 iff this call caused a
+ * brand-new shadow account + starter-ticket grant. -1 network/config error, -2 IDUNA rejected the
+ * ticket (bad/expired/banned -- caller should surface an error, not silently fall back to guest). */
+int dwi_steam_login(DwIduna *d, const char *ticket_hex, char *player_id, size_t pn, char *tok, size_t tn, int *out_tickets, int *out_is_new);
+/* Read a player's current Draft ticket balance (public route, no auth needed). 0 ok. */
+int dwi_ticket_balance(DwIduna *d, const char *player_id, int *out_tickets);
+/* Consume one Draft ticket server-side (DEADWEIGHT-SERVER agent only -- never called by a client
+ * directly, matching dwi_report's own "server reports, client never does" separation). 0 ok
+ * (fills out_tickets with the remaining balance), -2 insufficient tickets (HTTP 402). */
+int dwi_ticket_consume(DwIduna *d, const char *player_id, int *out_tickets);
 #endif
