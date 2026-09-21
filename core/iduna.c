@@ -111,6 +111,17 @@ int dwi_ticket_balance(DwIduna *d, const char *pid, int *out_tickets) {
     return dw_json_int(resp, "tickets", out_tickets) ? 0 : -1;
 }
 
+int dwi_redeem(DwIduna *d, const char *player_token, const char *code, int *out_tickets_granted, int *out_founder, int *out_balance) {
+    char body[64], resp[512]; int st = 0;
+    snprintf(body, sizeof body, "{\"code\":\"%s\"}", code);
+    if (dw_http("POST", d->host, d->port, GAME "/redeem", player_token, body, resp, sizeof resp, &st, TMO) != 0) return -1;
+    if (st != 200) return -2;
+    if (out_tickets_granted) { int v = 0; dw_json_int(resp, "tickets_granted", &v); *out_tickets_granted = v; }
+    if (out_founder) { int v = 0; dw_json_int(resp, "founder", &v); *out_founder = v; }
+    if (out_balance) { int v = 0; dw_json_int(resp, "tickets", &v); *out_balance = v; }
+    return 0;
+}
+
 int dwi_ticket_consume(DwIduna *d, const char *pid, int *out_tickets) {
     char body[128], resp[512]; int st = 0;
     snprintf(body, sizeof body, "{\"player_id\":\"%s\"}", pid);

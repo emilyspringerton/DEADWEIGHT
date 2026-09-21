@@ -44,4 +44,9 @@ int dwi_ticket_balance(DwIduna *d, const char *player_id, int *out_tickets);
  * directly, matching dwi_report's own "server reports, client never does" separation). 0 ok
  * (fills out_tickets with the remaining balance), -2 insufficient tickets (HTTP 402). */
 int dwi_ticket_consume(DwIduna *d, const char *player_id, int *out_tickets);
+
+/* Redeem an Itch.io claim code (S508 -- "Redeem Code" main-menu box) with the player's OWN token
+ * (guest or steam, not an agent). 0 ok (fills out_tickets_granted/out_founder/out_balance), -1
+ * network error, -2 IDUNA rejected the code (invalid/already-used/wrong game/bad auth). */
+int dwi_redeem(DwIduna *d, const char *player_token, const char *code, int *out_tickets_granted, int *out_founder, int *out_balance);
 #endif

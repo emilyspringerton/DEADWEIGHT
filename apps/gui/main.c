@@ -10,6 +10,7 @@
 #include "card_rules.h"
 #include "card_text.h"
 #include "draft.h"
+#include "iduna.h"
 #include "version.h"
 #define SDL_MAIN_HANDLED
 #include <SDL.h>
@@ -92,8 +93,15 @@ enum { S_MENU, S_QUEUE, S_MATCH, S_END, S_DRAFT };
 typedef struct {
     int screen;
     char name[DW_NAME_LEN + 1], host[64], port[8], token[DW_MAX_AUTH_TOKEN + 1];
-    int focus;                              /* menu field: 0 name, 1 host, 2 port */
+    int focus;                              /* menu field: 0 name, 1 host, 2 port, 3 redeem code */
     char err[96];
+    /* IDUNA zero-friction auth (S508) -- see iduna_bootstrap(). player_id/tickets/is_founder are
+     * populated after a successful guest-register or guest-login; A.token above is reused
+     * unmodified as the existing HELLO/AUTH flow to dw_server already expects (no change needed
+     * there -- this just fills it in automatically instead of requiring --token/DW_TOKEN). */
+    DwIduna idu; char account_path[256]; char iduna_url[96];
+    char player_id[48]; int tickets, is_founder, auth_ready;
+    char redeem_code[24]; char redeem_msg[64];
     DwClient c; int connected, welcomed;
     uint32_t match_id; int seat; char opp[DW_NAME_LEN + 1]; int opp_kind;
     int round, hull_you, hull_opp, energy_you, energy_opp, opp_hand; int8_t hand[4];
@@ -130,6 +138,46 @@ static void to_menu(const char *err) {
     snprintf(A.err, sizeof A.err, "%s", err ? err : "");
 }
 static void send_simple(uint8_t type) { DwMsg m; memset(&m, 0, sizeof m); m.type = type; if (dwc_send(&A.c, &m)) to_menu("Connection lost"); }
+
+/* ---------- IDUNA zero-friction auth (S508) ---------- */
+static void refresh_tickets(void) { if (A.player_id[0]) dwi_ticket_balance(&A.idu, A.player_id, &A.tickets); }
+static void iduna_bootstrap(void) {
+    if (A.token[0]) return;   /* explicit --token/DW_TOKEN overrides auto-auth, e.g. for --no-auth server testing */
+    if (dwi_configure(&A.idu, A.iduna_url, NULL, NULL) != 0) { snprintf(A.err, sizeof A.err, "Bad --iduna-url"); return; }
+    char pid[48] = "", secret[72] = "", tok[DW_MAX_AUTH_TOKEN + 1] = "";
+    FILE *f = fopen(A.account_path, "r");
+    if (f) { if (fscanf(f, "%47s %71s", pid, secret) != 2) { pid[0] = 0; secret[0] = 0; } fclose(f); }
+    int ok = pid[0] && secret[0] && dwi_guest_login(&A.idu, pid, secret, tok, sizeof tok) == 0;
+    if (!ok) {
+        char newpid[48], newsecret[72];
+        if (dwi_guest_register(&A.idu, A.name[0] ? A.name : "Player", newpid, sizeof newpid, newsecret, sizeof newsecret, tok, sizeof tok) == 0) {
+            snprintf(pid, sizeof pid, "%s", newpid); snprintf(secret, sizeof secret, "%s", newsecret);
+            FILE *wf = fopen(A.account_path, "w");
+            if (wf) { fprintf(wf, "%s %s\n", pid, secret); fclose(wf); }
+            ok = 1;
+        }
+    }
+    if (ok) {
+        snprintf(A.token, sizeof A.token, "%s", tok);
+        snprintf(A.player_id, sizeof A.player_id, "%s", pid);
+        A.auth_ready = 1;
+        refresh_tickets();
+        fprintf(stderr, "dw_gui: IDUNA auth ok, player_id=%s tickets=%d\n", A.player_id, A.tickets);
+    } else {
+        snprintf(A.err, sizeof A.err, "IDUNA unreachable -- playing without an account (no tickets)");
+        fprintf(stderr, "dw_gui: IDUNA auth failed against %s\n", A.iduna_url);
+    }
+}
+static void do_redeem(void) {
+    if (!A.redeem_code[0]) return;
+    if (!A.auth_ready) { snprintf(A.redeem_msg, sizeof A.redeem_msg, "No account (IDUNA offline)"); return; }
+    int granted = 0, founder = 0, balance = 0;
+    int rc = dwi_redeem(&A.idu, A.token, A.redeem_code, &granted, &founder, &balance);
+    if (rc != 0) { snprintf(A.redeem_msg, sizeof A.redeem_msg, "Invalid or already-used code"); return; }
+    A.tickets = balance; if (founder) A.is_founder = 1;
+    snprintf(A.redeem_msg, sizeof A.redeem_msg, "+%d ticket%s%s!", granted, granted == 1 ? "" : "s", founder ? " + FOUNDER" : "");
+    A.redeem_code[0] = 0;
+}
 
 static void do_connect(void) {
     if (!A.name[0]) { snprintf(A.err, sizeof A.err, "Enter a name"); return; }
@@ -358,6 +406,10 @@ static void card_box(int x, int y, int w, int h, int id, int num, int state /*0 
 }
 static void draw_menu(int mx, int my) {
     text_c(W / 2, 90, 5, C_TEXT, "DEADWEIGHT");
+    if (A.auth_ready) {
+        text(W - 160, 18, 2, C_TEXT, "TICKETS: %d", A.tickets);
+        if (A.is_founder) text(W - 160, 40, 1, (Col){255, 200, 60}, "FOUNDER");
+    } else text(W - 160, 18, 1, C_DIM, "NO ACCOUNT");
     text_c(W / 2, 150, 2, C_DIM, "%s", A.mode == DW_MODE_DRAFT ? "DRAFT MODE" : "CARD MODE  (RANDOM)");
     const char *lab[3] = {"NAME", "HOST", "PORT"}; char *val[3] = {A.name, A.host, A.port};
     for (int i = 0; i < 3; i++) {
@@ -366,10 +418,16 @@ static void draw_menu(int mx, int my) {
         rect(40, y, 400, 46, C_PANEL); frame(40, y, 400, 46, i == A.focus ? C_SEL : C_LOCK, 2);
         text(52, y + 13, 3, C_TEXT, "%s%s", val[i], (i == A.focus && (SDL_GetTicks() / 500) % 2) ? "_" : "");
     }
-    button(40, 486, 400, 44, A.mode == DW_MODE_DRAFT ? "MODE: DRAFT" : "MODE: RANDOM", C_LOCK, 1, mx, my);
-    button(40, 540, 400, 70, "PLAY", C_GOOD, 1, mx, my);
-    if (A.err[0]) text_c(W / 2, 640, 2, C_BAD, "%s", A.err);
-    text_c(W / 2, 760, 1, C_DIM, "TAB = NEXT FIELD   ENTER = PLAY   F2 = MODE   ESC = QUIT   V%s", DW_VERSION);
+    int can_draft = A.tickets > 0;
+    button(40, 520, 400, 60, can_draft ? "DRAFT  (COST: 1 TICKET)" : "DRAFT  (NO TICKETS)", (Col){225, 160, 40}, can_draft, mx, my);
+    button(40, 590, 400, 60, "PRACTICE  (RANDOM DECK, FREE)", C_GOOD, 1, mx, my);
+    text(40, 668, 2, C_DIM, "REDEEM CODE");
+    rect(40, 690, 280, 46, C_PANEL); frame(40, 690, 280, 46, A.focus == 3 ? C_SEL : C_LOCK, 2);
+    text(52, 703, 2, C_TEXT, "%s%s", A.redeem_code, (A.focus == 3 && (SDL_GetTicks() / 500) % 2) ? "_" : "");
+    button(328, 690, 112, 46, "REDEEM", (Col){70, 110, 200}, A.redeem_code[0] != 0, mx, my);
+    if (A.redeem_msg[0]) text_c(W / 2, 750, 2, C_GOOD, "%s", A.redeem_msg);
+    if (A.err[0]) text_c(W / 2, 776, 2, C_BAD, "%s", A.err);
+    text_c(W / 2, 900, 1, C_DIM, "TAB = NEXT FIELD   ENTER = REDEEM/FIELD   F2 = MODE   ESC = QUIT   V%s", DW_VERSION);
 }
 #define DRAFT_BTN_X(card, m) (20 + (card) * 240 + (m) * 70)
 static int draft_mult_ok(int m) { return A.left[m - 1] > 0; }
@@ -446,8 +504,8 @@ static void draw(int mx, int my) {
 }
 
 /* ---------- input ---------- */
-static char *field(int i) { return i == 0 ? A.name : i == 1 ? A.host : A.port; }
-static size_t field_cap(int i) { return i == 0 ? DW_NAME_LEN : i == 1 ? sizeof A.host - 1 : 5; }
+static char *field(int i) { return i == 0 ? A.name : i == 1 ? A.host : i == 2 ? A.port : A.redeem_code; }
+static size_t field_cap(int i) { return i == 0 ? DW_NAME_LEN : i == 1 ? sizeof A.host - 1 : i == 2 ? 5 : sizeof A.redeem_code - 1; }
 static void send_pick(int idx, int mult) {
     DwMsg m; memset(&m, 0, sizeof m); m.type = DW_C_DRAFT_PICK; m.u.draft_pick.index = (uint8_t)idx; m.u.draft_pick.mult = (uint8_t)mult;
     A.pend_card = A.offer[idx]; A.pend_mult = mult;
@@ -463,8 +521,10 @@ static void click(int x, int y) {
     switch (A.screen) {
     case S_MENU:
         for (int i = 0; i < 3; i++) if (in_rect(x, y, 40, 250 + i * 90, 400, 46)) A.focus = i;
-        if (in_rect(x, y, 40, 486, 400, 44)) A.mode = A.mode == DW_MODE_DRAFT ? DW_MODE_CARD : DW_MODE_DRAFT;
-        if (in_rect(x, y, 40, 540, 400, 70)) do_connect();
+        if (in_rect(x, y, 40, 690, 280, 46)) A.focus = 3;
+        if (in_rect(x, y, 40, 520, 400, 60) && A.tickets > 0) { A.mode = DW_MODE_DRAFT; do_connect(); }
+        if (in_rect(x, y, 40, 590, 400, 60)) { A.mode = DW_MODE_CARD; do_connect(); }
+        if (in_rect(x, y, 328, 690, 112, 46) && A.redeem_code[0]) do_redeem();
         break;
     case S_QUEUE: if (in_rect(x, y, 140, 520, 200, 64)) { send_simple(DW_C_LEAVE); to_menu(""); } break;
     case S_MATCH:
@@ -490,9 +550,12 @@ static void key(SDL_Keycode k) {
     if (A.screen == S_MENU) {
         char *f = field(A.focus);
         if (k == SDLK_BACKSPACE && *f) f[strlen(f) - 1] = 0;
-        else if (k == SDLK_TAB) A.focus = (A.focus + 1) % 3;
+        else if (k == SDLK_TAB) A.focus = (A.focus + 1) % 4;
         else if (k == SDLK_F2) A.mode = A.mode == DW_MODE_DRAFT ? DW_MODE_CARD : DW_MODE_DRAFT;
-        else if (k == SDLK_RETURN || k == SDLK_KP_ENTER) do_connect();
+        else if (k == SDLK_RETURN || k == SDLK_KP_ENTER) {
+            if (A.focus == 3) { if (A.redeem_code[0]) do_redeem(); }
+            else if (A.mode != DW_MODE_DRAFT || A.tickets > 0) do_connect();
+        }
     } else if (A.screen == S_MATCH) {
         if (k == SDLK_m) sfx_set_muted(!sfx_is_muted());
         else if (k >= SDLK_1 && k <= SDLK_4) select_slot((int)(k - SDLK_1));
@@ -635,6 +698,9 @@ static int run_fx_demo(const char *dir) {
 
 int main(int argc, char **argv) {
     snprintf(A.name, sizeof A.name, "Player"); snprintf(A.host, sizeof A.host, "okemily.com"); snprintf(A.port, sizeof A.port, "6980");
+    snprintf(A.account_path, sizeof A.account_path, "dw_account.txt");
+    const char *iduna_env = getenv("IDUNA_BASE_URL");
+    snprintf(A.iduna_url, sizeof A.iduna_url, "%s", iduna_env && *iduna_env ? iduna_env : "http://localhost:8080");
     A.sel = -2; for (int i = 0; i < 4; i++) A.hand[i] = -1;
     const char *demo_dir = NULL; int no_sound = 0;
     const char *envt = getenv("DW_TOKEN"); if (envt) snprintf(A.token, sizeof A.token, "%s", envt);
@@ -645,15 +711,22 @@ int main(int argc, char **argv) {
         else if (!strcmp(a, "--host") && v) { snprintf(A.host, sizeof A.host, "%s", v); i++; }
         else if (!strcmp(a, "--port") && v) { snprintf(A.port, sizeof A.port, "%s", v); i++; }
         else if (!strcmp(a, "--token") && v) { snprintf(A.token, sizeof A.token, "%s", v); i++; }
+        else if (!strcmp(a, "--iduna-url") && v) { snprintf(A.iduna_url, sizeof A.iduna_url, "%s", v); i++; }
+        else if (!strcmp(a, "--account") && v) { snprintf(A.account_path, sizeof A.account_path, "%s", v); i++; }
         else if (!strcmp(a, "--frames") && v) { A.frames_dir = v; i++; }
         else if (!strcmp(a, "--autostart")) A.autostart = 1;
         else if (!strcmp(a, "--mode") && v) { A.mode = !strcmp(v, "draft") ? DW_MODE_DRAFT : DW_MODE_CARD; i++; }
         else if (!strcmp(a, "--selftest")) A.selftest = A.autostart = 1;
         else if (!strcmp(a, "--fx-demo") && v) { demo_dir = v; i++; }
         else if (!strcmp(a, "--no-sound")) no_sound = 1;
-        else { fprintf(stderr, "usage: dw_gui [--name N] [--host H] [--port P] [--token JWT] [--autostart] [--selftest [--frames DIR]]\n"); return 2; }
+        else { fprintf(stderr, "usage: dw_gui [--name N] [--host H] [--port P] [--token JWT] [--iduna-url URL] [--account FILE] [--autostart] [--selftest [--frames DIR]]\n"); return 2; }
     }
     if (A.selftest || demo_dir) SDL_setenv("SDL_VIDEODRIVER", "dummy", 1);
+    /* Real IDUNA zero-friction auth only for a real interactive session -- selftest/fx-demo are
+     * pure game-mechanics harnesses (CI runs them with no IDUNA reachable) and must stay fast and
+     * network-free, same reason they already fake their own screen transitions via A.autostart
+     * rather than going through the menu buttons this bootstrap feeds. */
+    if (!A.selftest && !demo_dir) iduna_bootstrap();
     dw_net_init();
     SDL_SetMainReady();
     if (SDL_Init(SDL_INIT_VIDEO) != 0) { fprintf(stderr, "SDL_Init: %s\n", SDL_GetError()); return 1; }
