@@ -84,7 +84,27 @@ if [[ "$ARGS" == *" --gui "* ]]; then
   # card_cost/card_keyword without its own prototypes -- same real reason core/bot_brain.c already
   # needs `-include card_rules.h` forced in (see BRAIN_SRC above), not a new pattern.
   GUI_SRC="apps/gui/main.c apps/gui/fx.c apps/gui/sfx.c core/client.c core/policy.c core/protocol.c core/card_rules.c core/fx_rules.c core/card_text.c core/iduna.c core/http.c"
-  gcc $CFLAGS_BASE -include card_rules.h -O2 $(pkg-config --cflags sdl2) $GUI_SRC $(pkg-config --libs sdl2) -lm -o build/dw_gui
+  # S508e -- real TLS via PARENA's net/tls.prn (mbedTLS FFI, never hand-rolled crypto). Auto-
+  # detected, not hard-required: without it, dw_gui still builds and runs, but any https:// IDUNA
+  # URL (the real shipped default) fails clean at connect time instead of silently downgrading to
+  # plaintext -- same "fail clean, never fall back to plaintext" contract core/http.c's own
+  # dw_http() doc comment states. PARENA_RUNTIME_DIR/MBEDTLS_CFLAGS/MBEDTLS_LDFLAGS follow this
+  # script's own SDL2_MINGW-style env-var-override convention.
+  PARENA_RUNTIME_DIR="${PARENA_RUNTIME_DIR:-../PARENA/runtime}"
+  MBEDTLS_CFLAGS="${MBEDTLS_CFLAGS:-}"
+  MBEDTLS_LDFLAGS="${MBEDTLS_LDFLAGS:--lmbedtls -lmbedx509 -lmbedcrypto}"
+  TLS_FLAGS=""
+  TLS_SRC=""
+  TLS_LIBS=""
+  if [ -f "$PARENA_RUNTIME_DIR/parena_runtime.c" ] && echo '#include <mbedtls/ssl.h>' | gcc $MBEDTLS_CFLAGS -E - >/dev/null 2>&1; then
+    echo "  (mbedTLS + PARENA runtime found -- building dw_gui with real TLS support)"
+    TLS_FLAGS="-DPARENA_WITH_TLS -I$PARENA_RUNTIME_DIR $MBEDTLS_CFLAGS"
+    TLS_SRC="$PARENA_RUNTIME_DIR/parena_runtime.c"
+    TLS_LIBS="$MBEDTLS_LDFLAGS"
+  else
+    echo "  (skipping TLS: no mbedTLS/PARENA runtime found -- dw_gui will build but https:// IDUNA URLs will fail clean at connect time, never fall back to plaintext. Run sudo-queue/89-install-libmbedtls-dev.sh and ensure PARENA is checked out as a sibling repo to enable it.)"
+  fi
+  gcc $CFLAGS_BASE -include card_rules.h -O2 $(pkg-config --cflags sdl2) $TLS_FLAGS $GUI_SRC $TLS_SRC $(pkg-config --libs sdl2) -lm $TLS_LIBS -o build/dw_gui
   ./build/dw_gui --version
   tests/test_gui_selftest.sh
   if [[ "$ARGS" == *" --windows "* ]]; then

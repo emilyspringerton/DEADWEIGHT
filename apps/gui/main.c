@@ -744,7 +744,14 @@ int main(int argc, char **argv) {
     snprintf(A.name, sizeof A.name, "Player"); snprintf(A.host, sizeof A.host, "okemily.com"); snprintf(A.port, sizeof A.port, "6980");
     snprintf(A.account_path, sizeof A.account_path, "dw_account.txt");
     const char *iduna_env = getenv("IDUNA_BASE_URL");
-    snprintf(A.iduna_url, sizeof A.iduna_url, "%s", iduna_env && *iduna_env ? iduna_env : "http://localhost:8080");
+    /* S508d, real found-live gap: this default was "http://localhost:8080" -- fine for local dev
+     * (matches --no-auth dw_server testing), but a genuine shipping bug for a distributed release
+     * build, since a real player's own machine has nothing listening on localhost:8080. The live,
+     * public production IDUNA is reachable at https://okemily.com (nginx front door, ops/
+     * nginx-front-door-snippet.conf), same host convention A.host's own default (okemily.com)
+     * already uses for the game server above -- still overridable via --iduna-url/IDUNA_BASE_URL
+     * for local development. */
+    snprintf(A.iduna_url, sizeof A.iduna_url, "%s", iduna_env && *iduna_env ? iduna_env : "https://okemily.com");
     A.sel = -2; for (int i = 0; i < 4; i++) A.hand[i] = -1;
     const char *demo_dir = NULL; int no_sound = 0;
     const char *envt = getenv("DW_TOKEN"); if (envt) snprintf(A.token, sizeof A.token, "%s", envt);

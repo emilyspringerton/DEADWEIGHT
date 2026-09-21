@@ -6,7 +6,7 @@
 #include <stddef.h>
 
 typedef struct {
-    char host[128]; int port; int configured;
+    char host[128]; int port; int use_tls; int configured;
     char agent_name[64]; char agent_secret[256];
     char token[1536];                 /* cached agent JWT */
 } DwIduna;

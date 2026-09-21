@@ -3,6 +3,17 @@
 #define DW_NET_H
 #ifndef _WIN32
 #define _POSIX_C_SOURCE 200809L
+/* _DEFAULT_SOURCE (S508e, found live): glibc locks in its feature-test-macro decisions at the
+ * FIRST system header pulled in by a translation unit -- this file is always that first header
+ * (its own doc comment above: "Include before any other system header"), so any later header
+ * (e.g. PARENA's own runtime/parena_runtime.h, now pulled into core/http.c for real TLS support)
+ * that needs a glibc/BSD extension gated behind _DEFAULT_SOURCE (cfmakeraw, in this case) would
+ * otherwise never see it, no matter what it defines itself, since glibc's decision was already
+ * locked in by the time that later #define runs. Defining it here, at the true first point of
+ * inclusion, is the actual fix -- not a workaround in whichever header happens to need it next. */
+#ifndef _DEFAULT_SOURCE
+#define _DEFAULT_SOURCE
+#endif
 #endif
 #include <stdint.h>
 #include <stddef.h>
