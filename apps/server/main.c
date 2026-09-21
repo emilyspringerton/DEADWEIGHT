@@ -211,7 +211,7 @@ static void end_match(int mi) {
     if (mt->m.reason == DW_END_FORFEIT) st_forfeits++;
     if (opt_iduna && mt->m.reason != DW_END_SERVER && conns[mt->conn[0]].player_id[0] && conns[mt->conn[1]].player_id[0]) {
         Job j; memset(&j, 0, sizeof j); j.type = J_REPORT;
-        j.rep.match_id = mt->id; j.rep.seed = mt->m.seed; j.rep.rounds = mt->m.round; j.rep.reason = mt->m.reason;
+        j.rep.match_id = mt->id; j.rep.seed = mt->m.seed; j.rep.rounds = mt->m.round; j.rep.reason = mt->m.reason; j.rep.mode = mt->mode;
         j.rep.winner = mt->m.result[0] == DW_RES_WIN ? 0 : mt->m.result[1] == DW_RES_WIN ? 1 : 2;
         snprintf(j.rep.seat_pid[0], sizeof j.rep.seat_pid[0], "%s", conns[mt->conn[0]].player_id);
         snprintf(j.rep.seat_pid[1], sizeof j.rep.seat_pid[1], "%s", conns[mt->conn[1]].player_id);

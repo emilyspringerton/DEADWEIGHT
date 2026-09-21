@@ -67,8 +67,8 @@ int dwi_verify(DwIduna *d, const char *token, const char *bot_name, DwIdentity *
 int dwi_report(DwIduna *d, const DwMatchReport *r) {
     static const char *const reasons[] = { "hull", "rounds", "forfeit", "server" };
     char body[512], resp[2048]; int st = 0;
-    snprintf(body, sizeof body, "{\"match_id\":%u,\"seed\":%u,\"seat0_player_id\":\"%s\",\"seat1_player_id\":\"%s\",\"winner\":%d,\"rounds\":%d,\"reason\":\"%s\",\"mode\":0}",
-             r->match_id, r->seed, r->seat_pid[0], r->seat_pid[1], r->winner, r->rounds, reasons[r->reason & 3]);
+    snprintf(body, sizeof body, "{\"match_id\":%u,\"seed\":%u,\"seat0_player_id\":\"%s\",\"seat1_player_id\":\"%s\",\"winner\":%d,\"rounds\":%d,\"reason\":\"%s\",\"mode\":%d}",
+             r->match_id, r->seed, r->seat_pid[0], r->seat_pid[1], r->winner, r->rounds, reasons[r->reason & 3], r->mode);
     for (int attempt = 0; attempt < 2; attempt++) {
         if (!d->token[0] && dwi_agent_login(d) != 0) return -1;
         if (dw_http("POST", d->host, d->port, GAME "/match-result", d->token, body, resp, sizeof resp, &st, TMO) != 0) return -1;
@@ -120,6 +120,40 @@ int dwi_redeem(DwIduna *d, const char *player_token, const char *code, int *out_
     if (out_founder) { int v = 0; dw_json_int(resp, "founder", &v); *out_founder = v; }
     if (out_balance) { int v = 0; dw_json_int(resp, "tickets", &v); *out_balance = v; }
     return 0;
+}
+
+int dwi_draft_run_start(DwIduna *d, const char *pid, int *out_wins, int *out_losses, int *out_ticket_spent) {
+    char body[128], resp[256]; int st = 0;
+    snprintf(body, sizeof body, "{\"player_id\":\"%s\"}", pid);
+    for (int attempt = 0; attempt < 2; attempt++) {
+        if (!d->token[0] && dwi_agent_login(d) != 0) return -1;
+        if (dw_http("POST", d->host, d->port, GAME "/draft-run/start", d->token, body, resp, sizeof resp, &st, TMO) != 0) return -1;
+        if (st == 401) { d->token[0] = 0; continue; }
+        if (st == 402) return -2;
+        if (st != 200) return -1;
+        if (out_wins) { int v = 0; dw_json_int(resp, "wins", &v); *out_wins = v; }
+        if (out_losses) { int v = 0; dw_json_int(resp, "losses", &v); *out_losses = v; }
+        if (out_ticket_spent) { int v = 0; dw_json_int(resp, "ticket_spent", &v); *out_ticket_spent = v; }
+        return 0;
+    }
+    return -1;
+}
+
+int dwi_guest_upgrade(DwIduna *d, const char *player_token, const char *email, const char *password, char *tok, size_t tn) {
+    char body[512], resp[2048]; int st = 0;
+    snprintf(body, sizeof body, "{\"email\":\"%s\",\"password\":\"%s\"}", email, password);
+    if (dw_http("POST", d->host, d->port, GAME "/guest-upgrade", player_token, body, resp, sizeof resp, &st, TMO) != 0) return -1;
+    if (st != 200) return -2;
+    return dw_json_str(resp, "token", tok, tn) ? 0 : -1;
+}
+
+int dwi_email_login(DwIduna *d, const char *email, const char *password, char *tok, size_t tn, int *out_tickets) {
+    char body[512], resp[2048]; int st = 0;
+    snprintf(body, sizeof body, "{\"email\":\"%s\",\"password\":\"%s\"}", email, password);
+    if (dw_http("POST", d->host, d->port, GAME "/email-login", NULL, body, resp, sizeof resp, &st, TMO) != 0) return -1;
+    if (st != 200) return -2;
+    if (out_tickets) { int v = 0; dw_json_int(resp, "tickets", &v); *out_tickets = v; }
+    return dw_json_str(resp, "token", tok, tn) ? 0 : -1;
 }
 
 int dwi_ticket_consume(DwIduna *d, const char *pid, int *out_tickets) {

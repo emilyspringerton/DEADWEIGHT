@@ -102,6 +102,7 @@ typedef struct {
     DwIduna idu; char account_path[256]; char iduna_url[96];
     char player_id[48]; int tickets, is_founder, auth_ready;
     char redeem_code[24]; char redeem_msg[64];
+    char link_email[64], link_pass[32]; char link_msg[64];
     DwClient c; int connected, welcomed;
     uint32_t match_id; int seat; char opp[DW_NAME_LEN + 1]; int opp_kind;
     int round, hull_you, hull_opp, energy_you, energy_opp, opp_hand; int8_t hand[4];
@@ -177,6 +178,17 @@ static void do_redeem(void) {
     A.tickets = balance; if (founder) A.is_founder = 1;
     snprintf(A.redeem_msg, sizeof A.redeem_msg, "+%d ticket%s%s!", granted, granted == 1 ? "" : "s", founder ? " + FOUNDER" : "");
     A.redeem_code[0] = 0;
+}
+static void do_link_email(void) {
+    if (!A.link_email[0] || !A.link_pass[0]) return;
+    if (!A.auth_ready) { snprintf(A.link_msg, sizeof A.link_msg, "No account (IDUNA offline)"); return; }
+    if (strlen(A.link_pass) < 8) { snprintf(A.link_msg, sizeof A.link_msg, "Password needs 8+ characters"); return; }
+    char tok[DW_MAX_AUTH_TOKEN + 1];
+    int rc = dwi_guest_upgrade(&A.idu, A.token, A.link_email, A.link_pass, tok, sizeof tok);
+    if (rc != 0) { snprintf(A.link_msg, sizeof A.link_msg, "Link failed (email taken or bad login)"); return; }
+    snprintf(A.token, sizeof A.token, "%s", tok);
+    snprintf(A.link_msg, sizeof A.link_msg, "Linked! Progress now saved.");
+    A.link_email[0] = 0; A.link_pass[0] = 0;
 }
 
 static void do_connect(void) {
@@ -425,9 +437,17 @@ static void draw_menu(int mx, int my) {
     rect(40, 690, 280, 46, C_PANEL); frame(40, 690, 280, 46, A.focus == 3 ? C_SEL : C_LOCK, 2);
     text(52, 703, 2, C_TEXT, "%s%s", A.redeem_code, (A.focus == 3 && (SDL_GetTicks() / 500) % 2) ? "_" : "");
     button(328, 690, 112, 46, "REDEEM", (Col){70, 110, 200}, A.redeem_code[0] != 0, mx, my);
-    if (A.redeem_msg[0]) text_c(W / 2, 750, 2, C_GOOD, "%s", A.redeem_msg);
-    if (A.err[0]) text_c(W / 2, 776, 2, C_BAD, "%s", A.err);
-    text_c(W / 2, 900, 1, C_DIM, "TAB = NEXT FIELD   ENTER = REDEEM/FIELD   F2 = MODE   ESC = QUIT   V%s", DW_VERSION);
+    text(40, 750, 2, C_DIM, "LINK EMAIL (SAVE PROGRESS)");
+    rect(40, 770, 400, 40, C_PANEL); frame(40, 770, 400, 40, A.focus == 4 ? C_SEL : C_LOCK, 2);
+    text(50, 781, 2, C_TEXT, "%s%s", A.link_email, (A.focus == 4 && (SDL_GetTicks() / 500) % 2) ? "_" : "");
+    rect(40, 814, 400, 40, C_PANEL); frame(40, 814, 400, 40, A.focus == 5 ? C_SEL : C_LOCK, 2);
+    { char mask[sizeof A.link_pass]; size_t n = strlen(A.link_pass); for (size_t i = 0; i < n; i++) mask[i] = '*'; mask[n] = 0;
+      text(50, 825, 2, C_TEXT, "%s%s", mask, (A.focus == 5 && (SDL_GetTicks() / 500) % 2) ? "_" : ""); }
+    button(40, 862, 400, 40, "LINK EMAIL", (Col){70, 110, 200}, A.link_email[0] && A.link_pass[0], mx, my);
+    if (A.link_msg[0]) text_c(W / 2, 910, 1, C_GOOD, "%s", A.link_msg);
+    else if (A.redeem_msg[0]) text_c(W / 2, 910, 1, C_GOOD, "%s", A.redeem_msg);
+    else if (A.err[0]) text_c(W / 2, 910, 1, C_BAD, "%s", A.err);
+    text_c(W / 2, 940, 1, C_DIM, "TAB = NEXT FIELD   ESC = QUIT   V%s", DW_VERSION);
 }
 #define DRAFT_BTN_X(card, m) (20 + (card) * 240 + (m) * 70)
 static int draft_mult_ok(int m) { return A.left[m - 1] > 0; }
@@ -504,8 +524,15 @@ static void draw(int mx, int my) {
 }
 
 /* ---------- input ---------- */
-static char *field(int i) { return i == 0 ? A.name : i == 1 ? A.host : i == 2 ? A.port : A.redeem_code; }
-static size_t field_cap(int i) { return i == 0 ? DW_NAME_LEN : i == 1 ? sizeof A.host - 1 : i == 2 ? 5 : sizeof A.redeem_code - 1; }
+static char *field(int i) {
+    switch (i) { case 0: return A.name; case 1: return A.host; case 2: return A.port; case 3: return A.redeem_code;
+                 case 4: return A.link_email; default: return A.link_pass; }
+}
+static size_t field_cap(int i) {
+    switch (i) { case 0: return DW_NAME_LEN; case 1: return sizeof A.host - 1; case 2: return 5; case 3: return sizeof A.redeem_code - 1;
+                 case 4: return sizeof A.link_email - 1; default: return sizeof A.link_pass - 1; }
+}
+#define MENU_FIELDS 6
 static void send_pick(int idx, int mult) {
     DwMsg m; memset(&m, 0, sizeof m); m.type = DW_C_DRAFT_PICK; m.u.draft_pick.index = (uint8_t)idx; m.u.draft_pick.mult = (uint8_t)mult;
     A.pend_card = A.offer[idx]; A.pend_mult = mult;
@@ -522,9 +549,12 @@ static void click(int x, int y) {
     case S_MENU:
         for (int i = 0; i < 3; i++) if (in_rect(x, y, 40, 250 + i * 90, 400, 46)) A.focus = i;
         if (in_rect(x, y, 40, 690, 280, 46)) A.focus = 3;
+        if (in_rect(x, y, 40, 770, 400, 40)) A.focus = 4;
+        if (in_rect(x, y, 40, 814, 400, 40)) A.focus = 5;
         if (in_rect(x, y, 40, 520, 400, 60) && A.tickets > 0) { A.mode = DW_MODE_DRAFT; do_connect(); }
         if (in_rect(x, y, 40, 590, 400, 60)) { A.mode = DW_MODE_CARD; do_connect(); }
         if (in_rect(x, y, 328, 690, 112, 46) && A.redeem_code[0]) do_redeem();
+        if (in_rect(x, y, 40, 862, 400, 40) && A.link_email[0] && A.link_pass[0]) do_link_email();
         break;
     case S_QUEUE: if (in_rect(x, y, 140, 520, 200, 64)) { send_simple(DW_C_LEAVE); to_menu(""); } break;
     case S_MATCH:
@@ -550,10 +580,11 @@ static void key(SDL_Keycode k) {
     if (A.screen == S_MENU) {
         char *f = field(A.focus);
         if (k == SDLK_BACKSPACE && *f) f[strlen(f) - 1] = 0;
-        else if (k == SDLK_TAB) A.focus = (A.focus + 1) % 4;
+        else if (k == SDLK_TAB) A.focus = (A.focus + 1) % MENU_FIELDS;
         else if (k == SDLK_F2) A.mode = A.mode == DW_MODE_DRAFT ? DW_MODE_CARD : DW_MODE_DRAFT;
         else if (k == SDLK_RETURN || k == SDLK_KP_ENTER) {
             if (A.focus == 3) { if (A.redeem_code[0]) do_redeem(); }
+            else if (A.focus == 4 || A.focus == 5) { if (A.link_email[0] && A.link_pass[0]) do_link_email(); }
             else if (A.mode != DW_MODE_DRAFT || A.tickets > 0) do_connect();
         }
     } else if (A.screen == S_MATCH) {

@@ -17,6 +17,12 @@ typedef struct {
     unsigned match_id, seed; char seat_pid[2][48];
     int winner;                       /* 0 / 1 / 2 = draw */
     int rounds, reason;               /* reason: DW_END_* */
+    int mode;                         /* DW_MODE_CARD / DW_MODE_DRAFT (protocol.h) -- S508c: real,
+                                        * found-live bug fix, this field didn't exist and dwi_report
+                                        * hardcoded "mode":0 in every match-result POST, meaning
+                                        * IDUNA's game_matches.mode (and the new Uncapped Draft
+                                        * Run tracking, which reads this same field) has been wrong
+                                        * for every historical draft match ever reported. */
 } DwMatchReport;
 
 /* url = http://host:port. secret_file: raw secret, or an env-style file containing IDUNA_SECRET_<NAME>=... 0 ok. */
@@ -44,6 +50,25 @@ int dwi_ticket_balance(DwIduna *d, const char *player_id, int *out_tickets);
  * directly, matching dwi_report's own "server reports, client never does" separation). 0 ok
  * (fills out_tickets with the remaining balance), -2 insufficient tickets (HTTP 402). */
 int dwi_ticket_consume(DwIduna *d, const char *player_id, int *out_tickets);
+
+/* Uncapped Draft Run (S508c) -- DEADWEIGHT-SERVER agent only, mirrors dwi_ticket_consume's own
+ * auth shape. Idempotent: if the player already has an active run, resumes it for free
+ * (out_ticket_spent=0); otherwise spends 1 ticket and starts a fresh one. 0 ok (fills
+ * out_wins/out_losses/out_ticket_spent), -2 insufficient tickets (HTTP 402) when no run is active
+ * and the balance is 0. NOT YET CALLED from apps/server/main.c's poll loop -- the existing
+ * J_VERIFY/J_REPORT worker-thread job-queue pattern is the correct place to add a new
+ * J_DRAFT_RUN_START job (a synchronous call here would block the whole server's poll() loop for
+ * up to the HTTP timeout), real, scoped, separate follow-up work, not done in this pass. */
+int dwi_draft_run_start(DwIduna *d, const char *player_id, int *out_wins, int *out_losses, int *out_ticket_spent);
+
+/* Guest -> email upgrade ("Link Email, Save Progress"): player_token is the player's OWN existing
+ * token (any provider). Keeps the same player_id -- tickets/stats/founder-flag/draft-run all
+ * carry over automatically. 0 ok (fills tok, >= 1536 bytes), -2 IDUNA rejected (bad email/
+ * password/already-linked). */
+int dwi_guest_upgrade(DwIduna *d, const char *player_token, const char *email, const char *password, char *tok, size_t tn);
+/* Returning email/password login -- same game-scoped token shape every other login path here
+ * issues. 0 ok, -2 invalid credentials. */
+int dwi_email_login(DwIduna *d, const char *email, const char *password, char *tok, size_t tn, int *out_tickets);
 
 /* Redeem an Itch.io claim code (S508 -- "Redeem Code" main-menu box) with the player's OWN token
  * (guest or steam, not an agent). 0 ok (fills out_tickets_granted/out_founder/out_balance), -1
