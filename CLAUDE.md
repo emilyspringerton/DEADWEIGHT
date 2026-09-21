@@ -32,8 +32,12 @@ why, before any of it gets built.
 - **Clients**: Android = hand-written Java shell (Bazel + rules_android, KARAMBIT precedent) over a plain-JVM
   `core_lib`; Windows = C (headless in VS0, SDL2 UI in VS0.5); Browser (`web/`, dev/VS0.5-web) = hand-written
   TypeScript over a WebSocket↔TCP bridge (`web/bridge/ws-tcp-bridge.js`, dumb byte relay — `dw_server` stays TCP-only),
-  calling `web/src/generated/CardRules.ts` (PARENA's TypeScript emitter, `scripts/gen_rules.sh`) directly. See
-  `web/README.md` for honest status/limits.
+  calling `web/src/generated/CardRules.ts` (PARENA's TypeScript emitter, `scripts/gen_rules.sh`) directly. Windows and
+  the browser also SHARE their round-resolution animation/audio DECISION layer: `PARENA/stdlib/deadweight/
+  fx_rules.prn` compiles to `core/fx_rules.c` (Windows, canonical, called from `apps/gui/fx.c` via `core/fx_rules.h`)
+  and `web/src/generated/FxRules.ts` (browser, called from `web/src/fx.ts`) — Windows renders with SDL2, the browser
+  with Canvas2D/Web Audio, but both make the identical scenario/winner/critical/timeline decisions. See
+  `web/README.md` and `docs/ANIMATION_AND_AUDIO.md` for honest status/limits.
 - **IDUNA**: `game='deadweight'` scope, `DEADWEIGHT-BOTS`/`DEADWEIGHT-RL` M2M agents, guest accounts
   (`provider="guest"`), game-scoped checkpoint registry — multi-tenant by default. Art via NOCK, not PARENA FFI.
 - **Build**: `scripts/build.sh [--windows|--android|--all]`; CI in `.github/workflows/ci.yml`, auto minor-version

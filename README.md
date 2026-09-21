@@ -110,11 +110,16 @@ table + `scripts/gen_rules.sh`.
 `web/` is a real, working browser client, dogfooding PARENA's TypeScript emitter against this repo's own
 `card_rules.prn` — connects over a WebSocket↔TCP bridge to the real `dw_server`, plays the real wire protocol, and
 calls the PARENA-compiled `isLegalPlay`/`cardKind`/`cardKeyword` directly rather than re-implementing rules in hand-
-written JS. Verified end-to-end: a real match played start to finish against a live bot through the compiled client
-(`web/bridge/e2e_test.mjs`). Random queue only, no auth, no animation, not deployed anywhere — see `web/README.md`
-for the full honest status and how to run it locally. Two real, load-bearing bugs in PARENA's TypeScript emitter
-were found and fixed getting this far (I32 division truncation, a 511-character buffer overflow) — see
-`PARENA/STDLIB.md`'s own TypeScript emitter section.
+written JS. Round-resolution animation and audio are unified too: `PARENA/stdlib/deadweight/fx_rules.prn` compiles to
+both `core/fx_rules.c` (Windows, canonical) and `web/src/generated/FxRules.ts` (browser), so the SAME scenario/winner/
+critical/timeline decisions drive both clients — the browser then renders them with its own Canvas2D/Web Audio, the
+same "PARENA decides, host renders" split every DEADWEIGHT client already follows. Verified end-to-end: a real match
+played start to finish against a live bot through the compiled client (`web/bridge/e2e_test.mjs`), including real fx
+timelines computed against real match data. Random queue only, no auth, not deployed anywhere — see `web/README.md`
+for the full honest status (including what the fx animation/audio port does and doesn't cover yet) and how to run it
+locally. Several real, load-bearing bugs in PARENA's TypeScript emitter were found and fixed getting this far (I32
+division truncation, a 511-character buffer overflow, a missing `(not x)`, unrecognized `true`/`false` literals) —
+see `PARENA/STDLIB.md`'s own TypeScript emitter section.
 
 ## CI / releases
 

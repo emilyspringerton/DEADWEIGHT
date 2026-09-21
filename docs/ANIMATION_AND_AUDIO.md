@@ -1,6 +1,28 @@
-# Round-resolution animation and audio (SDL2 client)
+# Round-resolution animation and audio (SDL2 client, and the browser client's own copy)
 
-Implemented in `apps/gui/fx.[ch]` (animation) and `apps/gui/sfx.[ch]` (a small software synth; no sample files, no SDL_mixer).
+**The decision layer is shared, canonical, and PARENA-compiled.** Which scenario a round is
+(Blitz/Block/Bypass/mirror/unopposed/hold/pass/cancel), who won, whether it was a critical, which
+audio cue plays, and exactly when each timeline stage starts (clash/hull/armor/econ/stat/settle) —
+all of that is `PARENA/stdlib/deadweight/fx_rules.prn`, compiled to `core/fx_rules.c` (Windows,
+linked via `core/fx_rules.h`) and `web/src/generated/FxRules.ts` (browser, via `web/src/fx.ts`).
+Windows is canonical; the browser client calls the exact same functions, not a hand-re-derived
+port (founder real-time, 2026-09-21: "use parena to unify the windows and TS versions... dogfood
+it, eat more of the app"). Verified: `tests/test_fx_rules.c` (4092 checks against an independent,
+hand-typed oracle transcribed from the original pre-refactor C logic) plus a live end-to-end match
+through the browser client computing real timelines against real `ROUND_RESULT` data
+(`web/bridge/e2e_test.mjs`).
+
+What stays hand-written **per platform**, on purpose (same "PARENA decides, host renders" idiom
+every DEADWEIGHT/REDGARDEN/PAPERCRAFT mod already follows): actually drawing (SDL2 rectangles vs.
+Canvas2D) and actually synthesizing audio (the C software synth below vs. Web Audio oscillators,
+`web/src/fx.ts`). The browser renderer is a genuinely different, simpler visual/audio
+implementation making the *same decisions* — not a pixel-for-pixel or sample-for-sample clone,
+which isn't achievable without shipping the SDL2 renderer itself into a browser. See
+`web/README.md` for the browser client's own honest scope (energy-delta and burn/regen status
+visuals are a named, not-yet-wired gap there — the wire protocol doesn't carry enough same-round
+information for either without deferring a round, a real, honest limitation, not an oversight).
+
+Implemented (Windows) in `apps/gui/fx.[ch]` (animation) and `apps/gui/sfx.[ch]` (a small software synth; no sample files, no SDL_mixer).
 Every finished round becomes one timeline of **at most 9 s (real worst case in the demo set: 5.3 s)** in the arena band of the match
 screen. The hand stays playable while it runs, and the next round's timer is unaffected. The final round of a match finishes its
 animation before the result screen appears. Both systems are driven by the same clock: the audio for each beat is scheduled when the
@@ -68,3 +90,5 @@ players gain the same resource the two sounds are staggered 150 ms and panned, t
 * `tests/test_sfx.c` (in `scripts/build.sh`): every cue renders, is audible, never clips, decays inside its budget (clash <= 2.2 s, resources <= 0.6 s), the clash is at least as loud as any resource cue, damage scales volume, the pitch climb is really a 3:2 ratio (measured), EMP muffling removes the highs (measured), the voice cap and priority stealing hold, and a full sequenced resolution finishes inside 6 s.
 * `dw_gui --fx-demo DIR [--no-sound]` (also run by `tests/test_gui_selftest.sh`): plays 29 scripted rounds (every scenario, keyword, critical, resource and status) headlessly, dumps arena frames (`<scenario>_NN.bmp`) and the rendered audio (`<scenario>.wav`), and fails if any timeline exceeds 9 s or its audio clips.
 * **Not verified by ear or on a real display**: the sounds were checked numerically and by rendering to WAV, not listened to; the visuals were checked from dumped frames, not on a GPU/window; touch input does not apply (Windows client). The Android client does not have these animations yet.
+* `tests/test_fx_rules.c` (in `scripts/build.sh`, always-on, not gated behind `--gui`): the shared decision layer's own exhaustive suite (4092 checks) against an independent, hand-typed oracle.
+* Browser client (`web/`): the decision layer is verified the same way as above (it's the same compiled functions); the Canvas2D/Web Audio rendering itself has **not been checked in a real browser window** -- only that `fx.computeTimeline()` produces sane output against a real live match (`web/bridge/e2e_test.mjs`), since Canvas/Web Audio/`requestAnimationFrame` need a DOM this sandbox's headless Node test can't provide.

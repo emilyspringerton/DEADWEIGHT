@@ -5,6 +5,7 @@
 
 import { DeadweightClient } from './client.js';
 import * as rules from './generated/CardRules.js';
+import * as fx from './fx.js';
 
 type CardEntry = { id: number; name: string; kind: string; keyword: string; cost: number; power: number; credit: number; text: string };
 type CardsData = { version: string; cards: CardEntry[] };
@@ -23,6 +24,13 @@ let currentEnergy = 0;
 let currentVault = 0;
 let lockMask = 0;
 let locked = false;
+// "before" snapshot for the round about to resolve, captured at ROUND_START, consumed by the next
+// ROUND_RESULT's fx.computeTimeline() call -- see fx.ts's own header comment for the honest,
+// named gap this leaves (energy-delta and burn/regen status visuals are not wired up yet, the
+// wire protocol doesn't carry enough same-round information for either without deferring a round).
+let beforeArmorYou = 0, beforeArmorOpp = 0, beforeVaultYou = 0, beforeVaultOpp = 0;
+let fxDrawState: fx.FxDrawState | null = null;
+let fxRafHandle = 0;
 
 function log(line: string) {
     const el = $('log');
@@ -84,6 +92,19 @@ function setStatus(s: string) {
     $('status').textContent = s;
 }
 
+function runFxAnimation(timeline: fx.FxTimeline, input: fx.FxRoundInput) {
+    const canvas = $('fx-canvas') as HTMLCanvasElement;
+    const ctx2d = canvas.getContext('2d')!;
+    if (fxRafHandle) cancelAnimationFrame(fxRafHandle);
+    fxDrawState = fx.beginRound(canvas, timeline, input);
+    const step = () => {
+        if (!fxDrawState) return;
+        const stillRunning = fx.drawFrame(ctx2d, canvas.width, canvas.height, fxDrawState);
+        if (stillRunning) fxRafHandle = requestAnimationFrame(step);
+    };
+    fxRafHandle = requestAnimationFrame(step);
+}
+
 async function start() {
     const name = ($('name') as HTMLInputElement).value.trim() || 'BrowserPlayer';
     const bridgeUrl = ($('bridge-url') as HTMLInputElement).value.trim();
@@ -113,6 +134,8 @@ async function start() {
             currentVault = f.vaultYou;
             lockMask = f.lockMask;
             locked = false;
+            beforeArmorYou = f.armorYou; beforeArmorOpp = f.armorOpp;
+            beforeVaultYou = f.vaultYou; beforeVaultOpp = f.vaultOpp;
             $('round-num').textContent = String(f.round);
             $('hull-you').textContent = String(f.hullYou);
             $('hull-opp').textContent = String(f.hullOpp);
@@ -129,6 +152,22 @@ async function start() {
         },
         onRoundResult(f) {
             log(`round ${f.round} result: you played ${cardLabel(f.cardYou)}, opp played ${cardLabel(f.cardOpp)} — dealt ${f.dmgToOpp}, took ${f.dmgToYou}, hull now ${f.hullYou}/${f.hullOpp}`);
+            const input: fx.FxRoundInput = {
+                cardYou: f.cardYou, cardOpp: f.cardOpp, effYou: f.effYou, effOpp: f.effOpp,
+                cancelledYou: !!(f.flagsYou & 1), cancelledOpp: !!(f.flagsOpp & 1),
+                dmgYou: f.dmgToYou, dmgOpp: f.dmgToOpp, healYou: f.healYou, healOpp: f.healOpp,
+                armorBeforeYou: beforeArmorYou, armorAfterYou: f.armorYou,
+                armorBeforeOpp: beforeArmorOpp, armorAfterOpp: f.armorOpp,
+                vaultBeforeYou: beforeVaultYou, vaultAfterYou: f.vaultYou,
+                vaultBeforeOpp: beforeVaultOpp, vaultAfterOpp: f.vaultOpp,
+                energyDeltaYou: 0, energyDeltaOpp: 0, // honest gap -- see fx.ts's own header comment
+                newStatusYou: false, newStatusOpp: false, // honest gap -- see fx.ts's own header comment
+                disabledYou: !!(f.flagsOpp & 8), disabledOpp: !!(f.flagsYou & 8),
+                swapped: !!((f.flagsYou & 16) || (f.flagsOpp & 16)),
+            };
+            const timeline = fx.computeTimeline(input);
+            log(`fx: scenario=${fx.scenarioName(timeline)} win=${timeline.win} crit=${timeline.crit} total=${Math.round(timeline.totalMs)}ms`);
+            runFxAnimation(timeline, input);
         },
         onMatchEnd(f) {
             const outcome = f.result === 1 ? 'WIN' : f.result === 0 ? 'LOSS' : 'DRAW';

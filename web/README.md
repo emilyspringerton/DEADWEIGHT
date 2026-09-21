@@ -26,6 +26,13 @@ compiled. Founder real-time (2026-09-21): "build out DEADWEIGHT in the browser, 
   know or care about the wire protocol, it just copies bytes). The real protocol is implemented
   exactly twice in this whole system: once in `core/` (C, authoritative) and once in `src/proto.ts`
   (browser) — the bridge is not a third copy.
+- `src/generated/FxRules.ts` + `src/fx.ts` — round-resolution animation/audio. `FxRules.ts` is
+  `PARENA/stdlib/deadweight/fx_rules.prn` compiled to TypeScript — the exact same scenario/winner/
+  critical/timeline/audio-cue decision logic `apps/gui/fx.c` (Windows, canonical) now calls too,
+  instead of the two hand-deriving it independently. `fx.ts` calls those functions and then draws
+  with Canvas2D and plays cues with Web Audio oscillators — a real, different renderer making the
+  *same decisions*, not a pixel/sample clone of the SDL2 client (see `docs/ANIMATION_AND_AUDIO.md`
+  for the full "what's shared vs. what's hand-written per platform" breakdown).
 
 ## Running it locally
 
@@ -71,6 +78,15 @@ Not just "it compiles" — a real, live, end-to-end match:
      syntactically corrupted output that still "succeeded." Fixed.
   3. `(not x)` fell through into a bogus call to a never-defined `not(...)` function — the same
      gap already found and fixed in the C and Java emitters and in BURROW. Fixed.
+  4. `true`/`false` literals weren't recognized at all (a real, latent type-tracking bug, found
+     writing `fx_rules.prn`'s own `fx-is-crit`) — fixed.
+- **Round-resolution animation/audio** (2026-09-21, "use parena to unify the windows and TS
+  versions... dogfood it, eat more of the app"): `fx.computeTimeline()` calls the exact same
+  PARENA-compiled scenario/timeline logic Windows now calls too (`FxRules.ts`/`core/fx_rules.c`,
+  both from `fx_rules.prn`) — verified sane against 9 real rounds of a real live match
+  (`web/bridge/e2e_test.mjs`), and cross-verified correct via `tests/test_fx_rules.c`'s 4092-check
+  independent oracle on the C side (same compiled logic). The Canvas2D/Web Audio *rendering* of
+  those decisions has not been checked in a real browser window (Node has no DOM) — see below.
 
 ## Honest status / limits — not built yet
 
@@ -80,8 +96,19 @@ Not just "it compiles" — a real, live, end-to-end match:
 - **No IDUNA auth.** Connects with `HELLO`'s empty inline token, matching `--no-auth` servers only
   (same precedent the Windows GUI/Android clients document). AUTH (`0x06`, real IDUNA JWTs) is
   typed in `proto.ts`'s constants but never sent.
-- **No animation or audio.** The Windows SDL2 client's clash scenes (`docs/ANIMATION_AND_AUDIO.md`)
-  are not ported here — round results are plain text log lines.
+- **Animation/audio rendering not verified in a real browser.** `fx.ts`'s Canvas2D drawing and Web
+  Audio playback have never been opened in an actual browser window in this sandbox (no display) —
+  only the shared decision layer they're driven by has been checked live (see above). The visuals
+  are also a real, simplified re-interpretation of the Windows client's own scenes (ship polygons,
+  a clash effect per scenario family, hull/armor number pop-ups), not a port of its exact particle
+  system, shake, crack-glass, or status (burn/regen/EMP) effects — those are not built here yet.
+- **Energy-delta and burn/regen status visuals/audio are a named, not-yet-wired gap**, honestly,
+  not silently skipped: `docs/WIRE_PROTOCOL.md`'s `ROUND_RESULT` carries no energy-delta or
+  status-after field (status is only ever visible on the *next* `ROUND_START`), so `main.ts`
+  currently always passes `energyDeltaYou/Opp: 0` and `newStatusYou/Opp: false` into
+  `fx.computeTimeline()` — the `hasEcon`/`hasStat` stages still fire correctly for credits/armor
+  and for the disabled/swapped flags that *are* in `ROUND_RESULT`, just not for energy gain or a
+  burn/regen status literally starting this round.
 - **No reconnect/resume.** A dropped WebSocket just ends the session; no session-id-based rejoin.
 - **Not deployed anywhere.** This is a local-only dev build (`python3 -m http.server`); no public
   URL, no TLS, no production `dw_server` pointed at it.

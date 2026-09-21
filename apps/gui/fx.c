@@ -1,6 +1,7 @@
 #include "fx.h"
 #include "sfx.h"
 #include "card_rules.h"
+#include "fx_rules.h"
 #include <math.h>
 #include <stdio.h>
 #include <string.h>
@@ -255,38 +256,44 @@ static void flyers(float x0, float y0, float x1, float y1, int n, C3 c, float du
 }
 
 /* ------------------------------------------------------------------------------------------------ scenario building */
-static int kind_of(int id) { return id >= 0 ? card_kind(id) : -1; }
+static int kind_of(int id) { return fx_kind_of(id); }
 
 static void schedule_audio_and_labels(void);
 
+/* begin_stages/fx_begin's own scenario+timeline math used to be hand-derived here in C, in
+ * parallel with an independent hand-derivation the browser client would have needed to keep in
+ * sync by hand forever. Both now call the SAME compiled decision layer -- core/fx_rules.c and
+ * web/src/generated/FxRules.ts, both generated from PARENA/stdlib/deadweight/fx_rules.prn (see
+ * core/fx_rules.h). Windows is canonical: this file is now a genuine CONSUMER of that shared
+ * logic, not a second independent implementation of it (founder real-time, 2026-09-21: "use
+ * parena to unify the windows and TS versions... dogfood it, eat more of the app"). Verified
+ * byte-for-byte against the original hand-written logic before this refactor landed (2772+64
+ * cross-checked vectors, 0 mismatches -- see PARENA/CHANGELOG.md and this repo's own
+ * tests/test_fx_rules.c). */
 static void begin_stages(void) {
-    /* clash duration by scenario */
-    float clash = 1400;
-    switch (S.sc) {
-    case SC_BLITZ: clash = S.crit ? 1900 : 1500; break;
-    case SC_BLOCK: clash = S.crit ? 2000 : 1700; break;
-    case SC_BYPASS: clash = S.crit ? 2200 : 2000; break;
-    case SC_MIRROR_OFF: case SC_MIRROR_OPS: case SC_MIRROR_DEF: clash = 1400; break;
-    case SC_UNOPPOSED: clash = 1200; break;
-    case SC_HOLD_SHIELD: clash = 1000; break;
-    case SC_BOTH_PASS: clash = 700; break;
-    case SC_CANCEL: clash = 1100; break;
-    default: break;
-    }
+    int clash = fx_clash_duration_ms(S.sc, S.crit);
     const FxRound *r = &S.r;
-    S.has_hull = r->dmg[0] > 0 || r->dmg[1] > 0 || r->heal[0] > 0 || r->heal[1] > 0;
-    S.has_armor = r->armor_after[0] != r->armor_before[0] || r->armor_after[1] != r->armor_before[1];
+    S.has_hull = fx_has_hull(r->dmg[0], r->dmg[1], r->heal[0], r->heal[1]);
+    S.has_armor = fx_has_armor(r->armor_before[0], r->armor_after[0], r->armor_before[1], r->armor_after[1]);
     int vd0 = r->vault_after[0] - r->vault_before[0], vd1 = (r->vault_before[1] == -128 || r->vault_after[1] == -128) ? 0 : r->vault_after[1] - r->vault_before[1];
-    S.has_econ = (r->energy_delta[0] != FX_UNKNOWN && r->energy_delta[0] != 0) || (r->energy_delta[1] != FX_UNKNOWN && r->energy_delta[1] != 0) || vd0 != 0 || vd1 != 0;
-    S.has_stat = (r->status_after[0] & ~r->status_before[0] & 3) || (r->status_after[1] & ~r->status_before[1] & 3) || (r->flags[1] & 8) || (r->flags[0] & 8) || (r->flags[0] & 16) || (r->flags[1] & 16);
-    float t = 600;
-    S.clash0 = t; t += clash; S.clash1 = t; t += 220;
-    S.hull0 = t; if (S.has_hull) t += 950; S.hull1 = t; if (S.has_hull) t += 120;
-    S.armor0 = t; if (S.has_armor) t += 850; S.armor1 = t; if (S.has_armor) t += 100;
-    S.econ0 = t; if (S.has_econ) t += 950; S.econ1 = t; if (S.has_econ) t += 100;
-    S.stat0 = t; if (S.has_stat) t += 750; S.stat1 = t;
-    S.settle0 = t; t += 320;
-    S.total = fminf(t, 9000.0f);
+    int ed0 = r->energy_delta[0] != FX_UNKNOWN ? r->energy_delta[0] : 0, ed1 = r->energy_delta[1] != FX_UNKNOWN ? r->energy_delta[1] : 0;
+    S.has_econ = fx_has_econ(ed0, ed1, vd0, vd1);
+    int new_stat0 = r->status_after[0] & ~r->status_before[0] & 3, new_stat1 = r->status_after[1] & ~r->status_before[1] & 3;
+    int disabled0 = (r->flags[0] & 8) != 0, disabled1 = (r->flags[1] & 8) != 0;
+    int swapped = ((r->flags[0] & 16) || (r->flags[1] & 16)) != 0;
+    S.has_stat = fx_has_stat(new_stat0, new_stat1, disabled0, disabled1, swapped);
+    S.clash0 = (float)fx_clash0();
+    S.clash1 = (float)fx_clash1(clash);
+    S.hull0 = (float)fx_hull0(clash);
+    S.hull1 = (float)fx_hull1(clash, S.has_hull);
+    S.armor0 = (float)fx_armor0(clash, S.has_hull);
+    S.armor1 = (float)fx_armor1(clash, S.has_hull, S.has_armor);
+    S.econ0 = (float)fx_econ0(clash, S.has_hull, S.has_armor);
+    S.econ1 = (float)fx_econ1(clash, S.has_hull, S.has_armor, S.has_econ);
+    S.stat0 = (float)fx_stat0(clash, S.has_hull, S.has_armor, S.has_econ);
+    S.stat1 = (float)fx_stat1(clash, S.has_hull, S.has_armor, S.has_econ, S.has_stat);
+    S.settle0 = (float)fx_settle0(clash, S.has_hull, S.has_armor, S.has_econ, S.has_stat);
+    S.total = (float)fx_timeline_total_ms(clash, S.has_hull, S.has_armor, S.has_econ, S.has_stat);
 }
 
 void fx_begin(const FxRound *rin) {
@@ -295,22 +302,16 @@ void fx_begin(const FxRound *rin) {
     memset(S.pulse, 0, sizeof S.pulse); shake_amp = 0; vignette[0] = vignette[1] = 0; glass_age = 99;
     const FxRound *r = &S.r;
     int cancelled[2] = { (r->flags[0] & 1) != 0, (r->flags[1] & 1) != 0 };
-    for (int s = 0; s < 2; s++) { S.cardid[s] = r->eff[s] >= 0 ? r->eff[s] : (cancelled[s] ? r->card[s] : -1); S.cardk[s] = kind_of(S.cardid[s]); }
+    for (int s = 0; s < 2; s++) { S.cardid[s] = fx_card_id(r->eff[s], r->card[s], cancelled[s]); S.cardk[s] = kind_of(S.cardid[s]); }
     int a = S.cardk[0], b = S.cardk[1];
-    S.win = S.lose = -1; S.crit = 0; S.kw = 0;
-    if (cancelled[0] || cancelled[1]) S.sc = SC_CANCEL;
-    else if (a < 0 && b < 0) S.sc = SC_BOTH_PASS;
-    else if (a < 0 || b < 0) { int w = a >= 0 ? 0 : 1; S.win = w; S.lose = 1 - w; S.sc = S.cardk[w] == 2 ? SC_HOLD_SHIELD : SC_UNOPPOSED; }
-    else if (a == b) S.sc = a == 0 ? SC_MIRROR_OFF : a == 1 ? SC_MIRROR_OPS : SC_MIRROR_DEF;
-    else {
-        int w = kind_beats(a, b) ? 0 : 1; S.win = w; S.lose = 1 - w;
-        int wk = S.cardk[w];
-        S.sc = wk == 0 ? SC_BLITZ : wk == 2 ? SC_BLOCK : SC_BYPASS;
-        if (S.sc == SC_BYPASS) S.kw = card_keyword(S.cardid[w]);
+    S.sc = (Scenario)fx_scenario(a, b, cancelled[0], cancelled[1]);
+    S.win = fx_winner_seat(a, b, cancelled[0], cancelled[1]);
+    S.lose = S.win >= 0 ? 1 - S.win : -1;
+    S.crit = 0; S.kw = 0;
+    if (S.win >= 0 && S.lose >= 0) {
+        if (S.sc == SC_BYPASS) S.kw = card_keyword(S.cardid[S.win]);
         int dmg_l = r->dmg[S.lose];
-        if (S.sc == SC_BLITZ) S.crit = dmg_l >= 8;
-        else if (S.sc == SC_BLOCK) S.crit = card_power(S.cardid[w]) - card_power(S.cardid[S.lose]) >= 3;
-        else S.crit = dmg_l >= 8 || card_cost(S.cardid[w]) >= 5;
+        S.crit = fx_is_crit(S.sc, dmg_l, card_power(S.cardid[S.win]), card_power(S.cardid[S.lose]), card_cost(S.cardid[S.win]));
     }
     begin_stages();
     snprintf(S.name, sizeof S.name, "%s%s%s%s", SC_NAME[S.sc], S.sc == SC_BYPASS ? "_" : "", S.sc == SC_BYPASS ? KW_NAME[S.kw] : "", S.crit ? "_crit" : "");
@@ -326,15 +327,10 @@ static void schedule_audio_and_labels(void) {
     int emp_me = lock_now != 0;                     /* EMP: everything on my side sounds muffled */
     audio(SFX_FLIP, 0, -0.3f, 0, 1, emp_me);
     audio(SFX_FLIP, 40, 0.3f, 2, 1, 0);
-    SfxCue cue = SFX_HOLD;
-    switch (S.sc) {
-    case SC_BLITZ: cue = S.crit ? SFX_BLITZ_CRIT : SFX_BLITZ; break;
-    case SC_BLOCK: cue = S.crit ? SFX_BLOCK_CRIT : SFX_BLOCK; break;
-    case SC_BYPASS: cue = S.crit ? SFX_BYPASS_CRIT : S.kw == 1 ? SFX_BYPASS_LOCK : S.kw == 2 ? SFX_BYPASS_SABOTAGE : S.kw == 3 ? SFX_BYPASS_FLANK : S.kw == 4 ? SFX_BYPASS_SCAN : SFX_BYPASS_SIPHON; break;
-    case SC_MIRROR_OFF: cue = SFX_MIRROR_OFFENSE; break; case SC_MIRROR_OPS: cue = SFX_MIRROR_OPERATIONS; break; case SC_MIRROR_DEF: cue = SFX_MIRROR_DEFENSE; break;
-    case SC_UNOPPOSED: cue = SFX_UNOPPOSED; break; case SC_HOLD_SHIELD: cue = SFX_IMMUNE; break; case SC_BOTH_PASS: cue = SFX_HOLD; break; case SC_CANCEL: cue = SFX_CANCELLED; break;
-    default: break;
-    }
+    /* fx_clash_cue's return value is a plain int index matching SfxCue's own enum order exactly
+       (see core/fx_rules.h's own header comment) -- the cast is safe and intentional, not a
+       type-punning hazard, same convention S.sc's own (Scenario) cast above already uses. */
+    SfxCue cue = (SfxCue)fx_clash_cue(S.sc, S.crit, S.kw);
     float impact = S.sc == SC_BLITZ ? 320 : S.sc == SC_BLOCK ? 120 : S.sc == SC_BYPASS ? 100 : 200;
     (void)impact;
     audio(cue, c0 + 60, S.win >= 0 ? (S.win == 0 ? -0.25f : 0.25f) : 0, 0, 1, 0);

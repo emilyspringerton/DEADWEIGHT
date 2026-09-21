@@ -20,6 +20,7 @@
   .rules-text { opacity: 0.75; }
   #log { margin-top: 16px; height: 220px; overflow-y: auto; background: #0c0e12; border: 1px solid #2a2d36; padding: 8px; font-size: 0.8rem; font-family: monospace; }
   #match, #game { display: none; }
+  #fx-canvas { width: 100%; max-width: 480px; height: 220px; background: #0c0e12; border: 1px solid #2a2d36; border-radius: 6px; display: block; margin-bottom: 10px; }
 </style>
 </head>
 <body>
@@ -43,6 +44,7 @@
   <p>Status: <span id="status">—</span> <button id="queue-btn">Queue (random)</button></p>
 
   <div id="match">
+    <canvas id="fx-canvas" width="480" height="220"></canvas>
     <div id="stats">
       <div>Round <b id="round-num">0</b></div>
       <div>Hull You <b id="hull-you">-</b> / Opp <b id="hull-opp">-</b></div>

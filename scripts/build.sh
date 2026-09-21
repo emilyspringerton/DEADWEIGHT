@@ -15,6 +15,11 @@ gcc $CFLAGS_BASE -g -fsanitize=address,undefined -fno-sanitize-recover=all \
     tests/test_rules.c core/card_rules.c -o build/test_rules
 ./build/test_rules tests/parity_vectors.txt
 
+echo "== C: fx (round-resolution animation/audio decision layer) rules tests (ASan+UBSan) =="
+gcc $CFLAGS_BASE -include card_rules.h -g -fsanitize=address,undefined -fno-sanitize-recover=all \
+    tests/test_fx_rules.c core/card_rules.c core/fx_rules.c -o build/test_fx_rules
+./build/test_fx_rules
+
 echo "== C: protocol codec tests (ASan+UBSan) =="
 gcc $CFLAGS_BASE -g -fsanitize=address,undefined -fno-sanitize-recover=all \
     tests/test_protocol.c core/protocol.c -o build/test_protocol
@@ -75,15 +80,18 @@ fi
 if [[ "$ARGS" == *" --gui "* ]]; then
   echo "== GUI: dw_gui (SDL2) + headless selftest =="
   command -v pkg-config >/dev/null && pkg-config --exists sdl2 || { echo "--gui requires libsdl2-dev (pkg-config sdl2)"; exit 1; }
-  GUI_SRC="apps/gui/main.c apps/gui/fx.c apps/gui/sfx.c core/client.c core/policy.c core/protocol.c core/card_rules.c core/card_text.c core/iduna.c core/http.c"
-  gcc $CFLAGS_BASE -O2 $(pkg-config --cflags sdl2) $GUI_SRC $(pkg-config --libs sdl2) -lm -o build/dw_gui
+  # core/fx_rules.c is PARENA-generated (fx_rules.prn) and calls card_kind/kind_beats/card_power/
+  # card_cost/card_keyword without its own prototypes -- same real reason core/bot_brain.c already
+  # needs `-include card_rules.h` forced in (see BRAIN_SRC above), not a new pattern.
+  GUI_SRC="apps/gui/main.c apps/gui/fx.c apps/gui/sfx.c core/client.c core/policy.c core/protocol.c core/card_rules.c core/fx_rules.c core/card_text.c core/iduna.c core/http.c"
+  gcc $CFLAGS_BASE -include card_rules.h -O2 $(pkg-config --cflags sdl2) $GUI_SRC $(pkg-config --libs sdl2) -lm -o build/dw_gui
   ./build/dw_gui --version
   tests/test_gui_selftest.sh
   if [[ "$ARGS" == *" --windows "* ]]; then
     SDLW="${SDL2_MINGW:-./sdl2_mingw}"
     if [ -d "$SDLW/include" ]; then
       echo "== GUI: Windows cross-build =="
-      x86_64-w64-mingw32-gcc $CFLAGS_BASE -O2 -I"$SDLW/include" -I"$SDLW/include/SDL2" $GUI_SRC -o build/dw_gui.exe \
+      x86_64-w64-mingw32-gcc $CFLAGS_BASE -include card_rules.h -O2 -I"$SDLW/include" -I"$SDLW/include/SDL2" $GUI_SRC -o build/dw_gui.exe \
         -L"$SDLW/lib" -lmingw32 -lSDL2 -lws2_32 -mwindows
       file build/dw_gui.exe | grep -q PE32
     else
