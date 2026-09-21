@@ -35,10 +35,15 @@ int dwi_report(DwIduna *d, const DwMatchReport *r);
 /* Guest accounts. Return 0 ok; token written to tok (>= 1536 bytes). display_name may be "" or
  * NULL (S512 zero-friction auth: the release client no longer collects one at all) -- IDUNA
  * auto-assigns a lore-friendly one ("Runner-A7B2") in that case, always readable back via
- * out_name (0 ok even if out_name is NULL; NULL out_tickets is also fine, both optional). */
+ * out_name (0 ok even if out_name is NULL; NULL out_tickets is also fine, both optional).
+ * -1 network/config error (out_status set 0), -2 IDUNA rejected the request (out_status set to
+ * the real HTTP status -- S517 found-live bug: a 429 "too many new accounts from this IP today"
+ * was being shown to the player as "IDUNA offline", the network-failure message, which sent
+ * debugging in the wrong direction; out_status lets the caller tell these apart. out_status may
+ * be NULL if the caller doesn't need to distinguish). */
 int dwi_guest_register(DwIduna *d, const char *display_name, char *player_id, size_t pn, char *secret, size_t sn, char *tok, size_t tn,
-                        char *out_name, size_t on, int *out_tickets);
-int dwi_guest_login(DwIduna *d, const char *player_id, const char *secret, char *tok, size_t tn, char *out_name, size_t on, int *out_tickets);
+                        char *out_name, size_t on, int *out_tickets, int *out_status);
+int dwi_guest_login(DwIduna *d, const char *player_id, const char *secret, char *tok, size_t tn, char *out_name, size_t on, int *out_tickets, int *out_status);
 
 /* Steam zero-friction login (S507). `ticket_hex` is the hex-encoded ISteamUser::GetAuthSessionTicket
  * blob -- obtaining it is real Steamworks-SDK client work this function does NOT do (the SDK is

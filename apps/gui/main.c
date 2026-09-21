@@ -155,14 +155,16 @@ static void iduna_bootstrap(void) {
     char pid[48] = "", secret[72] = "", tok[DW_MAX_AUTH_TOKEN + 1] = "", gotname[DW_NAME_LEN + 1] = "";
     FILE *f = fopen(A.account_path, "r");
     if (f) { if (fscanf(f, "%47s %71s", pid, secret) != 2) { pid[0] = 0; secret[0] = 0; } fclose(f); }
-    int ok = pid[0] && secret[0] && dwi_guest_login(&A.idu, pid, secret, tok, sizeof tok, gotname, sizeof gotname, &A.tickets) == 0;
+    int loginStatus = 0;
+    int ok = pid[0] && secret[0] && dwi_guest_login(&A.idu, pid, secret, tok, sizeof tok, gotname, sizeof gotname, &A.tickets, &loginStatus) == 0;
+    int regStatus = 0;
     if (!ok) {
         /* S512 zero-friction auth: NEVER a client-chosen name -- an empty display_name tells
          * IDUNA to auto-assign a lore-friendly one ("Runner-A7B2"), read back into gotname below.
          * "Claim Account" (do_link_email) is where a player later picks something of their own. */
         char newpid[48], newsecret[72];
         const char *wantname = A.name_from_cli ? A.name : "";   /* dev override only -- see --name */
-        if (dwi_guest_register(&A.idu, wantname, newpid, sizeof newpid, newsecret, sizeof newsecret, tok, sizeof tok, gotname, sizeof gotname, &A.tickets) == 0) {
+        if (dwi_guest_register(&A.idu, wantname, newpid, sizeof newpid, newsecret, sizeof newsecret, tok, sizeof tok, gotname, sizeof gotname, &A.tickets, &regStatus) == 0) {
             snprintf(pid, sizeof pid, "%s", newpid); snprintf(secret, sizeof secret, "%s", newsecret);
             FILE *wf = fopen(A.account_path, "w");
             if (wf) { fprintf(wf, "%s %s\n", pid, secret); fclose(wf); }
@@ -176,8 +178,21 @@ static void iduna_bootstrap(void) {
         A.auth_ready = 1;
         fprintf(stderr, "dw_gui: IDUNA auth ok, player_id=%s name=%s tickets=%d\n", A.player_id, A.name, A.tickets);
     } else {
-        snprintf(A.err, sizeof A.err, "IDUNA unreachable -- playing without an account (no tickets)");
-        fprintf(stderr, "dw_gui: IDUNA auth failed against %s\n", A.iduna_url);
+        /* S517: found-live bug -- every auth failure (network down, wrong URL, AND a plain HTTP
+         * rejection like a 429 rate limit) was collapsed into "IDUNA offline", which is actively
+         * misleading when IDUNA is up and correctly enforcing a real rule (e.g. the 3-new-
+         * accounts-per-IP-per-day signup cap). Surface the real status so this is diagnosable
+         * without a server-side log dive next time. */
+        if (regStatus == 429) {
+            snprintf(A.err, sizeof A.err, "Too many new accounts from this network today -- try again tomorrow");
+        } else if (regStatus > 0) {
+            snprintf(A.err, sizeof A.err, "IDUNA rejected account setup (HTTP %d)", regStatus);
+        } else if (loginStatus > 0 && loginStatus != 404) {
+            snprintf(A.err, sizeof A.err, "IDUNA rejected saved account (HTTP %d) -- delete dw_account.txt to get a new one", loginStatus);
+        } else {
+            snprintf(A.err, sizeof A.err, "IDUNA unreachable -- playing without an account (no tickets)");
+        }
+        fprintf(stderr, "dw_gui: IDUNA auth failed against %s (login_status=%d register_status=%d)\n", A.iduna_url, loginStatus, regStatus);
     }
 }
 static void do_redeem(void) {
