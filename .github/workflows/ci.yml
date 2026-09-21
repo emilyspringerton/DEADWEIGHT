@@ -83,16 +83,45 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      # S519: real TLS via PARENA's net/tls.prn (mbedTLS FFI) -- checked out PUBLIC (no token
+      # needed, verified via `api.github.com/repos/emilyspringerton/PARENA` -> private:false)
+      # sibling so scripts/build.sh's own PARENA_RUNTIME_DIR auto-detection finds it. Found live,
+      # 2026-09-21: every prior release (Linux tar.gz AND Windows zip) was built WITHOUT this,
+      # meaning the shipped default https://okemily.com IDUNA URL failed clean at connect time
+      # for every player, always -- "IDUNA offline" was never a message-wording bug alone, the
+      # release binaries genuinely had no HTTPS support at all until this step existed.
+      - uses: actions/checkout@v4
+        with:
+          repository: emilyspringerton/PARENA
+          path: parena-runtime
       - name: Install dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y mingw-w64 file libsdl2-dev patchelf zip imagemagick
+          sudo apt-get install -y mingw-w64 file libsdl2-dev libmbedtls-dev patchelf zip imagemagick
           wget -q https://www.libsdl.org/release/SDL2-devel-2.28.5-mingw.tar.gz
           tar xzf SDL2-devel-2.28.5-mingw.tar.gz
           mv SDL2-2.28.5/x86_64-w64-mingw32 ./sdl2_mingw
+      # mbedTLS cross-compiled for mingw (see docs/WINDOWS_TLS_BUILD.md) -- no mingw-w64 mbedTLS
+      # apt package exists, so this builds it from source once per run. ~1-2 min; not cached
+      # (this job's own SDL2 mingw download isn't cached either, same convention).
+      - name: Cross-compile mbedTLS for Windows
+        run: |
+          set -euo pipefail
+          curl -sL https://github.com/Mbed-TLS/mbedtls/archive/refs/tags/mbedtls-2.28.8.tar.gz -o /tmp/mbedtls.tar.gz
+          tar xzf /tmp/mbedtls.tar.gz -C /tmp
+          make -C /tmp/mbedtls-mbedtls-2.28.8 CC=x86_64-w64-mingw32-gcc AR=x86_64-w64-mingw32-ar WINDOWS=1 WINDOWS_BUILD=1 lib
+          mkdir -p mbedtls_mingw/library
+          cp -r /tmp/mbedtls-mbedtls-2.28.8/include mbedtls_mingw/
+          cp /tmp/mbedtls-mbedtls-2.28.8/library/*.a mbedtls_mingw/library/
       # Builds dw_gui (Linux) + dw_gui.exe (mingw), runs the headless selftest (SDL dummy video driver): the GUI plays a
-      # full match against a real dw_server + dw_bot through its own state machine.
+      # full match against a real dw_server + dw_bot through its own state machine. mbedTLS linked
+      # STATIC on both targets (-Bstatic for Linux; mingw .a files have no .so equivalent) so the
+      # shipped binary needs no system mbedTLS install on the player's machine.
       - name: Build + selftest
+        env:
+          PARENA_RUNTIME_DIR: ${{ github.workspace }}/parena-runtime/runtime
+          MBEDTLS_LDFLAGS: -Wl,-Bstatic -lmbedtls -lmbedx509 -lmbedcrypto -Wl,-Bdynamic
+          MBEDTLS_MINGW_DIR: ${{ github.workspace }}/mbedtls_mingw
         run: DW_VERSION=${{ needs.version.outputs.version }} SDL2_MINGW=./sdl2_mingw scripts/build.sh --gui --windows
       # A plain `gcc -lSDL2` build dynamically links libSDL2-2.0.so.0, absent on a typical fresh Linux box: bundle it and
       # point RPATH at $ORIGIN/lib (same mechanism BRAWLPIT/PITVIPER use).

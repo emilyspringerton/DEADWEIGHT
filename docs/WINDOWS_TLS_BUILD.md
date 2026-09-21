@@ -12,13 +12,24 @@ Structurally verified: `dw_gui.exe` cross-compiles clean with `PARENA_WITH_TLS` 
 symbols, produces a valid `PE32+` binary, and the embedded CA bundle really is in the binary (146
 real `-----BEGIN CERTIFICATE-----` markers confirmed via `strings`).
 
-**Not runtime-verified**: this sandbox has no Wine/Windows environment to actually execute the
-`.exe` and prove a live handshake the way the Linux build was (`dw_gui --autostart` against real
-production `https://okemily.com`, live TLS 1.2 handshake + cert verification + guest account
-created). The underlying mbedTLS Windows/winsock2 networking layer is mature and widely used, so
-the real risk here is low, but "compiles and links" is a weaker guarantee than "ran and worked" —
-don't treat this as equivalent to the Linux build's own live verification until someone runs the
-actual `.exe` on real Windows and confirms it.
+**Linux runtime-verified (S519, 2026-09-21)**: the Linux `dw_gui` build with real TLS
+(`MBEDTLS_CFLAGS`/`MBEDTLS_LDFLAGS` pointed at a locally-built libmbedtls-dev, statically linked)
+was actually run headless (`SDL_VIDEODRIVER=dummy ./build/dw_gui --iduna-url https://okemily.com
+--autostart`) against real production IDUNA: a live TLS 1.2 handshake, cert verification, and a
+real guest-register all completed, account file written with a real player_id/secret. This also
+uncovered the actual root cause of a "still says IDUNA offline after downloading" report: CI had
+**never** built any release artifact (Linux or Windows) with `PARENA_WITH_TLS` at all — no
+`libmbedtls-dev` install, no PARENA sibling checkout — so every shipped build failed clean at
+connect time against the real `https://` default, 100% of the time, for every player. Fixed in
+`.github/workflows/ci.yml`'s `gui` job (PARENA checked out public/no-token-needed as a sibling,
+`libmbedtls-dev` installed for Linux, mbedTLS cross-compiled from source for the mingw/Windows
+target on every CI run).
+
+**Windows itself still not runtime-verified**: this sandbox has no Wine/Windows environment to
+actually execute the `.exe`. The underlying mbedTLS Windows/winsock2 networking layer is mature
+and widely used and the Linux build (same source, same mbedTLS version) is now proven live, so the
+real risk here is low, but someone should still run the actual CI-built `.exe` on real Windows and
+confirm a live handshake before treating it as equivalent to the Linux build's own verification.
 
 ## One-time setup: cross-compile mbedTLS for mingw
 
