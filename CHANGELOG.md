@@ -1,6 +1,7 @@
 # CHANGELOG
 
 ## 2026-09-21
+- New Claim Account modal (brutalist, labeled EMAIL/PASSWORD, gated on real Guest state via account_state) replaces the old always-visible unlabeled inline fields; fixed a real bug where maximizing/fullscreening the window left content pinned top-left instead of centered; added missing '@'/'*' glyphs to the bitmap font (email/password fields were unreadable) (sess-20260920-1908-24cb3558)
 - Fix: production dw_server has run with --no-auth and no IDUNA config since it was first deployed -- match results, ELO stats, and draft win-loss tracking were never once reported to IDUNA. Wired in the real (already-provisioned) DEADWEIGHT-SERVER/DEADWEIGHT-BOTS agent credentials, redeployed, and verified end to end against production (a real match's loss correctly incremented a test account's draft run). (sess-20260920-1908-24cb3558)
 - Fix: redeem-code input buffer was 23 chars, truncating every real 29-char claim code before it was sent -- unlocking Premium/redeeming codes never worked. Also fixed stale ticket-balance display (to_menu never refreshed it) and a hardcoded hub_active=1 bug that ignored the server's real draft-run state after a run ended. (sess-20260920-1908-24cb3558)
 - Fix: live match/deck logs (dw-server's --match-log) moved out of the git working tree to ~/.local/var/deadweight/matches -- the in-repo path was being unknowingly truncated by routine dev repo-hygiene commands, which caused the WOTAN deck-stats/player-deck data loss reported 2026-09-21 (sess-20260920-1908-24cb3558)
