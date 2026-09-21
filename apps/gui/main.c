@@ -101,7 +101,11 @@ typedef struct {
      * there -- this just fills it in automatically instead of requiring --token/DW_TOKEN). */
     DwIduna idu; char account_path[256]; char iduna_url[96];
     char player_id[48]; int tickets, is_founder, auth_ready;
-    char redeem_code[24]; char redeem_msg[64];
+    /* S520 found-live bug: a real claim code is 29 chars (XXXXX-XXXXX-XXXXX-XXXXX-XXXXX,
+     * claimCodeRe in IDUNA's game_online.go) but this buffer only held 23+nul -- every real code
+     * was silently truncated by the input field before it was ever sent, so redeem ALWAYS failed
+     * with "invalid or already-used code" no matter what the player typed/pasted. */
+    char redeem_code[40]; char redeem_msg[64];
     char link_email[64], link_pass[32]; char link_msg[64];
     DwClient c; int connected, welcomed;
     uint32_t match_id; int seat; char opp[DW_NAME_LEN + 1]; int opp_kind;
@@ -140,10 +144,16 @@ static void logline(const char *fmt, ...) {
     if (A.nlog == MAX_LOG) { memmove(A.log[0], A.log[1], (MAX_LOG - 1) * sizeof A.log[0]); A.nlog--; }
     memcpy(A.log[A.nlog++], b, sizeof b);
 }
+static void refresh_tickets(void);   /* defined further down; to_menu needs it forward-declared */
 static void to_menu(const char *err) {
     if (A.connected) { dwc_close(&A.c); A.connected = 0; }
     A.screen = S_MENU; A.welcomed = 0;
     snprintf(A.err, sizeof A.err, "%s", err ? err : "");
+    /* S520 found-live bug: every path back to the menu used to leave A.tickets at whatever it was
+     * before the match/draft run, so a just-spent (or just-earned, via a draft cash-out) balance
+     * never showed until the NEXT full client restart -- exactly the "ticket is not consumed"
+     * symptom, even though the real server-side balance was correct the whole time. */
+    refresh_tickets();
 }
 static void send_simple(uint8_t type) { DwMsg m; memset(&m, 0, sizeof m); m.type = type; if (dwc_send(&A.c, &m)) to_menu("Connection lost"); }
 
@@ -524,10 +534,6 @@ static void card_box(int x, int y, int w, int h, int id, int num, int state /*0 
     if (state == 1) frame(x - 3, y - 3, w + 6, h + 6, C_SEL, 3);
     if (state == 3) frame(x, y, w, h, C_GOOD, 2);
 }
-/* S512: cosmetic display cap only, matching tier_alpha's real server-side cap (IDUNA/internal/
- * http/handlers/game_online.go's own tierCaps) -- the client has no "what tier am I" response
- * field to read this from yet, so it's hardcoded rather than invented client-side state. */
-#define DW_GUEST_TICKET_CAP 20
 static void draw_boot(void) {
     text_c(W / 2, 90, 5, C_TEXT, "DEADWEIGHT");
     text_c(W / 2, 420, 2, C_DIM, "ESTABLISHING CONNECTION...");
@@ -539,9 +545,17 @@ static void draw_menu(int mx, int my) {
      * iduna_bootstrap); a real one is picked later via CLAIM ACCOUNT below. */
     if (A.auth_ready) {
         text_c(W / 2, 130, 3, C_TEXT, "%s", A.name);
-        text_c(W / 2, 168, 2, C_DIM, "TICKETS: %d/%d", A.tickets, DW_GUEST_TICKET_CAP);
+        /* S520: the /20 was a stale cosmetic placeholder from before the real 3-tier cap
+         * (Premium/Protofounder/Late-Free, IDUNA's effectiveDailyCap) existed -- the client has
+         * no way to know its own real cap, so showing a fake one is actively misleading (a
+         * Premium/founder account would show "9999/20"). Just show the real balance. */
+        text_c(W / 2, 168, 2, C_DIM, "TICKETS: %d", A.tickets);
         if (A.is_founder) text_c(W / 2, 194, 1, (Col){255, 200, 60}, "FOUNDER");
-    } else text_c(W / 2, 140, 2, C_DIM, "NO ACCOUNT (IDUNA OFFLINE)");
+    } else
+        /* S520 found-live bug: this label was hardcoded "IDUNA OFFLINE" unconditionally, same
+         * mislabeling iduna_bootstrap's own A.err fix (S517) already corrected there -- this is a
+         * SEPARATE, always-visible copy of the same wrong assumption. Show the real reason. */
+        text_c(W / 2, 140, 2, C_DIM, "%s", A.err[0] ? A.err : "NO ACCOUNT");
     text_c(W / 2, 230, 2, C_DIM, "%s", A.mode == DW_MODE_DRAFT ? "DRAFT MODE" : "CARD MODE  (RANDOM)");
     int can_draft = A.tickets > 0;
     button(40, 266, 400, 60, can_draft ? "DRAFT  (COST: 1 TICKET)" : "DRAFT  (NO TICKETS)", (Col){225, 160, 40}, can_draft, mx, my);
@@ -700,7 +714,17 @@ static void click(int x, int y) {
         break;
     default:
         if (A.mode == DW_MODE_DRAFT && A.deck_n) {
-            if (in_rect(x, y, 60, 460, 360, 70)) { refresh_draft_hub(); A.hub_active = 1; A.screen = S_DRAFT_HUB; }
+            /* S520 found-live bug: this used to force A.hub_active = 1 unconditionally, ignoring
+             * what refresh_draft_hub() just fetched from the server -- so finishing a draft's 3rd
+             * loss (which auto-cashes-out and correctly flips active=0 server-side) still showed
+             * the Hub as if a run were active. Trust the real state; route to the menu (with a
+             * fresh ticket balance, since a cash-out may have just granted a reward) once the run
+             * has genuinely ended. */
+            if (in_rect(x, y, 60, 460, 360, 70)) {
+                refresh_draft_hub();
+                if (A.hub_active) A.screen = S_DRAFT_HUB;
+                else to_menu("");
+            }
         } else if (in_rect(x, y, 60, 480, 360, 70)) requeue(0);
         if (in_rect(x, y, 60, 640, 360, 56)) to_menu("");
         break;
