@@ -34,6 +34,7 @@ int dw_encode(const DwMsg *m, uint8_t *buf, size_t cap) {
     case DW_C_QUEUE: if (m->u.queue.same_deck) w8(&w, 1); break;
     case DW_C_LEAVE: break;
     case DW_C_DRAFT_PICK: w8(&w, m->u.draft_pick.index); w8(&w, m->u.draft_pick.mult); break;
+    case DW_C_DRAFT_RESUME: for (int i = 0; i < DW_DRAFT_DECK; i++) w8(&w, (uint8_t)m->u.draft_resume.cards[i]); break;
     case DW_S_DRAFT_OFFER:
         w8(&w, m->u.draft_offer.pick_no); w8(&w, m->u.draft_offer.total); w8(&w, (uint8_t)m->u.draft_offer.card[0]); w8(&w, (uint8_t)m->u.draft_offer.card[1]);
         for (int i = 0; i < 3; i++) w8(&w, m->u.draft_offer.left[i]);
@@ -88,6 +89,7 @@ static int payload_size(uint8_t t) {
     switch (t) {
     case DW_C_HELLO: return -2; case DW_C_AUTH: return -3; case DW_C_QUEUE: return -4; case DW_C_LEAVE: return 0;
     case DW_C_DRAFT_PICK: return 2; case DW_S_DRAFT_OFFER: return 7; case DW_S_DRAFT_DONE: return 4 + DW_DRAFT_DECK; case DW_C_PLAY: return 6;
+    case DW_C_DRAFT_RESUME: return DW_DRAFT_DECK;
     case DW_C_PING: case DW_S_PONG: return 4; case DW_S_WELCOME: return 5; case DW_S_QUEUED: return 2;
     case DW_S_MATCH_FOUND: return 26; case DW_S_ROUND_START: return 19; case DW_S_PLAY_ACK: return 5;
     case DW_S_PLAY_REJECT: return 6; case DW_S_ROUND_RESULT: return 19; case DW_S_MATCH_END: return 6;
@@ -121,6 +123,7 @@ int dw_decode(const uint8_t *buf, size_t len, DwMsg *out, size_t *consumed) {
     case DW_C_QUEUE: out->u.queue.same_deck = plen ? (uint8_t)(r8(&r) ? 1 : 0) : 0; break;
     case DW_C_LEAVE: break;
     case DW_C_DRAFT_PICK: out->u.draft_pick.index = (uint8_t)r8(&r); out->u.draft_pick.mult = (uint8_t)r8(&r); break;
+    case DW_C_DRAFT_RESUME: for (int i = 0; i < DW_DRAFT_DECK; i++) out->u.draft_resume.cards[i] = (int8_t)r8(&r); break;
     case DW_S_DRAFT_OFFER:
         out->u.draft_offer.pick_no = (uint8_t)r8(&r); out->u.draft_offer.total = (uint8_t)r8(&r);
         out->u.draft_offer.card[0] = (int8_t)r8(&r); out->u.draft_offer.card[1] = (int8_t)r8(&r);

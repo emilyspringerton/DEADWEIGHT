@@ -89,7 +89,7 @@ static void text_c(int cx, int y, int scale, Col c, const char *fmt, ...) {
 }
 
 /* ---------- app state ---------- */
-enum { S_MENU, S_QUEUE, S_MATCH, S_END, S_DRAFT };
+enum { S_MENU, S_QUEUE, S_MATCH, S_END, S_DRAFT, S_DRAFT_HUB };
 typedef struct {
     int screen;
     char name[DW_NAME_LEN + 1], host[64], port[8], token[DW_MAX_AUTH_TOKEN + 1];
@@ -123,6 +123,12 @@ typedef struct {
     int pick_no, offer[2], left[3];         /* current offer and bucket counts remaining (1-of / 2-of / 3-of) */
     int npicks, pk_card[DW_DRAFT_PICKS], pk_mult[DW_DRAFT_PICKS], pend_card, pend_mult;
     int deck_n, deck_id; int8_t deck[DW_DRAFT_DECK]; int dumped_draft;
+    /* Draft Hub (S510) -- "Burned Proxies"/loss cap, ticket cash-out on run end. hub_* mirrors
+     * IDUNA's own game_draft_runs row for the player (dwi_draft_run_state), refreshed whenever the
+     * Hub is (re)entered. resume_pending marks that the NEXT connection should submit hub_deck via
+     * DW_C_DRAFT_RESUME instead of auto-queueing/redrafting (see do_connect/handle_msg). */
+    int hub_active, hub_wins, hub_losses, hub_deck_n; int8_t hub_deck[DW_DRAFT_DECK];
+    char hub_msg[64]; int resume_pending, awaiting_resume_queue;
     /* selftest */
     int selftest, autostart; const char *frames_dir; Uint32 state_at; int dumped_mid, dumped_end, done_ok;
 } App;
@@ -179,6 +185,60 @@ static void do_redeem(void) {
     snprintf(A.redeem_msg, sizeof A.redeem_msg, "+%d ticket%s%s!", granted, granted == 1 ? "" : "s", founder ? " + FOUNDER" : "");
     A.redeem_code[0] = 0;
 }
+static void do_connect(void);           /* defined below -- start_draft_run/do_resume_uplink need it */
+static void requeue(int same_deck);     /* defined below -- do_resume_uplink needs it */
+
+/* ---------- Draft Hub (S510) ---------- */
+static void refresh_draft_hub(void) {
+    if (!A.auth_ready) return;
+    int deckbuf[DW_DRAFT_DECK], deck_n = 0;
+    if (dwi_draft_run_state(&A.idu, A.token, &A.hub_active, &A.hub_wins, &A.hub_losses, deckbuf, DW_DRAFT_DECK, &deck_n) != 0) return;
+    A.hub_deck_n = deck_n;
+    for (int i = 0; i < deck_n; i++) A.hub_deck[i] = (int8_t)deckbuf[i];
+}
+/* DRAFT button (S510): the real ticket spend now happens HERE, against IDUNA, before any
+ * dw_server connection -- previously the "TICKETS: %d > 0" gate was purely a client-side
+ * courtesy check with nothing server-side ever actually decrementing a balance, a real
+ * unenforced-economy gap found readying this for the Itch.io launch plan. */
+static void start_draft_run(void) {
+    if (!A.auth_ready) { snprintf(A.err, sizeof A.err, "No account (IDUNA offline)"); return; }
+    int wins = 0, losses = 0, spent = 0;
+    int rc = dwi_draft_run_start(&A.idu, A.token, &wins, &losses, &spent);
+    if (rc == -2) { snprintf(A.err, sizeof A.err, "Insufficient tickets"); refresh_tickets(); return; }
+    if (rc != 0) { snprintf(A.err, sizeof A.err, "IDUNA unreachable"); return; }
+    refresh_tickets();
+    if (!spent) {   /* resuming an already-active run -- straight to the Hub, never re-spend */
+        A.hub_wins = wins; A.hub_losses = losses;
+        refresh_draft_hub();
+        A.hub_active = 1; A.screen = S_DRAFT_HUB; A.hub_msg[0] = 0;
+        return;
+    }
+    A.mode = DW_MODE_DRAFT; do_connect();   /* fresh run: draft as usual, deck saved to IDUNA on DW_S_DRAFT_DONE */
+}
+static void do_draft_abort(void) {
+    if (!A.auth_ready) return;
+    int wins = 0, losses = 0, granted = 0, balance = 0;
+    if (dwi_draft_run_abort(&A.idu, A.token, &wins, &losses, &granted, &balance) != 0) {
+        snprintf(A.hub_msg, sizeof A.hub_msg, "Abort failed (IDUNA unreachable)");
+        return;
+    }
+    A.tickets = balance; A.hub_active = 0;
+    if (A.connected) { send_simple(DW_C_LEAVE); dwc_close(&A.c); A.connected = 0; }   /* Hub reached mid-run (still connected from S_END) */
+    snprintf(A.redeem_msg, sizeof A.redeem_msg, "Extracted: %d win%s -> +%d ticket%s", wins, wins == 1 ? "" : "s", granted, granted == 1 ? "" : "s");
+    A.link_msg[0] = 0; A.err[0] = 0;
+    A.screen = S_MENU;
+}
+/* RESUME UPLINK (S510): if the Hub was reached mid-run (still connected, coming from S_END),
+ * dw_server already holds this deck in memory -- just requeue. Otherwise (boot-time resume, no
+ * connection) reconnect and submit the persisted deck via DW_C_DRAFT_RESUME (see handle_msg's
+ * DW_S_WELCOME case), then QUEUE once the server echoes it back. */
+static void do_resume_uplink(void) {
+    if (A.connected) { requeue(1); return; }
+    A.mode = DW_MODE_DRAFT;
+    memcpy(A.deck, A.hub_deck, DW_DRAFT_DECK); A.deck_n = A.hub_deck_n; A.deck_id = 0;
+    A.resume_pending = 1;
+    do_connect();
+}
 static void do_link_email(void) {
     if (!A.link_email[0] || !A.link_pass[0]) return;
     if (!A.auth_ready) { snprintf(A.link_msg, sizeof A.link_msg, "No account (IDUNA offline)"); return; }
@@ -206,7 +266,8 @@ static void do_connect(void) {
         a.type = DW_C_AUTH; a.u.auth.token_len = (uint16_t)tl; memcpy(a.u.auth.token, A.token, tl);
         if (dwc_send(&A.c, &a)) { to_menu("Connection lost"); return; }
     }
-    A.screen = S_QUEUE; A.waiting = 0; A.nlog = 0; A.have_reveal = 0; A.state_at = SDL_GetTicks(); A.npicks = 0; A.deck_n = 0;
+    A.screen = S_QUEUE; A.waiting = 0; A.nlog = 0; A.have_reveal = 0; A.state_at = SDL_GetTicks(); A.npicks = 0;
+    if (!A.resume_pending) A.deck_n = 0;   /* resume: keep the persisted deck we just staged in A.deck */
 }
 
 static void lock_selected(void) {
@@ -255,7 +316,14 @@ static void fx_finish_round(int have_next, const DwMsg *next) {
 
 static void handle_msg(const DwMsg *m) {
     switch (m->type) {
-    case DW_S_WELCOME: A.welcomed = 1; send_simple(DW_C_QUEUE); break;
+    case DW_S_WELCOME:
+        A.welcomed = 1;
+        if (A.resume_pending) {
+            DwMsg rm; memset(&rm, 0, sizeof rm); rm.type = DW_C_DRAFT_RESUME; memcpy(rm.u.draft_resume.cards, A.deck, DW_DRAFT_DECK);
+            A.resume_pending = 0; A.awaiting_resume_queue = 1;
+            if (dwc_send(&A.c, &rm)) to_menu("Connection lost");
+        } else send_simple(DW_C_QUEUE);
+        break;
     case DW_S_QUEUED: A.waiting = m->u.queued.waiting; break;
     case DW_S_DRAFT_OFFER: {
         int pn = m->u.draft_offer.pick_no;
@@ -269,6 +337,20 @@ static void handle_msg(const DwMsg *m) {
     case DW_S_DRAFT_DONE:
         A.deck_id = (int)m->u.draft_done.deck_id; A.deck_n = DW_DRAFT_DECK; memcpy(A.deck, m->u.draft_done.cards, DW_DRAFT_DECK);
         A.screen = S_QUEUE; A.waiting = 0; A.state_at = SDL_GetTicks();
+        if (A.awaiting_resume_queue) {
+            /* DRAFT_RESUME echo, not a fresh draft -- dw_server doesn't auto-queue this path
+             * (see apps/server/main.c's DW_C_DRAFT_RESUME handler), so explicitly do it now. */
+            A.awaiting_resume_queue = 0;
+            DwMsg qm; memset(&qm, 0, sizeof qm); qm.type = DW_C_QUEUE; qm.u.queue.same_deck = 1;
+            if (dwc_send(&A.c, &qm)) to_menu("Connection lost");
+        } else if (A.auth_ready) {
+            /* A genuinely new deck -- persist it to IDUNA so a boot-time resume (Draft Hub) and
+             * the leaderboard have a real server-side record, not just what this one connection
+             * holds in memory. Fire-and-forget: a save failure here doesn't block play, matching
+             * every other "IDUNA outage never blocks the match" contract in this client. */
+            int deckbuf[DW_DRAFT_DECK]; for (int i = 0; i < DW_DRAFT_DECK; i++) deckbuf[i] = A.deck[i];
+            dwi_draft_run_save_deck(&A.idu, A.token, deckbuf, DW_DRAFT_DECK);
+        }
         break;
     case DW_S_MATCH_FOUND:
         A.match_id = m->u.match_found.match_id; A.seat = m->u.match_found.seat; A.opp_kind = m->u.match_found.opp_kind;
@@ -466,6 +548,23 @@ static void draw_draft(int mx, int my) {
     for (int i = 0; i < A.npicks; i++) text(20, 506 + i * 24, 2, C_TEXT, "%dX %s", A.pk_mult[i], dw_card_name(A.pk_card[i]));
     button(20, 906, 200, 42, "LEAVE", C_LOCK, 1, mx, my);
 }
+static void draw_draft_hub(int mx, int my) {
+    text_c(W / 2, 50, 4, C_TEXT, "DRAFT HUB");
+    text_c(W / 2, 110, 3, C_TEXT, "WINS: %d", A.hub_wins);
+    text_c(W / 2, 148, 1, C_DIM, "BURNED PROXIES");
+    for (int i = 0; i < 3; i++) {
+        int bx = W / 2 - 84 + i * 64;
+        rect(bx, 166, 48, 48, i < A.hub_losses ? C_BAD : C_PANEL);
+        frame(bx, 166, 48, 48, C_TEXT, 2);
+    }
+    text(24, 244, 2, C_DIM, "DECK  (%d CARDS)", A.hub_deck_n);
+    int rows = A.hub_deck_n < 18 ? A.hub_deck_n : 18;
+    for (int i = 0; i < rows; i++) text(24, 272 + i * 20, 1, C_TEXT, "%s", dw_card_name(A.hub_deck[i]));
+    button(40, 690, 400, 64, "RESUME UPLINK", C_GOOD, 1, mx, my);
+    button(40, 766, 400, 56, "ABORT & EXTRACT", C_BAD, 1, mx, my);
+    if (A.hub_msg[0]) text_c(W / 2, 838, 1, C_BAD, "%s", A.hub_msg);
+    text_c(W / 2, 940, 1, C_DIM, "V%s", DW_VERSION);
+}
 static void draw_queue(int mx, int my) {
     text_c(W / 2, 250, 4, C_TEXT, "SEARCHING...");
     text_c(W / 2, 320, 2, C_DIM, A.welcomed ? "IN QUEUE  (%d WAITING)" : "CONNECTING...", A.waiting);
@@ -511,16 +610,18 @@ static void draw_end(int mx, int my) {
     text_c(W / 2, 310, 2, C_DIM, "%s", why[A.reason > 4 ? 3 : A.reason]);
     text_c(W / 2, 350, 2, C_TEXT, "YOU %d  -  %s %d", A.hull_you < 0 ? 0 : A.hull_you, A.opp, A.hull_opp < 0 ? 0 : A.hull_opp);
     if (A.mode == DW_MODE_DRAFT && A.deck_n) {
-        button(60, 450, 360, 64, "SAME DECK", C_GOOD, 1, mx, my);
-        button(60, 525, 360, 64, "REDRAFT", (Col){70, 110, 200}, 1, mx, my);
-        text_c(W / 2, 606, 1, C_DIM, "DECK %d", A.deck_id);
+        /* S510: routes through the Draft Hub (wins/losses/Abort & Extract) instead of instantly
+         * requeuing -- "players do not queue immediately after drafting, nor when resuming." */
+        button(60, 460, 360, 70, "DRAFT HUB", C_GOOD, 1, mx, my);
+        text_c(W / 2, 550, 1, C_DIM, "DECK %d", A.deck_id);
     } else button(60, 480, 360, 70, "PLAY AGAIN", C_GOOD, 1, mx, my);
     button(60, 640, 360, 56, "MENU", C_LOCK, 1, mx, my);
 }
 static void draw(int mx, int my) {
     setc(C_BG, 255); SDL_RenderClear(R);
     switch (A.screen) { case S_MENU: draw_menu(mx, my); break; case S_QUEUE: draw_queue(mx, my); break;
-                        case S_MATCH: draw_match(mx, my); break; case S_DRAFT: draw_draft(mx, my); break; default: draw_end(mx, my); break; }
+                        case S_MATCH: draw_match(mx, my); break; case S_DRAFT: draw_draft(mx, my); break;
+                        case S_DRAFT_HUB: draw_draft_hub(mx, my); break; default: draw_end(mx, my); break; }
 }
 
 /* ---------- input ---------- */
@@ -551,7 +652,7 @@ static void click(int x, int y) {
         if (in_rect(x, y, 40, 690, 280, 46)) A.focus = 3;
         if (in_rect(x, y, 40, 770, 400, 40)) A.focus = 4;
         if (in_rect(x, y, 40, 814, 400, 40)) A.focus = 5;
-        if (in_rect(x, y, 40, 520, 400, 60) && A.tickets > 0) { A.mode = DW_MODE_DRAFT; do_connect(); }
+        if (in_rect(x, y, 40, 520, 400, 60) && A.tickets > 0) start_draft_run();
         if (in_rect(x, y, 40, 590, 400, 60)) { A.mode = DW_MODE_CARD; do_connect(); }
         if (in_rect(x, y, 328, 690, 112, 46) && A.redeem_code[0]) do_redeem();
         if (in_rect(x, y, 40, 862, 400, 40) && A.link_email[0] && A.link_pass[0]) do_link_email();
@@ -569,10 +670,13 @@ static void click(int x, int y) {
         break;
     default:
         if (A.mode == DW_MODE_DRAFT && A.deck_n) {
-            if (in_rect(x, y, 60, 450, 360, 64)) requeue(1);
-            if (in_rect(x, y, 60, 525, 360, 64)) requeue(0);
+            if (in_rect(x, y, 60, 460, 360, 70)) { refresh_draft_hub(); A.hub_active = 1; A.screen = S_DRAFT_HUB; }
         } else if (in_rect(x, y, 60, 480, 360, 70)) requeue(0);
         if (in_rect(x, y, 60, 640, 360, 56)) to_menu("");
+        break;
+    case S_DRAFT_HUB:
+        if (in_rect(x, y, 40, 700, 400, 64)) do_resume_uplink();
+        if (in_rect(x, y, 40, 776, 400, 56)) do_draft_abort();
         break;
     }
 }
@@ -598,7 +702,8 @@ static void key(SDL_Keycode k) {
         else if (k == SDLK_RETURN || k == SDLK_KP_ENTER) {
             if (A.focus == 3) { if (A.redeem_code[0]) do_redeem(); }
             else if (A.focus == 4 || A.focus == 5) { if (A.link_email[0] && A.link_pass[0]) do_link_email(); }
-            else if (A.mode != DW_MODE_DRAFT || A.tickets > 0) do_connect();
+            else if (A.mode == DW_MODE_DRAFT) { if (A.tickets > 0) start_draft_run(); }
+            else do_connect();
         }
     } else if (A.screen == S_MATCH) {
         if (k == SDLK_m) sfx_set_muted(!sfx_is_muted());
@@ -777,7 +882,13 @@ int main(int argc, char **argv) {
      * pure game-mechanics harnesses (CI runs them with no IDUNA reachable) and must stay fast and
      * network-free, same reason they already fake their own screen transitions via A.autostart
      * rather than going through the menu buttons this bootstrap feeds. */
-    if (!A.selftest && !demo_dir) iduna_bootstrap();
+    if (!A.selftest && !demo_dir) {
+        iduna_bootstrap();
+        /* Boot-time Draft Hub resume (S510): "if draft_active == true, route to
+         * SCREEN_DRAFT_HUB, not the draft picker or the queue." */
+        refresh_draft_hub();
+        if (A.hub_active) A.screen = S_DRAFT_HUB;
+    }
     dw_net_init();
     SDL_SetMainReady();
     if (SDL_Init(SDL_INIT_VIDEO) != 0) { fprintf(stderr, "SDL_Init: %s\n", SDL_GetError()); return 1; }

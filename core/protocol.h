@@ -13,6 +13,7 @@
 
 enum {
     DW_C_HELLO = 0x01, DW_C_QUEUE = 0x02, DW_C_PLAY = 0x03, DW_C_LEAVE = 0x04, DW_C_PING = 0x05, DW_C_AUTH = 0x06, DW_C_DRAFT_PICK = 0x07,
+    DW_C_DRAFT_RESUME = 0x08, /* S510: submit an already-drafted (IDUNA-persisted) deck instead of redrafting -- see dw_draft_deck_valid */
     DW_S_WELCOME = 0x81, DW_S_QUEUED = 0x82, DW_S_MATCH_FOUND = 0x83, DW_S_ROUND_START = 0x84,
     DW_S_PLAY_ACK = 0x85, DW_S_PLAY_REJECT = 0x86, DW_S_ROUND_RESULT = 0x87, DW_S_MATCH_END = 0x88,
     DW_S_PONG = 0x89, DW_S_DRAFT_OFFER = 0x8A, DW_S_DRAFT_DONE = 0x8B, DW_S_ERROR = 0x8F
@@ -41,6 +42,7 @@ typedef struct {
         struct { uint8_t index, mult; } draft_pick;  /* index 0/1 into the offer, mult 1..3 */
         struct { uint8_t pick_no, total; int8_t card[2]; uint8_t left[3]; } draft_offer;   /* left = 1-of/2-of/3-of buckets remaining */
         struct { uint32_t deck_id; int8_t cards[DW_DRAFT_DECK]; } draft_done;
+        struct { int8_t cards[DW_DRAFT_DECK]; } draft_resume;   /* C_DRAFT_RESUME */
         struct { uint32_t nonce; } ping;             /* PING and PONG */
         struct { uint32_t session_id; uint8_t flags; } welcome;
         struct { uint16_t waiting; } queued;

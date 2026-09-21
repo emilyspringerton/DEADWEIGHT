@@ -87,6 +87,20 @@ things are further along than others, and it's worth being precise about which:
   embedded CA bundle (see `docs/WINDOWS_TLS_BUILD.md`), but has **not been runtime-verified** — no
   Wine/Windows environment exists to actually execute the `.exe` and confirm a live handshake, so
   don't treat it as proven the way the Linux build is until someone runs it for real.
+- **Draft Runs actually spend and pay out tickets now (S510)** — readying the Itch.io launch plan
+  (free-to-play with a 25-ticket/day guest cap, a $15 "Root Access Override" Premium code as the
+  soft upsell) found this was never true: the DRAFT button's `TICKETS: N` gate was purely
+  cosmetic, and the "Uncapped Draft Run" auto-end never actually granted any tickets back. Both
+  are now real, atomic IDUNA endpoints (`/draft-run/start`, `/deck`, `/abort`, plain `GET`, all
+  player-token-direct, same trust level as `/redeem`) with a real cash-out table (0 tickets under
+  6 wins, up to +18 at 25+, `draftRunReward` in `IDUNA/internal/http/handlers/game_online.go`).
+  The Windows/Linux GUI has a real **Draft Hub** screen (win count, 3 "Burned Proxy" loss
+  indicators, deck list, Resume Uplink, Abort & Extract) reachable both mid-run and on a cold
+  boot with an active run — reconnecting into a persisted deck goes through a new wire message
+  (`DW_C_DRAFT_RESUME`) that re-validates the deck's draft-legality server-side
+  (`dw_draft_deck_valid`) rather than trusting whatever the client sends. **Not yet built: the
+  Android client's own Draft Hub** (`DraftModel.java` still predates this work) — this pass only
+  touched the C GUI and the server/IDUNA sides.
 
 ## Build (clean-build bar: this must be green before anything else merges)
 

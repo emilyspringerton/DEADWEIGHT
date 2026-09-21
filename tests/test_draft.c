@@ -54,6 +54,24 @@ int main(void) {
         /* hand + draw + discard across both seats always account for exactly the 46 drafted cards (nothing lost or invented) */
         { int n = 0; for (int s = 0; s < 2; s++) { n += m.draw_n[s] + m.discard_n[s]; for (int h = 0; h < DW_HAND; h++) if (m.hand[s][h] >= 0) n++; } CHECK(n == 2 * DW_DECK_SIZE); }
     }
+    /* dw_draft_deck_valid (S510 DW_C_DRAFT_RESUME) -- a legitimately drafted deck is always
+     * valid, and the obvious cheats (too many copies, wrong size, wrong bucket shape, out-of-
+     * range card id) are all rejected. */
+    for (uint32_t seed = 1; seed <= 20; seed++) {
+        DwDraft d; dw_draft_init(&d, seed); draft_random(&d, seed * 7919u);
+        CHECK(dw_draft_deck_valid(d.deck, d.deck_n));
+    }
+    {
+        DwDraft d; dw_draft_init(&d, 1); draft_random(&d, 1);
+        CHECK(!dw_draft_deck_valid(d.deck, DW_DECK_SIZE - 1));       /* wrong size */
+        int8_t bad[DW_DECK_SIZE]; memcpy(bad, d.deck, DW_DECK_SIZE);
+        bad[0] = bad[1];                                             /* same card as another 1-of -- breaks the bucket shape */
+        CHECK(!dw_draft_deck_valid(bad, DW_DECK_SIZE));
+        int8_t stacked[DW_DECK_SIZE]; for (int i = 0; i < DW_DECK_SIZE; i++) stacked[i] = 0;
+        CHECK(!dw_draft_deck_valid(stacked, DW_DECK_SIZE));           /* 23 copies of one card */
+        int8_t oob[DW_DECK_SIZE]; memcpy(oob, d.deck, DW_DECK_SIZE); oob[0] = (int8_t)num_cards();
+        CHECK(!dw_draft_deck_valid(oob, DW_DECK_SIZE));                /* out-of-range card id */
+    }
     printf("test_draft: %d checks, %d failures\n", checks, fails);
     return fails ? 1 : 0;
 }

@@ -478,6 +478,16 @@ static void handle_msg(int ci, const DwMsg *m) {
     case DW_C_DRAFT_PICK:
         draft_pick(ci, m);
         return;
+    case DW_C_DRAFT_RESUME:
+        /* S510 "Resume Uplink": a persisted (IDUNA-side) deck arriving instead of a fresh draft --
+         * real legality check (dw_draft_deck_valid), never trust the client's own bucket math. */
+        if (c->state != S_READY || c->mode != DW_MODE_DRAFT) { send_error(ci, DW_ERR_BAD_STATE); return; }
+        if (!dw_draft_deck_valid(m->u.draft_resume.cards, DW_DRAFT_DECK)) { send_error(ci, DW_ERR_BAD_FRAME); return; }
+        memcpy(c->deck, m->u.draft_resume.cards, DW_DRAFT_DECK); c->deck_n = DW_DRAFT_DECK; c->deck_id = next_deck++;
+        log_deck(c);
+        r.type = DW_S_DRAFT_DONE; r.u.draft_done.deck_id = c->deck_id; memcpy(r.u.draft_done.cards, c->deck, DW_DRAFT_DECK);
+        send_msg(ci, &r);
+        return;
     case DW_C_PLAY: {
         if (c->state != S_IN_MATCH || c->match < 0 || !matches[c->match].active) {
             r.type = DW_S_PLAY_REJECT; r.u.reject.match_id = m->u.play.match_id; r.u.reject.round = m->u.play.round; r.u.reject.reason = DW_REJ_NO_MATCH;

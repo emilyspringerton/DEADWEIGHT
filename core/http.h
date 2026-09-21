@@ -18,6 +18,9 @@ int dw_http(const char *method, const char *host, int port, int use_tls, const c
 int dw_json_str(const char *json, const char *key, char *out, size_t n);
 /* Extract a JSON integer/bool value: "key":123 or "key":true/false (true/false -> 1/0). 1 if found, else 0. */
 int dw_json_int(const char *json, const char *key, int *out);
+/* Extract a flat JSON array of non-negative small ints: "key":[1,2,3]. Returns how many were
+ * written into out (capped at max_n), 0 if the key wasn't found. */
+int dw_json_int_array(const char *json, const char *key, int *out, int max_n);
 /* Parse http://host[:port][/...] or https://host[:port][/...] -> host/port/use_tls (1 for
  * https, 0 for http; default port 443/80 respectively). 0 ok, -1 unrecognized scheme. */
 int dw_parse_url(const char *url, char *host, size_t hn, int *port, int *use_tls);

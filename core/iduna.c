@@ -122,21 +122,50 @@ int dwi_redeem(DwIduna *d, const char *player_token, const char *code, int *out_
     return 0;
 }
 
-int dwi_draft_run_start(DwIduna *d, const char *pid, int *out_wins, int *out_losses, int *out_ticket_spent) {
-    char body[128], resp[256]; int st = 0;
-    snprintf(body, sizeof body, "{\"player_id\":\"%s\"}", pid);
-    for (int attempt = 0; attempt < 2; attempt++) {
-        if (!d->token[0] && dwi_agent_login(d) != 0) return -1;
-        if (dw_http("POST", d->host, d->port, d->use_tls, GAME "/draft-run/start", d->token, body, resp, sizeof resp, &st, TMO) != 0) return -1;
-        if (st == 401) { d->token[0] = 0; continue; }
-        if (st == 402) return -2;
-        if (st != 200) return -1;
-        if (out_wins) { int v = 0; dw_json_int(resp, "wins", &v); *out_wins = v; }
-        if (out_losses) { int v = 0; dw_json_int(resp, "losses", &v); *out_losses = v; }
-        if (out_ticket_spent) { int v = 0; dw_json_int(resp, "ticket_spent", &v); *out_ticket_spent = v; }
-        return 0;
-    }
-    return -1;
+int dwi_draft_run_start(DwIduna *d, const char *player_token, int *out_wins, int *out_losses, int *out_ticket_spent) {
+    char resp[256]; int st = 0;
+    if (dw_http("POST", d->host, d->port, d->use_tls, GAME "/draft-run/start", player_token, "{}", resp, sizeof resp, &st, TMO) != 0) return -1;
+    if (st == 402) return -2;
+    if (st != 200) return -1;
+    if (out_wins) { int v = 0; dw_json_int(resp, "wins", &v); *out_wins = v; }
+    if (out_losses) { int v = 0; dw_json_int(resp, "losses", &v); *out_losses = v; }
+    if (out_ticket_spent) { int v = 0; dw_json_int(resp, "ticket_spent", &v); *out_ticket_spent = v; }
+    return 0;
+}
+
+int dwi_draft_run_state(DwIduna *d, const char *player_token, int *out_active, int *out_wins, int *out_losses,
+                         int *out_deck, int deck_cap, int *out_deck_n) {
+    char resp[2048]; int st = 0;
+    if (dw_http("GET", d->host, d->port, d->use_tls, GAME "/draft-run", player_token, NULL, resp, sizeof resp, &st, TMO) != 0 || st != 200) return -1;
+    if (out_active) { int v = 0; dw_json_int(resp, "active", &v); *out_active = v; }
+    if (out_wins) { int v = 0; dw_json_int(resp, "wins", &v); *out_wins = v; }
+    if (out_losses) { int v = 0; dw_json_int(resp, "losses", &v); *out_losses = v; }
+    if (out_deck && out_deck_n) *out_deck_n = dw_json_int_array(resp, "deck", out_deck, deck_cap);
+    return 0;
+}
+
+int dwi_draft_run_save_deck(DwIduna *d, const char *player_token, const int *deck, int deck_n) {
+    char body[512], resp[128]; int st = 0;
+    size_t off = (size_t)snprintf(body, sizeof body, "{\"deck\":[");
+    for (int i = 0; i < deck_n && off + 8 < sizeof body; i++)
+        off += (size_t)snprintf(body + off, sizeof body - off, "%s%d", i ? "," : "", deck[i]);
+    snprintf(body + off, sizeof body - off, "]}");
+    if (dw_http("POST", d->host, d->port, d->use_tls, GAME "/draft-run/deck", player_token, body, resp, sizeof resp, &st, TMO) != 0) return -1;
+    if (st == 400) return -2;
+    return st == 200 ? 0 : -1;
+}
+
+int dwi_draft_run_abort(DwIduna *d, const char *player_token, int *out_wins, int *out_losses,
+                         int *out_tickets_granted, int *out_balance) {
+    char resp[256]; int st = 0;
+    if (dw_http("POST", d->host, d->port, d->use_tls, GAME "/draft-run/abort", player_token, "{}", resp, sizeof resp, &st, TMO) != 0) return -1;
+    if (st == 400) return -2;
+    if (st != 200) return -1;
+    if (out_wins) { int v = 0; dw_json_int(resp, "wins", &v); *out_wins = v; }
+    if (out_losses) { int v = 0; dw_json_int(resp, "losses", &v); *out_losses = v; }
+    if (out_tickets_granted) { int v = 0; dw_json_int(resp, "tickets_granted", &v); *out_tickets_granted = v; }
+    if (out_balance) { int v = 0; dw_json_int(resp, "tickets", &v); *out_balance = v; }
+    return 0;
 }
 
 int dwi_guest_upgrade(DwIduna *d, const char *player_token, const char *email, const char *password, char *tok, size_t tn) {

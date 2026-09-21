@@ -51,15 +51,32 @@ int dwi_ticket_balance(DwIduna *d, const char *player_id, int *out_tickets);
  * (fills out_tickets with the remaining balance), -2 insufficient tickets (HTTP 402). */
 int dwi_ticket_consume(DwIduna *d, const char *player_id, int *out_tickets);
 
-/* Uncapped Draft Run (S508c) -- DEADWEIGHT-SERVER agent only, mirrors dwi_ticket_consume's own
- * auth shape. Idempotent: if the player already has an active run, resumes it for free
- * (out_ticket_spent=0); otherwise spends 1 ticket and starts a fresh one. 0 ok (fills
- * out_wins/out_losses/out_ticket_spent), -2 insufficient tickets (HTTP 402) when no run is active
- * and the balance is 0. NOT YET CALLED from apps/server/main.c's poll loop -- the existing
- * J_VERIFY/J_REPORT worker-thread job-queue pattern is the correct place to add a new
- * J_DRAFT_RUN_START job (a synchronous call here would block the whole server's poll() loop for
- * up to the HTTP timeout), real, scoped, separate follow-up work, not done in this pass. */
-int dwi_draft_run_start(DwIduna *d, const char *player_id, int *out_wins, int *out_losses, int *out_ticket_spent);
+/* Uncapped Draft Run (S508c/S510) -- takes the PLAYER'S OWN token (guest or steam), not an agent:
+ * S510 found this was never actually wired into apps/server/main.c's poll loop (would have
+ * needed a whole new async job type + wire messages to stay off the poll() loop), and every
+ * action here only ever touches the calling player's OWN balance/run row (win/loss increments
+ * stay locked to the agent-authenticated match-result report in dwi_report), so it's the same
+ * trust level as dwi_redeem/dwi_guest_upgrade, which already call IDUNA directly with the
+ * player's token -- callable straight from the GUI client, no dw_server round-trip needed.
+ * Idempotent: if the player already has an active run, resumes it for free (out_ticket_spent=0);
+ * otherwise spends 1 ticket and starts a fresh one. 0 ok (fills out_wins/out_losses/
+ * out_ticket_spent), -2 insufficient tickets (HTTP 402) when no run is active and the balance is
+ * 0, -1 network/config error. */
+int dwi_draft_run_start(DwIduna *d, const char *player_token, int *out_wins, int *out_losses, int *out_ticket_spent);
+/* Read the player's current Draft Run state (S510) -- for the boot-time "Draft Hub" resume check
+ * ("if draft_active == true, route to SCREEN_DRAFT_HUB"). 0 ok (fills out_active/out_wins/
+ * out_losses/out_deck; *out_deck_n is how many of deck_cap slots were filled), -1 on failure. */
+int dwi_draft_run_state(DwIduna *d, const char *player_token, int *out_active, int *out_wins, int *out_losses,
+                         int *out_deck, int deck_cap, int *out_deck_n);
+/* Persist the deck the client's local draft picker just finished (S510) -- so a boot-time resume
+ * and the leaderboard have a real server-side record, not just what dw_server holds in memory for
+ * one connection. 0 ok, -2 no active run to attach it to, -1 network/config error. */
+int dwi_draft_run_save_deck(DwIduna *d, const char *player_token, const int *deck, int deck_n);
+/* "Abort & Extract" (S510): voluntary cash-out before the 3rd loss, at whatever win count the run
+ * currently holds. 0 ok (fills out_wins/out_losses/out_tickets_granted/out_balance), -2 no
+ * active run, -1 network/config error. */
+int dwi_draft_run_abort(DwIduna *d, const char *player_token, int *out_wins, int *out_losses,
+                         int *out_tickets_granted, int *out_balance);
 
 /* Guest -> email upgrade ("Link Email, Save Progress"): player_token is the player's OWN existing
  * token (any provider). Keeps the same player_id -- tickets/stats/founder-flag/draft-run all

@@ -81,6 +81,9 @@ int main(void) {
     { uint8_t qb[8]; int qn = dw_encode(&m, qb, sizeof qb); CHECK(qn == 4); DwMsg qd; size_t qu; CHECK(dw_decode(qb, (size_t)qn, &qd, &qu) == 1 && qd.u.queue.same_deck == 1);
       memset(&m, 0, sizeof m); m.type = DW_C_QUEUE; qn = dw_encode(&m, qb, sizeof qb); CHECK(qn == 3); CHECK(dw_decode(qb, (size_t)qn, &qd, &qu) == 1 && qd.u.queue.same_deck == 0); }
     memset(&m, 0, sizeof m); m.type = DW_C_DRAFT_PICK; m.u.draft_pick.index = 1; m.u.draft_pick.mult = 3; roundtrip(&m);
+    memset(&m, 0, sizeof m); m.type = DW_C_DRAFT_RESUME;
+    for (int i = 0; i < DW_DRAFT_DECK; i++) m.u.draft_resume.cards[i] = (int8_t)(i % 17);
+    roundtrip(&m);
     memset(&m, 0, sizeof m); m.type = DW_S_DRAFT_OFFER; m.u.draft_offer.pick_no = 7; m.u.draft_offer.total = 16; m.u.draft_offer.card[0] = 12; m.u.draft_offer.card[1] = 70;
     m.u.draft_offer.left[0] = 4; m.u.draft_offer.left[1] = 2; m.u.draft_offer.left[2] = 1; roundtrip(&m);
     memset(&m, 0, sizeof m); m.type = DW_S_DRAFT_DONE; m.u.draft_done.deck_id = 0xABCDEF01u; for (int i = 0; i < DW_DRAFT_DECK; i++) m.u.draft_done.cards[i] = (int8_t)(i * 3); roundtrip(&m);

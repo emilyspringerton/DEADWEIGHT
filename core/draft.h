@@ -22,4 +22,8 @@ void dw_draft_init(DwDraft *d, uint32_t seed);
 /* Take offer[idx] (0/1) with `mult` copies (1..3). 0 = ok; nonzero = invalid (idx, mult, or that bucket is full). */
 int dw_draft_pick(DwDraft *d, int idx, int mult);
 int dw_draft_done(const DwDraft *d);
+/* 1 iff deck[0..n) is a legal drafted deck (exactly DW_DECK_SIZE cards, ten 1-ofs/five 2-ofs/one
+ * 3-of, all valid card ids) -- for validating a deck arriving OUTSIDE the normal pick-by-pick
+ * flow (S510 DW_C_DRAFT_RESUME). */
+int dw_draft_deck_valid(const int8_t *deck, int n);
 #endif
