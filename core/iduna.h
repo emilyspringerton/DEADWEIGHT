@@ -40,10 +40,13 @@ int dwi_report(DwIduna *d, const DwMatchReport *r);
  * the real HTTP status -- S517 found-live bug: a 429 "too many new accounts from this IP today"
  * was being shown to the player as "IDUNA offline", the network-failure message, which sent
  * debugging in the wrong direction; out_status lets the caller tell these apart. out_status may
- * be NULL if the caller doesn't need to distinguish). */
+ * be NULL if the caller doesn't need to distinguish). out_is_guest (S522, optional) is filled
+ * from the response's own "account_state" ("guest" vs "base", computed server-side from
+ * player_credentials) -- this is what the Claim Account UI affordance should gate on, not just
+ * "no email typed in yet" (a returning claimed player logging back in must never see the button). */
 int dwi_guest_register(DwIduna *d, const char *display_name, char *player_id, size_t pn, char *secret, size_t sn, char *tok, size_t tn,
-                        char *out_name, size_t on, int *out_tickets, int *out_status);
-int dwi_guest_login(DwIduna *d, const char *player_id, const char *secret, char *tok, size_t tn, char *out_name, size_t on, int *out_tickets, int *out_status);
+                        char *out_name, size_t on, int *out_tickets, int *out_status, int *out_is_guest);
+int dwi_guest_login(DwIduna *d, const char *player_id, const char *secret, char *tok, size_t tn, char *out_name, size_t on, int *out_tickets, int *out_status, int *out_is_guest);
 
 /* Steam zero-friction login (S507). `ticket_hex` is the hex-encoded ISteamUser::GetAuthSessionTicket
  * blob -- obtaining it is real Steamworks-SDK client work this function does NOT do (the SDK is

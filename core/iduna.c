@@ -78,8 +78,17 @@ int dwi_report(DwIduna *d, const DwMatchReport *r) {
     return -1;
 }
 
+/* S522: "account_state" ("guest" vs "base", computed server-side from whether player_credentials
+ * has a row -- see IDUNA's accountState()) is what the Claim Account UI gates on: the button only
+ * shows for a real guest, never for an already-claimed account restored from a saved session. */
+static int accountStateIsGuest(const char *resp) {
+    char state[16] = "";
+    dw_json_str(resp, "account_state", state, sizeof state);
+    return strcmp(state, "guest") == 0;
+}
+
 int dwi_guest_register(DwIduna *d, const char *display_name, char *pid, size_t pn, char *secret, size_t sn, char *tok, size_t tn,
-                        char *out_name, size_t on, int *out_tickets, int *out_status) {
+                        char *out_name, size_t on, int *out_tickets, int *out_status, int *out_is_guest) {
     char body[128], resp[4096]; int st = 0;
     /* S512 zero-friction auth: an empty display_name is the real, expected path now -- IDUNA
      * auto-assigns a lore-friendly name ("Runner-A7B2") when it sees one, returned in "display_name"
@@ -91,15 +100,17 @@ int dwi_guest_register(DwIduna *d, const char *display_name, char *pid, size_t p
     if (!dw_json_str(resp, "player_id", pid, pn) || !dw_json_str(resp, "guest_secret", secret, sn) || !dw_json_str(resp, "token", tok, tn)) return -1;
     if (out_name) dw_json_str(resp, "display_name", out_name, on);
     if (out_tickets) { int v = 0; dw_json_int(resp, "tickets", &v); *out_tickets = v; }
+    if (out_is_guest) *out_is_guest = accountStateIsGuest(resp);
     return 0;
 }
 
-int dwi_guest_login(DwIduna *d, const char *pid, const char *secret, char *tok, size_t tn, char *out_name, size_t on, int *out_tickets, int *out_status) {
+int dwi_guest_login(DwIduna *d, const char *pid, const char *secret, char *tok, size_t tn, char *out_name, size_t on, int *out_tickets, int *out_status, int *out_is_guest) {
     char body[256], resp[4096]; int st = 0;
     snprintf(body, sizeof body, "{\"player_id\":\"%s\",\"guest_secret\":\"%s\"}", pid, secret);
     if (dw_http("POST", d->host, d->port, d->use_tls, GAME "/guest-login", NULL, body, resp, sizeof resp, &st, TMO) != 0) { if (out_status) *out_status = 0; return -1; }
     if (out_status) *out_status = st;
     if (st != 200) return -2;
+    if (out_is_guest) *out_is_guest = accountStateIsGuest(resp);
     if (!dw_json_str(resp, "token", tok, tn)) return -1;
     if (out_name) dw_json_str(resp, "display_name", out_name, on);
     if (out_tickets) { int v = 0; dw_json_int(resp, "tickets", &v); *out_tickets = v; }

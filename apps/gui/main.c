@@ -41,6 +41,12 @@ static const Glyph FONT[] = {
     {'/', {0x20,0x10,0x08,0x04,0x02}}, {':', {0x00,0x36,0x36,0x00,0x00}}, {'>', {0x00,0x41,0x22,0x14,0x08}},
     {'<', {0x08,0x14,0x22,0x41,0x00}}, {'_', {0x40,0x40,0x40,0x40,0x40}}, {'(', {0x00,0x1C,0x22,0x41,0x00}},
     {')', {0x00,0x41,0x22,0x1C,0x00}}, {',', {0x00,0x80,0x60,0x00,0x00}}, {'?', {0x02,0x01,0x51,0x09,0x06}},
+    /* S522/S523 found-live bug: '@' and '*' were never in this table at all -- every '@' typed in
+     * the new EMAIL field, and every char of the PASSWORD mask, silently fell back to the '?'
+     * glyph, making an email genuinely impossible to visually verify and the password mask read
+     * as literal garbage. Both patterns are the standard Adafruit GLCD 5x7 font's own -- this
+     * whole table is that font, matching every other glyph already present here. */
+    {'@', {0x32,0x49,0x79,0x41,0x3E}}, {'*', {0x14,0x08,0x3E,0x08,0x14}},
     {'0', {0x3E,0x51,0x49,0x45,0x3E}}, {'1', {0x00,0x42,0x7F,0x40,0x00}}, {'2', {0x42,0x61,0x51,0x49,0x46}},
     {'3', {0x21,0x41,0x45,0x4B,0x31}}, {'4', {0x18,0x14,0x12,0x7F,0x10}}, {'5', {0x27,0x45,0x45,0x45,0x39}},
     {'6', {0x3C,0x4A,0x49,0x49,0x30}}, {'7', {0x01,0x71,0x09,0x05,0x03}}, {'8', {0x36,0x49,0x49,0x49,0x36}},
@@ -89,7 +95,7 @@ static void text_c(int cx, int y, int scale, Col c, const char *fmt, ...) {
 }
 
 /* ---------- app state ---------- */
-enum { S_BOOT, S_MENU, S_QUEUE, S_MATCH, S_END, S_DRAFT, S_DRAFT_HUB };
+enum { S_BOOT, S_MENU, S_QUEUE, S_MATCH, S_END, S_DRAFT, S_DRAFT_HUB, S_CLAIM };
 typedef struct {
     int screen;
     char name[DW_NAME_LEN + 1], host[64], port[8], token[DW_MAX_AUTH_TOKEN + 1];
@@ -101,6 +107,11 @@ typedef struct {
      * there -- this just fills it in automatically instead of requiring --token/DW_TOKEN). */
     DwIduna idu; char account_path[256]; char iduna_url[96];
     char player_id[48]; int tickets, is_founder, auth_ready;
+    /* S522: "Secure Connection (Claim Account)" -- is_guest gates the button's very existence (a
+     * returning claimed player must never see it), claim_focus is the modal's own 2-field cursor
+     * (0 email, 1 password), separate from A.focus (the menu's redeem-code field) so opening the
+     * modal never stomps the menu's own typing state. */
+    int is_guest, claim_focus;
     /* S520 found-live bug: a real claim code is 29 chars (XXXXX-XXXXX-XXXXX-XXXXX-XXXXX,
      * claimCodeRe in IDUNA's game_online.go) but this buffer only held 23+nul -- every real code
      * was silently truncated by the input field before it was ever sent, so redeem ALWAYS failed
@@ -166,7 +177,8 @@ static void iduna_bootstrap(void) {
     FILE *f = fopen(A.account_path, "r");
     if (f) { if (fscanf(f, "%47s %71s", pid, secret) != 2) { pid[0] = 0; secret[0] = 0; } fclose(f); }
     int loginStatus = 0;
-    int ok = pid[0] && secret[0] && dwi_guest_login(&A.idu, pid, secret, tok, sizeof tok, gotname, sizeof gotname, &A.tickets, &loginStatus) == 0;
+    A.is_guest = 1;
+    int ok = pid[0] && secret[0] && dwi_guest_login(&A.idu, pid, secret, tok, sizeof tok, gotname, sizeof gotname, &A.tickets, &loginStatus, &A.is_guest) == 0;
     int regStatus = 0;
     if (!ok) {
         /* S512 zero-friction auth: NEVER a client-chosen name -- an empty display_name tells
@@ -174,7 +186,7 @@ static void iduna_bootstrap(void) {
          * "Claim Account" (do_link_email) is where a player later picks something of their own. */
         char newpid[48], newsecret[72];
         const char *wantname = A.name_from_cli ? A.name : "";   /* dev override only -- see --name */
-        if (dwi_guest_register(&A.idu, wantname, newpid, sizeof newpid, newsecret, sizeof newsecret, tok, sizeof tok, gotname, sizeof gotname, &A.tickets, &regStatus) == 0) {
+        if (dwi_guest_register(&A.idu, wantname, newpid, sizeof newpid, newsecret, sizeof newsecret, tok, sizeof tok, gotname, sizeof gotname, &A.tickets, &regStatus, &A.is_guest) == 0) {
             snprintf(pid, sizeof pid, "%s", newpid); snprintf(secret, sizeof secret, "%s", newsecret);
             FILE *wf = fopen(A.account_path, "w");
             if (wf) { fprintf(wf, "%s %s\n", pid, secret); fclose(wf); }
@@ -277,6 +289,12 @@ static void do_link_email(void) {
     int rc = dwi_guest_upgrade(&A.idu, A.token, A.link_email, A.link_pass, tok, sizeof tok);
     if (rc != 0) { snprintf(A.link_msg, sizeof A.link_msg, "Link failed (email taken or bad login)"); return; }
     snprintf(A.token, sizeof A.token, "%s", tok);
+    /* S522: player_id/tickets/stats are untouched by design (guestUpgrade never creates a new
+     * player row) -- closing the modal and flipping is_guest is the only client-side state change
+     * a successful claim needs. "CONNECTION SECURED" is a persistent state (drawn from is_guest),
+     * not a transient toast, matching the spec's "hide the Claim button, show confirmation." */
+    A.is_guest = 0;
+    A.screen = S_MENU;
     snprintf(A.link_msg, sizeof A.link_msg, "Linked! Progress now saved.");
     A.link_email[0] = 0; A.link_pass[0] = 0;
 }
@@ -564,17 +582,42 @@ static void draw_menu(int mx, int my) {
     rect(40, 438, 280, 46, C_PANEL); frame(40, 438, 280, 46, A.focus == 0 ? C_SEL : C_LOCK, 2);
     text(52, 451, 2, C_TEXT, "%s%s", A.redeem_code, (A.focus == 0 && (SDL_GetTicks() / 500) % 2) ? "_" : "");
     button(328, 438, 112, 46, "REDEEM", (Col){70, 110, 200}, A.redeem_code[0] != 0, mx, my);
-    text(40, 500, 2, C_DIM, "CLAIM ACCOUNT (LINK EMAIL, KEEP YOUR PROGRESS)");
-    rect(40, 522, 400, 40, C_PANEL); frame(40, 522, 400, 40, A.focus == 1 ? C_SEL : C_LOCK, 2);
-    text(50, 533, 2, C_TEXT, "%s%s", A.link_email, (A.focus == 1 && (SDL_GetTicks() / 500) % 2) ? "_" : "");
-    rect(40, 566, 400, 40, C_PANEL); frame(40, 566, 400, 40, A.focus == 2 ? C_SEL : C_LOCK, 2);
-    { char mask[sizeof A.link_pass]; size_t n = strlen(A.link_pass); for (size_t i = 0; i < n; i++) mask[i] = '*'; mask[n] = 0;
-      text(50, 577, 2, C_TEXT, "%s%s", mask, (A.focus == 2 && (SDL_GetTicks() / 500) % 2) ? "_" : ""); }
-    button(40, 610, 400, 40, "CLAIM ACCOUNT", (Col){70, 110, 200}, A.link_email[0] && A.link_pass[0], mx, my);
+    /* S522: "Claim Account" -- the affordance only exists for a real Guest (is_guest, computed
+     * server-side from account_state, never just "no email typed in"). A returning claimed player
+     * sees a permanent CONNECTION SECURED confirmation instead, never the button again. */
+    if (A.is_guest) {
+        button(40, 500, 400, 52, "SECURE CONNECTION (CLAIM ACCOUNT)", (Col){70, 110, 200}, 1, mx, my);
+    } else if (A.auth_ready) {
+        rect(40, 500, 400, 52, C_PANEL); frame(40, 500, 400, 52, C_GOOD, 2);
+        text_c(W / 2, 519, 2, C_GOOD, "CONNECTION SECURED");
+    }
     if (A.link_msg[0]) text_c(W / 2, 670, 1, C_GOOD, "%s", A.link_msg);
     else if (A.redeem_msg[0]) text_c(W / 2, 670, 1, C_GOOD, "%s", A.redeem_msg);
     else if (A.err[0]) text_c(W / 2, 670, 1, C_BAD, "%s", A.err);
     text_c(W / 2, 940, 1, C_DIM, "TAB = NEXT FIELD   ESC = QUIT   V%s", DW_VERSION);
+}
+/* S522: "brutalist, terminal-styled modal ... No web2 fluff" -- a bordered black panel over the
+ * dimmed menu, EMAIL/PASSWORD explicitly labeled (S523 design pass: the founder's own real,
+ * found-live complaint about the old inline boxes was "what are the 2 text boxes at the bottom?
+ * no labels" -- every field in this app now says what it is), monospace, all-caps, no rounded
+ * corners/gradients/icons. claim_focus is this screen's own 2-field cursor (0 email, 1 password).
+ */
+static void draw_claim(int mx, int my) {
+    rect(0, 0, W, H, (Col){0, 0, 0});   /* dim/blank the menu completely -- a real modal, not an overlay on top of visible menu content */
+    int bx = 40, by = 260, bw = 400;
+    rect(bx, by, bw, 360, C_PANEL); frame(bx, by, bw, 360, C_SEL, 2);
+    text_c(W / 2, by + 24, 3, C_TEXT, "SECURE CONNECTION");
+    text_c(W / 2, by + 58, 1, C_DIM, "LINK EMAIL -- KEEP YOUR PROGRESS");
+    text(bx + 24, by + 100, 2, C_DIM, "EMAIL");
+    rect(bx + 24, by + 124, bw - 48, 40, C_BG); frame(bx + 24, by + 124, bw - 48, 40, A.claim_focus == 0 ? C_SEL : C_LOCK, 2);
+    text(bx + 34, by + 135, 2, C_TEXT, "%s%s", A.link_email, (A.claim_focus == 0 && (SDL_GetTicks() / 500) % 2) ? "_" : "");
+    text(bx + 24, by + 178, 2, C_DIM, "PASSWORD");
+    rect(bx + 24, by + 202, bw - 48, 40, C_BG); frame(bx + 24, by + 202, bw - 48, 40, A.claim_focus == 1 ? C_SEL : C_LOCK, 2);
+    { char mask[sizeof A.link_pass]; size_t n = strlen(A.link_pass); for (size_t i = 0; i < n; i++) mask[i] = '*'; mask[n] = 0;
+      text(bx + 34, by + 213, 2, C_TEXT, "%s%s", mask, (A.claim_focus == 1 && (SDL_GetTicks() / 500) % 2) ? "_" : ""); }
+    button(bx + 24, by + 262, bw - 48, 44, "SUBMIT", (Col){70, 110, 200}, A.link_email[0] && A.link_pass[0], mx, my);
+    if (A.link_msg[0]) text_c(W / 2, by + 322, 1, C_BAD, "%s", A.link_msg);
+    text_c(W / 2, by + 346, 1, C_DIM, "ESC = CANCEL");
 }
 #define DRAFT_BTN_X(card, m) (20 + (card) * 240 + (m) * 70)
 static int draft_mult_ok(int m) { return A.left[m - 1] > 0; }
@@ -666,19 +709,28 @@ static void draw(int mx, int my) {
     setc(C_BG, 255); SDL_RenderClear(R);
     switch (A.screen) { case S_BOOT: draw_boot(); break; case S_MENU: draw_menu(mx, my); break; case S_QUEUE: draw_queue(mx, my); break;
                         case S_MATCH: draw_match(mx, my); break; case S_DRAFT: draw_draft(mx, my); break;
-                        case S_DRAFT_HUB: draw_draft_hub(mx, my); break; default: draw_end(mx, my); break; }
+                        case S_DRAFT_HUB: draw_draft_hub(mx, my); break; case S_CLAIM: draw_claim(mx, my); break;
+                        default: draw_end(mx, my); break; }
 }
 
 /* ---------- input ---------- */
 /* S512: NAME/HOST/PORT are no longer player-editable fields at all (removed with the boxes
- * themselves in draw_menu) -- only the 3 remaining text boxes need focus/typing support. */
+ * themselves in draw_menu). S522: EMAIL/PASSWORD moved into their own modal (S_CLAIM, its own
+ * claim_focus cursor) -- the menu itself now has exactly one text field (redeem code). */
 static char *field(int i) {
-    switch (i) { case 0: return A.redeem_code; case 1: return A.link_email; default: return A.link_pass; }
+    (void)i; return A.redeem_code;
 }
 static size_t field_cap(int i) {
-    switch (i) { case 0: return sizeof A.redeem_code - 1; case 1: return sizeof A.link_email - 1; default: return sizeof A.link_pass - 1; }
+    (void)i; return sizeof A.redeem_code - 1;
 }
-#define MENU_FIELDS 3
+#define MENU_FIELDS 1
+static char *claim_field(int i) {
+    return i == 0 ? A.link_email : A.link_pass;
+}
+static size_t claim_field_cap(int i) {
+    return i == 0 ? sizeof A.link_email - 1 : sizeof A.link_pass - 1;
+}
+#define CLAIM_FIELDS 2
 static void send_pick(int idx, int mult) {
     DwMsg m; memset(&m, 0, sizeof m); m.type = DW_C_DRAFT_PICK; m.u.draft_pick.index = (uint8_t)idx; m.u.draft_pick.mult = (uint8_t)mult;
     A.pend_card = A.offer[idx]; A.pend_mult = mult;
@@ -694,13 +746,18 @@ static void click(int x, int y) {
     switch (A.screen) {
     case S_MENU:
         if (in_rect(x, y, 40, 438, 280, 46)) A.focus = 0;
-        if (in_rect(x, y, 40, 522, 400, 40)) A.focus = 1;
-        if (in_rect(x, y, 40, 566, 400, 40)) A.focus = 2;
         if (in_rect(x, y, 40, 266, 400, 60) && A.tickets > 0) start_draft_run();
         if (in_rect(x, y, 40, 338, 400, 60)) { A.mode = DW_MODE_CARD; do_connect(); }
         if (in_rect(x, y, 328, 438, 112, 46) && A.redeem_code[0]) do_redeem();
-        if (in_rect(x, y, 40, 610, 400, 40) && A.link_email[0] && A.link_pass[0]) do_link_email();
+        if (in_rect(x, y, 40, 500, 400, 52) && A.is_guest) { A.screen = S_CLAIM; A.claim_focus = 0; A.link_msg[0] = 0; }
         break;
+    case S_CLAIM: {
+        int bx = 40, by = 260, bw = 400;
+        if (in_rect(x, y, bx + 24, by + 124, bw - 48, 40)) A.claim_focus = 0;
+        if (in_rect(x, y, bx + 24, by + 202, bw - 48, 40)) A.claim_focus = 1;
+        if (in_rect(x, y, bx + 24, by + 262, bw - 48, 44) && A.link_email[0] && A.link_pass[0]) do_link_email();
+        break;
+    }
     case S_QUEUE: if (in_rect(x, y, 140, 520, 200, 64)) { send_simple(DW_C_LEAVE); to_menu(""); } break;
     case S_MATCH:
         for (int i = 0; i < 4; i++) if (in_rect(x, y, 20 + (i % 2) * 232, 620 + (i / 2) * 142, 216, 136)) select_slot(i);
@@ -741,6 +798,11 @@ static void append_to_field(int focus, const char *text) {
     for (const char *p = text; *p && n < field_cap(focus); p++)
         if ((unsigned char)*p >= 32 && (unsigned char)*p < 127) { f[n++] = *p; f[n] = 0; }
 }
+static void append_to_claim_field(int focus, const char *text) {
+    char *f = claim_field(focus); size_t n = strlen(f);
+    for (const char *p = text; *p && n < claim_field_cap(focus); p++)
+        if ((unsigned char)*p >= 32 && (unsigned char)*p < 127) { f[n++] = *p; f[n] = 0; }
+}
 static void key(SDL_Keycode k) {
     if (A.screen == S_MENU) {
         char *f = field(A.focus);
@@ -755,7 +817,20 @@ static void key(SDL_Keycode k) {
         }
         else if (k == SDLK_RETURN || k == SDLK_KP_ENTER) {
             if (A.focus == 0) { if (A.redeem_code[0]) do_redeem(); }
-            else if (A.focus == 1 || A.focus == 2) { if (A.link_email[0] && A.link_pass[0]) do_link_email(); }
+        }
+    } else if (A.screen == S_CLAIM) {
+        char *f = claim_field(A.claim_focus);
+        if (k == SDLK_ESCAPE) { A.screen = S_MENU; A.link_msg[0] = 0; }
+        else if (k == SDLK_BACKSPACE && *f) f[strlen(f) - 1] = 0;
+        else if (k == SDLK_TAB) A.claim_focus = (A.claim_focus + 1) % CLAIM_FIELDS;
+        else if (k == SDLK_v && (SDL_GetModState() & KMOD_CTRL)) {
+            if (SDL_HasClipboardText()) {
+                char *clip = SDL_GetClipboardText();
+                if (clip) { append_to_claim_field(A.claim_focus, clip); SDL_free(clip); }
+            }
+        }
+        else if (k == SDLK_RETURN || k == SDLK_KP_ENTER) {
+            if (A.link_email[0] && A.link_pass[0]) do_link_email();
         }
     } else if (A.screen == S_MATCH) {
         if (k == SDLK_m) sfx_set_muted(!sfx_is_muted());
@@ -972,9 +1047,17 @@ int main(int argc, char **argv) {
         SDL_Event e;
         while (SDL_PollEvent(&e)) {
             if (e.type == SDL_QUIT) running = 0;
+            /* S522 found-live bug: maximizing/fullscreening the window (SDL_WINDOW_RESIZABLE)
+             * left the logical-size letterbox viewport stuck at its create-time position/size --
+             * content stayed pinned top-left in a huge black window instead of staying centered.
+             * SDL2's own logical-size letterbox doesn't reliably recompute on a live resize for
+             * every backend; forcing it again on the resize event is the documented workaround. */
+            else if (e.type == SDL_WINDOWEVENT && (e.window.event == SDL_WINDOWEVENT_RESIZED || e.window.event == SDL_WINDOWEVENT_SIZE_CHANGED))
+                SDL_RenderSetLogicalSize(R, W, H);
             else if (e.type == SDL_MOUSEMOTION) { mx = e.motion.x; my = e.motion.y; }
             else if (e.type == SDL_MOUSEBUTTONDOWN && e.button.button == SDL_BUTTON_LEFT) click(e.button.x, e.button.y);
             else if (e.type == SDL_TEXTINPUT && A.screen == S_MENU) append_to_field(A.focus, e.text.text);
+            else if (e.type == SDL_TEXTINPUT && A.screen == S_CLAIM) append_to_claim_field(A.claim_focus, e.text.text);
             else if (e.type == SDL_KEYDOWN) { if (e.key.keysym.sym == SDLK_ESCAPE && A.screen == S_MENU) running = 0; else key(e.key.keysym.sym); }
         }
         pump();

@@ -45,9 +45,9 @@ int main(int argc, char **argv) {
             fclose(gf);
         }
         if (pid[0] && sec[0]) {
-            if (dwi_guest_login(&idu, pid, sec, tok, sizeof tok, NULL, 0, NULL, NULL) != 0) { fprintf(stderr, "dw_client: guest-login failed (account unrecoverable without its file)\n"); return 1; }
+            if (dwi_guest_login(&idu, pid, sec, tok, sizeof tok, NULL, 0, NULL, NULL, NULL) != 0) { fprintf(stderr, "dw_client: guest-login failed (account unrecoverable without its file)\n"); return 1; }
         } else {
-            if (dwi_guest_register(&idu, name, pid, sizeof pid, sec, sizeof sec, tok, sizeof tok, NULL, 0, NULL, NULL) != 0) { fprintf(stderr, "dw_client: guest-register failed\n"); return 1; }
+            if (dwi_guest_register(&idu, name, pid, sizeof pid, sec, sizeof sec, tok, sizeof tok, NULL, 0, NULL, NULL, NULL) != 0) { fprintf(stderr, "dw_client: guest-register failed\n"); return 1; }
             gf = fopen(guest_file, "w");
             if (!gf) { fprintf(stderr, "dw_client: cannot write %s\n", guest_file); return 1; }
             fprintf(gf, "player_id=%s\nguest_secret=%s\n", pid, sec); fclose(gf);
