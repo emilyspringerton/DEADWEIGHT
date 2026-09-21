@@ -6,7 +6,9 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 bash scripts/build.sh
 BIN="$HOME/.local/opt/deadweight/bin"; CONF="$HOME/.config/deadweight"; UNITS="$HOME/.config/systemd/user"
-mkdir -p "$BIN" "$CONF" "$UNITS" "$HOME/DEADWEIGHT/var/matches"
+# S521: match logs live outside the git checkout now (see dw.env.example) -- the service's own
+# ExecStartPre already mkdir -p's DW_MATCH_LOG_DIR, no need to pre-create a repo-relative path here.
+mkdir -p "$BIN" "$CONF" "$UNITS"
 install -m 0755 build/dw_server build/dw_bot "$BIN/"
 if [ ! -f "$CONF/dw.env" ]; then sed "s|/home/USER|$HOME|" ops/systemd/dw.env.example > "$CONF/dw.env"; fi
 cp ops/systemd/dw-server.service 'ops/systemd/dw-bot@.service' 'ops/systemd/dw-draft-bot@.service' "$UNITS/"

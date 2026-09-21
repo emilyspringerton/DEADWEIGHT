@@ -138,6 +138,20 @@ Android is paused, desktop is the real focus for Itch.io and Steam):
   a founder code bumps the balance to 9999 in the same response, so the client shows Unlimited
   immediately, no restart. "Claim Account" (linking an email) never touches `registered_at`,
   verified directly — a grandfathered player can't accidentally get demoted by upgrading.
+- **Redeem codes, ticket display, and match-result reporting to IDUNA all actually work now
+  (S519–S521)** — found and fixed together once a real player could, for the first time, actually
+  test the full live economy end to end (earlier releases had never had working TLS at all, S519,
+  so no client had ever successfully talked to production IDUNA before). The redeem-code input
+  field truncated every real 29-character code before it was sent (S520, buffer was 24 bytes).
+  Separately, and more significantly (S521): the live `dw-server.service` had run with `--no-auth`
+  and no `--iduna-url` since it was first deployed, meaning it never once configured an IDUNA
+  client — `game_matches`/ELO stats/the Draft Hub's win-loss counter had literally never been
+  updated by a real match, ever, in production. Real agent credentials for this already existed
+  (IDUNA's `DEADWEIGHT-SERVER`/`DEADWEIGHT-BOTS` agents, created 2026-09-18) but were never wired
+  into the deployed service config. Flipped to real IDUNA-JWT-required auth, verified end to end
+  against production (a real test account's draft-run `losses` incremented 0→1 from an actual
+  played match) before calling it done — see `ops/systemd/dw.env.example` for the now-correct
+  default, so a fresh deploy doesn't regress this again.
 
 ## Build (clean-build bar: this must be green before anything else merges)
 
