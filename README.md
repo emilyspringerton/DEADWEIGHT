@@ -122,9 +122,12 @@ Android is paused, desktop is the real focus for Itch.io and Steam):
   **Live-verified end to end against production** (`https://okemily.com`, and directly against
   the local IDUNA process): a fresh boot registers a real guest account, gets a real
   auto-generated name back, and shows the real 20-ticket grant — not a stale/cached value. The
-  daily top-up was already a rolling 24h window keyed to each player's OWN last top-up (never a
-  synchronized UTC-midnight reset, so players aren't incentivized to all log in at exactly
-  midnight) — confirmed correct and locked in with a new regression test rather than changed.
+  daily top-up resets on a **fixed UTC calendar-day boundary** (`date(last_ticket_topup_at) <
+  date('now')`) — S512 shipped a rolling 24h-since-last-top-up window instead, reversed same-day
+  (S515, exec real-time) once the retention downside was named: a rolling window drifts a
+  player's own reset time later every day they log in late and skip a day, which reads as an
+  arbitrary, ever-moving wall rather than a predictable "new day, tickets refreshed" habit. Fixed
+  UTC midnight is the same real moment for everyone and never drifts.
 
 ## Build (clean-build bar: this must be green before anything else merges)
 
