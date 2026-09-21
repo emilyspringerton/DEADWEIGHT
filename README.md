@@ -98,10 +98,10 @@ Android is paused, desktop is the real focus for Itch.io and Steam):
   Wine/Windows environment exists to actually execute the `.exe` and confirm a live handshake, so
   don't treat it as proven the way the Linux build is until someone runs it for real.
 - **Draft Runs actually spend and pay out tickets now (S510)** — readying the Itch.io launch plan
-  (free-to-play with a 20-ticket/day guest cap -- tier_alpha's real cap, `IDUNA/internal/http/
-  handlers/game_online.go`'s own `tierCaps` -- not the 25 first floated in an early planning pass,
-  a $15 "Root Access Override" Premium code as the soft upsell) found this was never true: the
-  DRAFT button's `TICKETS: N` gate was purely
+  (free-to-play with a 20-ticket/day grandfathered guest cap — computed per-player from
+  `registered_at` vs. a fixed cutoff date, see S516 below, not the 25 first floated in an early
+  planning pass — a $15 "Root Access Override" Premium code as the soft upsell) found this was
+  never true: the DRAFT button's `TICKETS: N` gate was purely
   cosmetic, and the "Uncapped Draft Run" auto-end never actually granted any tickets back. Both
   are now real, atomic IDUNA endpoints (`/draft-run/start`, `/deck`, `/abort`, plain `GET`, all
   player-token-direct, same trust level as `/redeem`) with a real cash-out table (0 tickets under
@@ -128,6 +128,16 @@ Android is paused, desktop is the real focus for Itch.io and Steam):
   player's own reset time later every day they log in late and skip a day, which reads as an
   arbitrary, ever-moving wall rather than a predictable "new day, tickets refreshed" habit. Fixed
   UTC midnight is the same real moment for everyone and never drifts.
+- **Three-tier daily cap, zero manual cutover required (S516)** — Premium (a redeemed $15 Override
+  Code, `is_founder=true`, 9999/day — effectively unlimited), Protofounder (registered before
+  2026-09-30, 20/day), Late Free (registered on/after, 1/day). The cap is computed live from two
+  real, permanent player facts — `is_founder` and `players.registered_at` (already exactly
+  "account created," no new column) — instead of a tier string that had to be set correctly at
+  registration and then manually flipped on the cutover date. Nothing needs to happen on
+  2026-09-30 itself; every player's tier was already decided the moment they registered. Redeeming
+  a founder code bumps the balance to 9999 in the same response, so the client shows Unlimited
+  immediately, no restart. "Claim Account" (linking an email) never touches `registered_at`,
+  verified directly — a grandfathered player can't accidentally get demoted by upgrading.
 
 ## Build (clean-build bar: this must be green before anything else merges)
 
