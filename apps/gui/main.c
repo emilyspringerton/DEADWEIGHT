@@ -437,7 +437,13 @@ static int in_rect(int px, int py, int x, int y, int w, int h) { return px >= x 
 static void button(int x, int y, int w, int h, const char *label, Col c, int enabled, int mx, int my) {
     Col f = enabled ? c : C_LOCK;
     if (enabled && in_rect(mx, my, x, y, w, h)) { f.r = (uint8_t)(f.r + (255 - f.r) / 4); f.g = (uint8_t)(f.g + (255 - f.g) / 4); f.b = (uint8_t)(f.b + (255 - f.b) / 4); }
-    rect(x, y, w, h, f); text_c(x + w / 2, y + h / 2 - 10, 3, enabled ? C_TEXT : C_DIM, "%s", label);
+    rect(x, y, w, h, f);
+    /* Found live (S513, "spin up the client and play it"): a long label at the usual scale 3
+     * ("PRACTICE  (RANDOM DECK, FREE)") overflows the button and reads as truncated on the left.
+     * Drop to scale 2 whenever it wouldn't fit at 3, rather than letting any future long label
+     * silently repeat this. */
+    int scale = text_w(3, label) <= w - 8 ? 3 : 2;
+    text_c(x + w / 2, y + h / 2 - (scale == 3 ? 10 : 7), scale, enabled ? C_TEXT : C_DIM, "%s", label);
 }
 /* Meters draw the animated ("shown") values, which lag the server's until the resource stage of the round animation. */
 static void hull_bar(int y, float hull, const char *label, float armor, float vault, int hidden, int seat) {
