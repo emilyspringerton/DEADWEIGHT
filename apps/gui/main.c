@@ -89,7 +89,7 @@ static void text_c(int cx, int y, int scale, Col c, const char *fmt, ...) {
 }
 
 /* ---------- app state ---------- */
-enum { S_MENU, S_QUEUE, S_MATCH, S_END, S_DRAFT, S_DRAFT_HUB };
+enum { S_BOOT, S_MENU, S_QUEUE, S_MATCH, S_END, S_DRAFT, S_DRAFT_HUB };
 typedef struct {
     int screen;
     char name[DW_NAME_LEN + 1], host[64], port[8], token[DW_MAX_AUTH_TOKEN + 1];
@@ -129,6 +129,7 @@ typedef struct {
      * DW_C_DRAFT_RESUME instead of auto-queueing/redrafting (see do_connect/handle_msg). */
     int hub_active, hub_wins, hub_losses, hub_deck_n; int8_t hub_deck[DW_DRAFT_DECK];
     char hub_msg[64]; int resume_pending, awaiting_resume_queue;
+    int name_from_cli;   /* S512: only a --name dev override bypasses server-side lore-name auto-generation */
     /* selftest */
     int selftest, autostart; const char *frames_dir; Uint32 state_at; int dumped_mid, dumped_end, done_ok;
 } App;
@@ -151,13 +152,17 @@ static void refresh_tickets(void) { if (A.player_id[0]) dwi_ticket_balance(&A.id
 static void iduna_bootstrap(void) {
     if (A.token[0]) return;   /* explicit --token/DW_TOKEN overrides auto-auth, e.g. for --no-auth server testing */
     if (dwi_configure(&A.idu, A.iduna_url, NULL, NULL) != 0) { snprintf(A.err, sizeof A.err, "Bad --iduna-url"); return; }
-    char pid[48] = "", secret[72] = "", tok[DW_MAX_AUTH_TOKEN + 1] = "";
+    char pid[48] = "", secret[72] = "", tok[DW_MAX_AUTH_TOKEN + 1] = "", gotname[DW_NAME_LEN + 1] = "";
     FILE *f = fopen(A.account_path, "r");
     if (f) { if (fscanf(f, "%47s %71s", pid, secret) != 2) { pid[0] = 0; secret[0] = 0; } fclose(f); }
-    int ok = pid[0] && secret[0] && dwi_guest_login(&A.idu, pid, secret, tok, sizeof tok) == 0;
+    int ok = pid[0] && secret[0] && dwi_guest_login(&A.idu, pid, secret, tok, sizeof tok, gotname, sizeof gotname, &A.tickets) == 0;
     if (!ok) {
+        /* S512 zero-friction auth: NEVER a client-chosen name -- an empty display_name tells
+         * IDUNA to auto-assign a lore-friendly one ("Runner-A7B2"), read back into gotname below.
+         * "Claim Account" (do_link_email) is where a player later picks something of their own. */
         char newpid[48], newsecret[72];
-        if (dwi_guest_register(&A.idu, A.name[0] ? A.name : "Player", newpid, sizeof newpid, newsecret, sizeof newsecret, tok, sizeof tok) == 0) {
+        const char *wantname = A.name_from_cli ? A.name : "";   /* dev override only -- see --name */
+        if (dwi_guest_register(&A.idu, wantname, newpid, sizeof newpid, newsecret, sizeof newsecret, tok, sizeof tok, gotname, sizeof gotname, &A.tickets) == 0) {
             snprintf(pid, sizeof pid, "%s", newpid); snprintf(secret, sizeof secret, "%s", newsecret);
             FILE *wf = fopen(A.account_path, "w");
             if (wf) { fprintf(wf, "%s %s\n", pid, secret); fclose(wf); }
@@ -167,9 +172,9 @@ static void iduna_bootstrap(void) {
     if (ok) {
         snprintf(A.token, sizeof A.token, "%s", tok);
         snprintf(A.player_id, sizeof A.player_id, "%s", pid);
+        if (gotname[0]) snprintf(A.name, sizeof A.name, "%s", gotname);
         A.auth_ready = 1;
-        refresh_tickets();
-        fprintf(stderr, "dw_gui: IDUNA auth ok, player_id=%s tickets=%d\n", A.player_id, A.tickets);
+        fprintf(stderr, "dw_gui: IDUNA auth ok, player_id=%s name=%s tickets=%d\n", A.player_id, A.name, A.tickets);
     } else {
         snprintf(A.err, sizeof A.err, "IDUNA unreachable -- playing without an account (no tickets)");
         fprintf(stderr, "dw_gui: IDUNA auth failed against %s\n", A.iduna_url);
@@ -498,37 +503,42 @@ static void card_box(int x, int y, int w, int h, int id, int num, int state /*0 
     if (state == 1) frame(x - 3, y - 3, w + 6, h + 6, C_SEL, 3);
     if (state == 3) frame(x, y, w, h, C_GOOD, 2);
 }
-static void draw_menu(int mx, int my) {
+/* S512: cosmetic display cap only, matching tier_alpha's real server-side cap (IDUNA/internal/
+ * http/handlers/game_online.go's own tierCaps) -- the client has no "what tier am I" response
+ * field to read this from yet, so it's hardcoded rather than invented client-side state. */
+#define DW_GUEST_TICKET_CAP 20
+static void draw_boot(void) {
     text_c(W / 2, 90, 5, C_TEXT, "DEADWEIGHT");
+    text_c(W / 2, 420, 2, C_DIM, "ESTABLISHING CONNECTION...");
+}
+static void draw_menu(int mx, int my) {
+    text_c(W / 2, 70, 5, C_TEXT, "DEADWEIGHT");
+    /* S512 zero-friction auth: no NAME/HOST/PORT boxes -- players never see an IP or port, and
+     * never pick a username on boot. The server auto-assigns a lore-friendly name (see
+     * iduna_bootstrap); a real one is picked later via CLAIM ACCOUNT below. */
     if (A.auth_ready) {
-        text(W - 160, 18, 2, C_TEXT, "TICKETS: %d", A.tickets);
-        if (A.is_founder) text(W - 160, 40, 1, (Col){255, 200, 60}, "FOUNDER");
-    } else text(W - 160, 18, 1, C_DIM, "NO ACCOUNT");
-    text_c(W / 2, 150, 2, C_DIM, "%s", A.mode == DW_MODE_DRAFT ? "DRAFT MODE" : "CARD MODE  (RANDOM)");
-    const char *lab[3] = {"NAME", "HOST", "PORT"}; char *val[3] = {A.name, A.host, A.port};
-    for (int i = 0; i < 3; i++) {
-        int y = 250 + i * 90;
-        text(40, y - 26, 2, C_DIM, "%s", lab[i]);
-        rect(40, y, 400, 46, C_PANEL); frame(40, y, 400, 46, i == A.focus ? C_SEL : C_LOCK, 2);
-        text(52, y + 13, 3, C_TEXT, "%s%s", val[i], (i == A.focus && (SDL_GetTicks() / 500) % 2) ? "_" : "");
-    }
+        text_c(W / 2, 130, 3, C_TEXT, "%s", A.name);
+        text_c(W / 2, 168, 2, C_DIM, "TICKETS: %d/%d", A.tickets, DW_GUEST_TICKET_CAP);
+        if (A.is_founder) text_c(W / 2, 194, 1, (Col){255, 200, 60}, "FOUNDER");
+    } else text_c(W / 2, 140, 2, C_DIM, "NO ACCOUNT (IDUNA OFFLINE)");
+    text_c(W / 2, 230, 2, C_DIM, "%s", A.mode == DW_MODE_DRAFT ? "DRAFT MODE" : "CARD MODE  (RANDOM)");
     int can_draft = A.tickets > 0;
-    button(40, 520, 400, 60, can_draft ? "DRAFT  (COST: 1 TICKET)" : "DRAFT  (NO TICKETS)", (Col){225, 160, 40}, can_draft, mx, my);
-    button(40, 590, 400, 60, "PRACTICE  (RANDOM DECK, FREE)", C_GOOD, 1, mx, my);
-    text(40, 668, 2, C_DIM, "REDEEM CODE");
-    rect(40, 690, 280, 46, C_PANEL); frame(40, 690, 280, 46, A.focus == 3 ? C_SEL : C_LOCK, 2);
-    text(52, 703, 2, C_TEXT, "%s%s", A.redeem_code, (A.focus == 3 && (SDL_GetTicks() / 500) % 2) ? "_" : "");
-    button(328, 690, 112, 46, "REDEEM", (Col){70, 110, 200}, A.redeem_code[0] != 0, mx, my);
-    text(40, 750, 2, C_DIM, "LINK EMAIL (SAVE PROGRESS)");
-    rect(40, 770, 400, 40, C_PANEL); frame(40, 770, 400, 40, A.focus == 4 ? C_SEL : C_LOCK, 2);
-    text(50, 781, 2, C_TEXT, "%s%s", A.link_email, (A.focus == 4 && (SDL_GetTicks() / 500) % 2) ? "_" : "");
-    rect(40, 814, 400, 40, C_PANEL); frame(40, 814, 400, 40, A.focus == 5 ? C_SEL : C_LOCK, 2);
+    button(40, 266, 400, 60, can_draft ? "DRAFT  (COST: 1 TICKET)" : "DRAFT  (NO TICKETS)", (Col){225, 160, 40}, can_draft, mx, my);
+    button(40, 338, 400, 60, "PRACTICE  (RANDOM DECK, FREE)", C_GOOD, 1, mx, my);
+    text(40, 416, 2, C_DIM, "REDEEM CODE");
+    rect(40, 438, 280, 46, C_PANEL); frame(40, 438, 280, 46, A.focus == 0 ? C_SEL : C_LOCK, 2);
+    text(52, 451, 2, C_TEXT, "%s%s", A.redeem_code, (A.focus == 0 && (SDL_GetTicks() / 500) % 2) ? "_" : "");
+    button(328, 438, 112, 46, "REDEEM", (Col){70, 110, 200}, A.redeem_code[0] != 0, mx, my);
+    text(40, 500, 2, C_DIM, "CLAIM ACCOUNT (LINK EMAIL, KEEP YOUR PROGRESS)");
+    rect(40, 522, 400, 40, C_PANEL); frame(40, 522, 400, 40, A.focus == 1 ? C_SEL : C_LOCK, 2);
+    text(50, 533, 2, C_TEXT, "%s%s", A.link_email, (A.focus == 1 && (SDL_GetTicks() / 500) % 2) ? "_" : "");
+    rect(40, 566, 400, 40, C_PANEL); frame(40, 566, 400, 40, A.focus == 2 ? C_SEL : C_LOCK, 2);
     { char mask[sizeof A.link_pass]; size_t n = strlen(A.link_pass); for (size_t i = 0; i < n; i++) mask[i] = '*'; mask[n] = 0;
-      text(50, 825, 2, C_TEXT, "%s%s", mask, (A.focus == 5 && (SDL_GetTicks() / 500) % 2) ? "_" : ""); }
-    button(40, 862, 400, 40, "LINK EMAIL", (Col){70, 110, 200}, A.link_email[0] && A.link_pass[0], mx, my);
-    if (A.link_msg[0]) text_c(W / 2, 910, 1, C_GOOD, "%s", A.link_msg);
-    else if (A.redeem_msg[0]) text_c(W / 2, 910, 1, C_GOOD, "%s", A.redeem_msg);
-    else if (A.err[0]) text_c(W / 2, 910, 1, C_BAD, "%s", A.err);
+      text(50, 577, 2, C_TEXT, "%s%s", mask, (A.focus == 2 && (SDL_GetTicks() / 500) % 2) ? "_" : ""); }
+    button(40, 610, 400, 40, "CLAIM ACCOUNT", (Col){70, 110, 200}, A.link_email[0] && A.link_pass[0], mx, my);
+    if (A.link_msg[0]) text_c(W / 2, 670, 1, C_GOOD, "%s", A.link_msg);
+    else if (A.redeem_msg[0]) text_c(W / 2, 670, 1, C_GOOD, "%s", A.redeem_msg);
+    else if (A.err[0]) text_c(W / 2, 670, 1, C_BAD, "%s", A.err);
     text_c(W / 2, 940, 1, C_DIM, "TAB = NEXT FIELD   ESC = QUIT   V%s", DW_VERSION);
 }
 #define DRAFT_BTN_X(card, m) (20 + (card) * 240 + (m) * 70)
@@ -619,21 +629,21 @@ static void draw_end(int mx, int my) {
 }
 static void draw(int mx, int my) {
     setc(C_BG, 255); SDL_RenderClear(R);
-    switch (A.screen) { case S_MENU: draw_menu(mx, my); break; case S_QUEUE: draw_queue(mx, my); break;
+    switch (A.screen) { case S_BOOT: draw_boot(); break; case S_MENU: draw_menu(mx, my); break; case S_QUEUE: draw_queue(mx, my); break;
                         case S_MATCH: draw_match(mx, my); break; case S_DRAFT: draw_draft(mx, my); break;
                         case S_DRAFT_HUB: draw_draft_hub(mx, my); break; default: draw_end(mx, my); break; }
 }
 
 /* ---------- input ---------- */
+/* S512: NAME/HOST/PORT are no longer player-editable fields at all (removed with the boxes
+ * themselves in draw_menu) -- only the 3 remaining text boxes need focus/typing support. */
 static char *field(int i) {
-    switch (i) { case 0: return A.name; case 1: return A.host; case 2: return A.port; case 3: return A.redeem_code;
-                 case 4: return A.link_email; default: return A.link_pass; }
+    switch (i) { case 0: return A.redeem_code; case 1: return A.link_email; default: return A.link_pass; }
 }
 static size_t field_cap(int i) {
-    switch (i) { case 0: return DW_NAME_LEN; case 1: return sizeof A.host - 1; case 2: return 5; case 3: return sizeof A.redeem_code - 1;
-                 case 4: return sizeof A.link_email - 1; default: return sizeof A.link_pass - 1; }
+    switch (i) { case 0: return sizeof A.redeem_code - 1; case 1: return sizeof A.link_email - 1; default: return sizeof A.link_pass - 1; }
 }
-#define MENU_FIELDS 6
+#define MENU_FIELDS 3
 static void send_pick(int idx, int mult) {
     DwMsg m; memset(&m, 0, sizeof m); m.type = DW_C_DRAFT_PICK; m.u.draft_pick.index = (uint8_t)idx; m.u.draft_pick.mult = (uint8_t)mult;
     A.pend_card = A.offer[idx]; A.pend_mult = mult;
@@ -648,14 +658,13 @@ static void requeue(int same_deck) {
 static void click(int x, int y) {
     switch (A.screen) {
     case S_MENU:
-        for (int i = 0; i < 3; i++) if (in_rect(x, y, 40, 250 + i * 90, 400, 46)) A.focus = i;
-        if (in_rect(x, y, 40, 690, 280, 46)) A.focus = 3;
-        if (in_rect(x, y, 40, 770, 400, 40)) A.focus = 4;
-        if (in_rect(x, y, 40, 814, 400, 40)) A.focus = 5;
-        if (in_rect(x, y, 40, 520, 400, 60) && A.tickets > 0) start_draft_run();
-        if (in_rect(x, y, 40, 590, 400, 60)) { A.mode = DW_MODE_CARD; do_connect(); }
-        if (in_rect(x, y, 328, 690, 112, 46) && A.redeem_code[0]) do_redeem();
-        if (in_rect(x, y, 40, 862, 400, 40) && A.link_email[0] && A.link_pass[0]) do_link_email();
+        if (in_rect(x, y, 40, 438, 280, 46)) A.focus = 0;
+        if (in_rect(x, y, 40, 522, 400, 40)) A.focus = 1;
+        if (in_rect(x, y, 40, 566, 400, 40)) A.focus = 2;
+        if (in_rect(x, y, 40, 266, 400, 60) && A.tickets > 0) start_draft_run();
+        if (in_rect(x, y, 40, 338, 400, 60)) { A.mode = DW_MODE_CARD; do_connect(); }
+        if (in_rect(x, y, 328, 438, 112, 46) && A.redeem_code[0]) do_redeem();
+        if (in_rect(x, y, 40, 610, 400, 40) && A.link_email[0] && A.link_pass[0]) do_link_email();
         break;
     case S_QUEUE: if (in_rect(x, y, 140, 520, 200, 64)) { send_simple(DW_C_LEAVE); to_menu(""); } break;
     case S_MATCH:
@@ -685,7 +694,7 @@ static void click(int x, int y) {
 static void append_to_field(int focus, const char *text) {
     char *f = field(focus); size_t n = strlen(f);
     for (const char *p = text; *p && n < field_cap(focus); p++)
-        if ((unsigned char)*p >= 32 && (unsigned char)*p < 127 && (focus != 2 || (*p >= '0' && *p <= '9'))) { f[n++] = *p; f[n] = 0; }
+        if ((unsigned char)*p >= 32 && (unsigned char)*p < 127) { f[n++] = *p; f[n] = 0; }
 }
 static void key(SDL_Keycode k) {
     if (A.screen == S_MENU) {
@@ -700,10 +709,8 @@ static void key(SDL_Keycode k) {
             }
         }
         else if (k == SDLK_RETURN || k == SDLK_KP_ENTER) {
-            if (A.focus == 3) { if (A.redeem_code[0]) do_redeem(); }
-            else if (A.focus == 4 || A.focus == 5) { if (A.link_email[0] && A.link_pass[0]) do_link_email(); }
-            else if (A.mode == DW_MODE_DRAFT) { if (A.tickets > 0) start_draft_run(); }
-            else do_connect();
+            if (A.focus == 0) { if (A.redeem_code[0]) do_redeem(); }
+            else if (A.focus == 1 || A.focus == 2) { if (A.link_email[0] && A.link_pass[0]) do_link_email(); }
         }
     } else if (A.screen == S_MATCH) {
         if (k == SDLK_m) sfx_set_muted(!sfx_is_muted());
@@ -863,7 +870,7 @@ int main(int argc, char **argv) {
     for (int i = 1; i < argc; i++) {
         const char *a = argv[i], *v = i + 1 < argc ? argv[i + 1] : NULL;
         if (!strcmp(a, "--version")) { printf("dw_gui %s\n", DW_VERSION); return 0; }
-        else if (!strcmp(a, "--name") && v) { snprintf(A.name, sizeof A.name, "%s", v); i++; }
+        else if (!strcmp(a, "--name") && v) { snprintf(A.name, sizeof A.name, "%s", v); A.name_from_cli = 1; i++; }
         else if (!strcmp(a, "--host") && v) { snprintf(A.host, sizeof A.host, "%s", v); i++; }
         else if (!strcmp(a, "--port") && v) { snprintf(A.port, sizeof A.port, "%s", v); i++; }
         else if (!strcmp(a, "--token") && v) { snprintf(A.token, sizeof A.token, "%s", v); i++; }
@@ -875,20 +882,10 @@ int main(int argc, char **argv) {
         else if (!strcmp(a, "--selftest")) A.selftest = A.autostart = 1;
         else if (!strcmp(a, "--fx-demo") && v) { demo_dir = v; i++; }
         else if (!strcmp(a, "--no-sound")) no_sound = 1;
-        else { fprintf(stderr, "usage: dw_gui [--name N] [--host H] [--port P] [--token JWT] [--iduna-url URL] [--account FILE] [--autostart] [--selftest [--frames DIR]]\n"); return 2; }
+        else { fprintf(stderr, "usage: dw_gui [--name N] [--host H] [--port P] [--token JWT] [--iduna-url URL] [--account FILE] [--autostart] [--selftest [--frames DIR]]\n"
+                               "  (--name/--host/--port are developer overrides only -- the release UI never shows these to a player, see S512)\n"); return 2; }
     }
     if (A.selftest || demo_dir) SDL_setenv("SDL_VIDEODRIVER", "dummy", 1);
-    /* Real IDUNA zero-friction auth only for a real interactive session -- selftest/fx-demo are
-     * pure game-mechanics harnesses (CI runs them with no IDUNA reachable) and must stay fast and
-     * network-free, same reason they already fake their own screen transitions via A.autostart
-     * rather than going through the menu buttons this bootstrap feeds. */
-    if (!A.selftest && !demo_dir) {
-        iduna_bootstrap();
-        /* Boot-time Draft Hub resume (S510): "if draft_active == true, route to
-         * SCREEN_DRAFT_HUB, not the draft picker or the queue." */
-        refresh_draft_hub();
-        if (A.hub_active) A.screen = S_DRAFT_HUB;
-    }
     dw_net_init();
     SDL_SetMainReady();
     if (SDL_Init(SDL_INIT_VIDEO) != 0) { fprintf(stderr, "SDL_Init: %s\n", SDL_GetError()); return 1; }
@@ -904,6 +901,22 @@ int main(int argc, char **argv) {
     if (demo_dir) { int rc2 = run_fx_demo(demo_dir); SDL_DestroyRenderer(R); SDL_DestroyWindow(win); SDL_Quit(); return rc2; }
     if (A.selftest) fx_set_speed(40.0f);                    /* headless: play the animations ~40x so a full match still finishes in seconds */
     else if (!no_sound && sfx_open() != 0) fprintf(stderr, "dw_gui: no audio device; continuing silent\n");
+
+    /* S512 boot flow: "Launch Client -> Show 'Establishing Connection...' loading text ->
+     * Auto-connect -> Main Menu." A real rendered frame, not just a comment -- the window and
+     * renderer now exist BEFORE the blocking IDUNA bootstrap call runs (they used to be created
+     * AFTER it, so there was physically no window yet to paint a loading screen into). selftest/
+     * fx-demo skip this entirely (see iduna_bootstrap's own doc comment: pure game-mechanics
+     * harnesses, network-free by design). */
+    if (!A.selftest) {
+        A.screen = S_BOOT;
+        draw(0, 0); SDL_RenderPresent(R); SDL_PumpEvents();
+        iduna_bootstrap();
+        /* Boot-time Draft Hub resume (S510): "if draft_active == true, route to
+         * SCREEN_DRAFT_HUB, not the draft picker or the queue." */
+        refresh_draft_hub();
+        A.screen = A.hub_active ? S_DRAFT_HUB : S_MENU;
+    } else A.screen = S_MENU;
 
     if (A.autostart) do_connect();
     if (A.selftest && A.screen != S_QUEUE) { fprintf(stderr, "selftest: %s\n", A.err); return 1; }

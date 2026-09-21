@@ -32,9 +32,13 @@ int dwi_agent_login(DwIduna *d);                                   /* 0 ok; fill
 int dwi_verify(DwIduna *d, const char *token, const char *bot_name, DwIdentity *out);
 /* POST match-result as the server agent (logs in / re-logs in on 401). 0 ok (incl. duplicate), -1 failure. */
 int dwi_report(DwIduna *d, const DwMatchReport *r);
-/* Guest accounts. Return 0 ok; token written to tok (>= 1536 bytes). */
-int dwi_guest_register(DwIduna *d, const char *display_name, char *player_id, size_t pn, char *secret, size_t sn, char *tok, size_t tn);
-int dwi_guest_login(DwIduna *d, const char *player_id, const char *secret, char *tok, size_t tn);
+/* Guest accounts. Return 0 ok; token written to tok (>= 1536 bytes). display_name may be "" or
+ * NULL (S512 zero-friction auth: the release client no longer collects one at all) -- IDUNA
+ * auto-assigns a lore-friendly one ("Runner-A7B2") in that case, always readable back via
+ * out_name (0 ok even if out_name is NULL; NULL out_tickets is also fine, both optional). */
+int dwi_guest_register(DwIduna *d, const char *display_name, char *player_id, size_t pn, char *secret, size_t sn, char *tok, size_t tn,
+                        char *out_name, size_t on, int *out_tickets);
+int dwi_guest_login(DwIduna *d, const char *player_id, const char *secret, char *tok, size_t tn, char *out_name, size_t on, int *out_tickets);
 
 /* Steam zero-friction login (S507). `ticket_hex` is the hex-encoded ISteamUser::GetAuthSessionTicket
  * blob -- obtaining it is real Steamworks-SDK client work this function does NOT do (the SDK is

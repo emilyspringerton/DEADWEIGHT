@@ -88,8 +88,10 @@ things are further along than others, and it's worth being precise about which:
   Wine/Windows environment exists to actually execute the `.exe` and confirm a live handshake, so
   don't treat it as proven the way the Linux build is until someone runs it for real.
 - **Draft Runs actually spend and pay out tickets now (S510)** — readying the Itch.io launch plan
-  (free-to-play with a 25-ticket/day guest cap, a $15 "Root Access Override" Premium code as the
-  soft upsell) found this was never true: the DRAFT button's `TICKETS: N` gate was purely
+  (free-to-play with a 20-ticket/day guest cap -- tier_alpha's real cap, `IDUNA/internal/http/
+  handlers/game_online.go`'s own `tierCaps` -- not the 25 first floated in an early planning pass,
+  a $15 "Root Access Override" Premium code as the soft upsell) found this was never true: the
+  DRAFT button's `TICKETS: N` gate was purely
   cosmetic, and the "Uncapped Draft Run" auto-end never actually granted any tickets back. Both
   are now real, atomic IDUNA endpoints (`/draft-run/start`, `/deck`, `/abort`, plain `GET`, all
   player-token-direct, same trust level as `/redeem`) with a real cash-out table (0 tickets under
@@ -101,6 +103,18 @@ things are further along than others, and it's worth being precise about which:
   (`dw_draft_deck_valid`) rather than trusting whatever the client sends. **Not yet built: the
   Android client's own Draft Hub** (`DraftModel.java` still predates this work) — this pass only
   touched the C GUI and the server/IDUNA sides.
+- **Zero-friction boot, no dev fields, real 20-ticket grant (S512)** — the release GUI no longer
+  shows a Host/Port/Name box anywhere; the production `dw_server`/IDUNA addresses are hardcoded
+  defaults (still overridable via `--host`/`--port`/`--iduna-url` for developers, never surfaced
+  in the UI), and boot goes straight from an "ESTABLISHING CONNECTION..." loading screen to the
+  Main Menu with a real, server-assigned lore name (`Runner-A7B2`, `Cipher-6KHK`, ...) and a real
+  `TICKETS: 20/20`. A custom username is chosen later, via "Claim Account" (linking an email).
+  **Live-verified end to end against production** (`https://okemily.com`, and directly against
+  the local IDUNA process): a fresh boot registers a real guest account, gets a real
+  auto-generated name back, and shows the real 20-ticket grant — not a stale/cached value. The
+  daily top-up was already a rolling 24h window keyed to each player's OWN last top-up (never a
+  synchronized UTC-midnight reset, so players aren't incentivized to all log in at exactly
+  midnight) — confirmed correct and locked in with a new regression test rather than changed.
 
 ## Build (clean-build bar: this must be green before anything else merges)
 
