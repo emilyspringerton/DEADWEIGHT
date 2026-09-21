@@ -1,10 +1,18 @@
 # DEADWEIGHT — Dark Sector: Hold Battles
 
 A fast, mean, 1v1 sci-fi card battler. Two commanders, one Dark Sector holding, and a catalog of
-105 cards you'll learn to distrust — because not everything that looks good *is* good. Built
-Android-first, with a real matchmaking server behind it, so you can play a stranger online or
-warm up against the bot pool. This is a small, sharp game, not a slot-machine live-service pile —
-what's here works, and what doesn't exist yet is called out honestly below.
+105 cards you'll learn to distrust — because not everything that looks good *is* good. A real
+matchmaking server sits behind it, so you can play a stranger online or warm up against the bot
+pool. This is a small, sharp game, not a slot-machine live-service pile — what's here works, and
+what doesn't exist yet is called out honestly below.
+
+**Platform (S513, 2026-09-21): desktop-first now, not Android-first.** The project started
+Android-first; that's no longer the plan. DEADWEIGHT is going all-in on the Windows/Linux desktop
+client for the Itch.io launch, and Steam after (signed up, live once the store's tax paperwork
+clears). The Android app is shelved for now — its current gradient/tier-rim card art is being
+retired, not carried forward; if/when Android comes back it gets its own visual rewrite rather
+than reviving the paused one. See `docs/BRAND_STYLE_GUIDE.md` for the real, current visual
+identity (the desktop GUI's brutalist terminal look).
 
 ## The pitch
 
@@ -67,8 +75,10 @@ whether you won the last round.
 
 ## Honest status
 
-Card mode (random queue, live server, bots, Android client) is real and playable today. A few
-things are further along than others, and it's worth being precise about which:
+Card mode (random queue, live server, bots) is real and playable today on the desktop client. A
+few things are further along than others, and it's worth being precise about which — the Android
+mentions below describe real, existing code, not current priority (see the Platform note above:
+Android is paused, desktop is the real focus for Itch.io and Steam):
 
 - **Rounds resolve with full animation and synthesized audio** in the Windows client — clash
   scenes per triangle outcome and keyword, criticals, resource/status effects, the works (see

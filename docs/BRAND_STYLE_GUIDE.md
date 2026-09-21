@@ -16,28 +16,30 @@ The founder's brief said "reverse-engineer your previous art generation scripts.
 found while writing this: **there are no Python art scripts in this repo.** The real, live art
 pipeline is `art/build_art.sh` (Bash) calling IDUNA's `cmd/nock` CLI, backed by ImageMagick 6 —
 generates the 9 card faces, the card back, and 5 icons (offense/operations/defense/hull/energy),
-shipped into `android/src/main/res/drawable-nodpi`. Not a huge distinction, but the hex codes
-below are pulled from the *real* source (`art/recipes/lib.sh`), not invented, so the toolchain
-matters.
+shipped into `android/src/main/res/drawable-nodpi`. The hex codes below are pulled from the real
+source (`art/recipes/lib.sh`), not invented.
 
-There are actually **two live visual languages in this codebase right now**, and they don't
-match each other:
+**Correction (founder, real-time, same day): the split is by platform, not "chrome vs. card
+art."** The two visual languages below map exactly to the two clients, and the decision has
+already been made:
 
-1. **The GUI chrome** (`apps/gui/main.c`) — menu, HUD, Draft Hub, match screens. This one really
-   is brutalist: flat rectangles, hard 2px frames, a hand-rolled 5x7 bitmap font, a dark
-   navy/graphite palette, zero gradients, zero soft edges. **This is the part of DEADWEIGHT that
-   already lives the "brutalist corporate terminal" pitch, today, shipped.**
-2. **The card face art** (`art/recipes/lib.sh`, NOCK/ImageMagick) — gradient fills, tier rims in
-   bronze/silver/gold, soft glyph shapes. This is closer to a polished sci-fi trading-card look
-   than a brutalist terminal one. It is not wrong or bad — it's just a different, more illustrated
-   register than the chrome around it.
+1. **The Windows/Linux desktop GUI** (`apps/gui/main.c`) — menu, HUD, Draft Hub, match screens,
+   AND the cards themselves (drawn as vector shapes/text at render time, not the NOCK PNGs — see
+   `card_box()`). This one really is brutalist: flat rectangles, hard 2px frames, a hand-rolled
+   5x7 bitmap font, zero gradients, zero soft edges, screenshotted live in Section 6 below.
+   **This is DEADWEIGHT's real, sole, going-forward visual identity** — this is the client
+   launching on Itch.io and, once the tax paperwork clears, Steam.
+2. **The Android app's card art** (`art/recipes/lib.sh`, NOCK/ImageMagick) — gradient fills, tier
+   rims, soft glyph shapes. **This is not a tension to reconcile — the Android product itself is
+   being shelved.** Founder, real-time: "we are abandoning the android aesthetic totally, expect a
+   full rewrite of that code in terms of the visuals... that product is going away for now we are
+   going all in on the desktop clients." Documented here (Section 2B) as a historical/paused
+   artifact, not as this brand's visual language, and not as something worth spending more art
+   budget on until Android is revisited.
 
-This guide treats **the GUI chrome as the real, current brand voice** (Section 2A below) and
-documents the card-art palette as-is (Section 2B) without pretending they're unified. If "fully
-embracing brutalist" means flattening the card art to match the chrome — killing the gradients,
-tier rims, and soft glyphs in favor of flat two-tone shapes and hard edges — that's a real,
-scoped follow-up (`art/recipes/lib.sh` rewrite), not something this document does silently. Naming
-it here so it's a decision, not a drift.
+This guide's entire real, current brand voice is Section 2A. Section 2B exists only so the real
+hex values aren't lost if/when Android comes back with its own (presumably rewritten, presumably
+brutalist-aligned) visual pass.
 
 ---
 
@@ -48,6 +50,12 @@ chrome bevels, no particle-effect flourishes, no "welcome, hero" softness. A ter
 storefront. Every screen looks like something a systems administrator would actually build:
 function first, legibility first, zero ornament. The bitmap font and flat 2px frames already in
 `apps/gui/main.c` are not a placeholder aesthetic to be replaced later — they're the target.
+
+**Platform (founder real-time, same day):** DEADWEIGHT is going all-in on the desktop client —
+Itch.io launch, then Steam once the store paperwork (tax forms) clears. The Android app is shelved
+for now, its visuals slated for a full rewrite whenever it returns. Every visual decision in this
+guide should be made for the desktop GUI; nothing here should be designed around Android's current
+(paused) look.
 
 **The lore:** You are not a hero. You are not named, not voiced, not given a backstory cutscene.
 You are an anonymous intruder — a **Runner** — who has broken into **IDUNA**, the corporate
@@ -63,7 +71,7 @@ describing, almost literally, what the client is actually doing on the wire.
 
 ---
 
-## 2A. Visual Language — GUI Chrome (real, shipped, the brand's true voice)
+## 2A. Visual Language — Desktop Client (real, shipped, THE brand)
 
 Pulled verbatim from `apps/gui/main.c`'s own `Col` constants (0–255 RGB, converted to hex below).
 
@@ -111,10 +119,12 @@ game should ever use.
 
 ---
 
-## 2B. Visual Language — Card Face Art (real, shipped, different register)
+## 2B. Visual Language — Android Card Art (PAUSED, not this brand's voice)
 
-For completeness and honesty, not because it fits the brutalist pillar. From
-`art/recipes/lib.sh`:
+**Not the current brand.** The Android app is being shelved ("that product is going away for now
+we are going all in on the desktop clients") and its visuals are slated for a full rewrite
+whenever it comes back. Recorded here purely so the real hex values from the actual pipeline
+aren't lost — not a style to draw from for anything shipping now. From `art/recipes/lib.sh`:
 
 | Name | Hex | Role |
 |---|---|---|
@@ -186,6 +196,9 @@ done in this pass.
   faceless — that's the point, not a missing feature.
 - **No soft/rounded UI geometry.** Rounded corners, soft shadows, pill-shaped buttons — all off
   brand. Hard rectangles only.
+- **No new art budget into the current Android gradient/tier-rim pipeline.** That product is
+  shelved; that visual language is paused, not this brand's target. Don't extend `art/recipes/
+  lib.sh` for new content while Android itself is on hold.
 
 ---
 
@@ -218,6 +231,29 @@ thing in this universe that isn't brutalist-terminal-flat. Contrast, not consist
 point of her appearing this way. Not scoped, not built, no code or asset work follows from this
 section — recorded as a real creative decision point for whenever the budget conversation is
 real.
+
+---
+
+## 6. Live-Verified: the desktop client actually runs and plays (S513)
+
+Not a claim taken on faith — the founder asked "please spin up the client yourself on the desktop
+i bet you can and i bet you can even play some," so it was actually done: a real `dw_server` +
+3-bot pool + `dw_gui` were launched together under a real Xvfb X display (not the `--selftest`
+harness), and a real match was played against a real bot opponent via real synthetic mouse input
+(`xdotool`), not scripted internal hooks.
+
+![Desktop menu — real boot, real auto-generated name, real ticket balance](img/s513_desktop_menu.png)
+
+Real, live: auto-generated guest name (`NODE-CRL5`), real `TICKETS: 20/20` from IDUNA, and — found
+in the process of actually clicking through it — a real bug: the PRACTICE button's label
+overflowed its box at the usual text scale and read as truncated. Fixed on the spot
+(`button()` now drops to a smaller scale when a label won't fit; `apps/gui/main.c`).
+
+![A real round, resolved live against a bot opponent, mid-match](img/s513_desktop_match.png)
+
+Round 1 played and resolved for real: `Iron Dwarf` (Offense) into the bot's `Heartsteel`
+(Defense), reflected, real damage log (`R1 YOU -3 +0 OPP -0 +0`), a fresh hand dealt for round 2.
+This is the actual, real, current state of the brand's true visual language — not a mockup.
 
 ---
 

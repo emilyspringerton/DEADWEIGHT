@@ -2,7 +2,7 @@
 
 ## What this is
 
-New repo (2026-09-11); VS0 (card mode, Android-first) build started 2026-09-18 (S503) — see `docs/VS0_SCOPING.md`. Home for **Dark Sector: Hold Battles**,
+New repo (2026-09-11); VS0 (card mode) build started 2026-09-18 (S503) — see `docs/VS0_SCOPING.md`. **Platform correction (S513, 2026-09-21, founder real-time): VS0 started Android-first, but that's no longer the plan — desktop (Windows/Linux) is now the sole real priority, for the Itch.io launch and the Steam launch after (signed up, pending tax paperwork). The Android app is shelved; its current card-art visuals are being retired, not carried forward. See `docs/BRAND_STYLE_GUIDE.md` for the real, current (desktop) visual identity.** Home for **Dark Sector: Hold Battles**,
 a 1v1 real-time PvP spatial-knapsack auto-battler: players pack polyomino cargo items (some
 splittable, at a real fragmentation-tax cost) into a 6x6 grid under a Black-Market draft phase,
 then the same grid becomes their ship's combat layout — item shape/orientation routes energy from
@@ -19,7 +19,7 @@ why, before any of it gets built.
 
 ## Stack (VS0 in progress — see `docs/VS0_SCOPING.md`, `EMILY/BACKLOG.md` SECTION 503)
 
-**VS0 = card mode first, Android-first, multiplayer + bots from day one.** Backpack battler (6x6 grid) is VS1.
+**VS0 = card mode first, desktop-first (Android paused, see the platform correction above), multiplayer + bots from day one.** Backpack battler (6x6 grid) is VS1.
 
 - **Rules**: `PARENA/stdlib/deadweight/card_rules.prn` is the single source of truth (scalar-only), emitted to C
   (`core/card_rules.c`) and Java (`android/.../generated/CardRules.java`); regenerate with `scripts/gen_rules.sh`.
