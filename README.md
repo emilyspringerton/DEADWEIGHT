@@ -79,12 +79,14 @@ things are further along than others, and it's worth being precise about which:
   Android draft screens have only been type-checked against the SDK, never run on a real device.
 - **Constructed decks (bring your own deck)** — not built.
 - **Accounts (IDUNA guest auth, tiered Draft tickets, redeem codes, Uncapped Draft Runs)** are real
-  and live against production. The Windows/Linux GUI client now speaks real TLS (mbedTLS, bound
-  via PARENA — `stdlib/net/tls.prn`, never hand-rolled crypto) and defaults to the real production
-  IDUNA URL, live-verified end to end with the actual shipped binary. **The Windows cross-build
-  does not have TLS yet** — no mingw mbedTLS package exists and a from-source cross-compile hasn't
-  been done or verified; the Windows `.exe` currently only works against a `--no-auth` /
-  plain-HTTP server, not the real internet-facing production one, until that lands.
+  and live against production. The GUI client speaks real TLS (mbedTLS, bound via PARENA —
+  `stdlib/net/tls.prn`, never hand-rolled crypto) and defaults to the real production IDUNA URL.
+  The **Linux build is live-verified end to end** with the actual shipped binary (real handshake,
+  real cert verification, real account created against `https://okemily.com`). The **Windows
+  cross-build (`dw_gui.exe`) compiles and links clean** with a real mbedTLS mingw build and a real
+  embedded CA bundle (see `docs/WINDOWS_TLS_BUILD.md`), but has **not been runtime-verified** — no
+  Wine/Windows environment exists to actually execute the `.exe` and confirm a live handshake, so
+  don't treat it as proven the way the Linux build is until someone runs it for real.
 
 ## Build (clean-build bar: this must be green before anything else merges)
 
