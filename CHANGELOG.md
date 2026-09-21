@@ -1,6 +1,7 @@
 # CHANGELOG
 
 ## 2026-09-21
+- Fix: live match/deck logs (dw-server's --match-log) moved out of the git working tree to ~/.local/var/deadweight/matches -- the in-repo path was being unknowingly truncated by routine dev repo-hygiene commands, which caused the WOTAN deck-stats/player-deck data loss reported 2026-09-21 (sess-20260920-1908-24cb3558)
 - Fix: new client's guest auth no longer mislabels a 429 rate-limit rejection as 'IDUNA offline' -- surfaces the real HTTP status so a signup-cap hit is diagnosable, not mistaken for an outage (sess-20260920-1908-24cb3558)
 - S512: zero-friction boot (no Host/Port/Name UI, real loading screen), server-assigned lore names, live-verified 20-ticket grant (sess-20260920-1908-24cb3558)
 - S510: real ticket-consuming Draft Runs -- IDUNA cash-out reward table + Abort/Resume endpoints, new Draft Hub GUI screen, DW_C_DRAFT_RESUME wire message with server-side deck-legality revalidation (sess-20260920-1908-24cb3558)
