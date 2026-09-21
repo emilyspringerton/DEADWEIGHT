@@ -1,8 +1,83 @@
 # DEADWEIGHT — Dark Sector: Hold Battles
 
-1v1 spatial-knapsack PvP. **VS0 = card mode**, Android-first, multiplayer + bots from day one. Card mode now ships a **105-card catalog** under an **Offense (Red) > Operations (Yellow) > Defense (Blue) > Offense** triangle (35 cards each; every Operations card has one of five keywords: Lock, Sabotage, Flank, Scan, Siphon) (the 9 base cards + 64 "Underwriters' Guild" cards with armor, credits, statuses, hand locks and control effects) over wire protocol **v3** — see `docs/CARD_MODE_RULES.md` for the full catalog. Deliberately **not** balanced by tooling: bad cards, trap cards, generally-strong staples and expensive control bombs are all on purpose. There are two queues: **random** (each player shuffles the whole catalog) and **draft** (each player first drafts a 16-pick, 23-card deck; after a game choose the same deck or redraft, bots keep a winning deck and redraft after a loss; every drafted deck is logged to `decks.ndjson`). Rounds resolve with a full animation and synthesized-audio sequence in the Windows client (clash scenarios per triangle outcome and keyword, criticals, resource and status effects, redline; see `docs/ANIMATION_AND_AUDIO.md`; not in the Android client yet, and the audio has been verified numerically, not by ear). Draft is implemented across the server, bots, Windows GUI and Android client and verified by unit + end-to-end tests (see `docs/CARD_MODE_RULES.md`); it is **not deployed to the live server yet**, the Android draft screens have only been type-checked against the SDK (never run on a device), and constructed (bring your own deck) is not built.
-Start at `docs/VS0_SCOPING.md`; rules in `docs/CARD_MODE_RULES.md`; wire format in `docs/WIRE_PROTOCOL.md`;
-the long-horizon game analysis is `NORTHSTAR.md` (backpack-battler mode = VS1).
+A fast, mean, 1v1 sci-fi card battler. Two commanders, one Dark Sector holding, and a catalog of
+105 cards you'll learn to distrust — because not everything that looks good *is* good. Built
+Android-first, with a real matchmaking server behind it, so you can play a stranger online or
+warm up against the bot pool. This is a small, sharp game, not a slot-machine live-service pile —
+what's here works, and what doesn't exist yet is called out honestly below.
+
+## The pitch
+
+You and your opponent each command a ship with **20 hull, 2 energy, 3 credits, and no armor**.
+Every round you both secretly lock in one move — play a card from your hand of 4, or pass to bank
+energy — and then both moves resolve at once. No watching your opponent think. No stalling. Just
+a clean, simultaneous read on what they're about to do, round after round, for up to 100 rounds.
+
+Every card in the game is one of three kinds, and the kinds form a triangle:
+
+- **Offense (Red)** — direct attacks, missiles, kinetic force.
+- **Operations (Yellow)** — active tactical plays: hacking, jamming, maneuvering.
+- **Defense (Blue)** — barriers, repair, armor, reserves.
+
+**Offense beats Operations. Operations beats Defense. Defense beats Offense.** Reading your
+opponent's kind, not just their card, is half the game.
+
+Operations cards go further — every one of them carries a named keyword that tells you what kind
+of trouble it is before you've even read the rules text:
+
+| Keyword | What it means at the table |
+|---|---|
+| **Lock** | Precision targeting. Pierces armor, guarantees damage that can't be reflected. |
+| **Sabotage** | Viruses and hijacks. Burns you over time, cancels your play, disables cards sitting in your hand. |
+| **Flank** | Positional strikes. Bonus damage against Defense, or against an opponent who just passed. |
+| **Scan** | Intel. Reveals your hand, your hull, your energy, your credits — then punishes what it finds. |
+| **Siphon** | Resource theft. Drains your energy and credits straight into your opponent's pocket. |
+
+The catalog is **deliberately not balanced by a program**. There are genuine traps, cards that
+read as strong and aren't, quietly excellent staples nobody notices at first, and a handful of
+expensive control bombs that can swing a whole match if you let them sit uncontested. Learning
+which cards only *look* good is part of learning to play.
+
+## Play your way in
+
+Queue up random, or draft first:
+
+- **Random queue** — every player shuffles the full 105-card catalog. Fast, chaotic, no prep.
+- **Draft queue** — draft a 23-card deck from a run of picks before the match starts, then either
+  keep that deck for your next game or redraft. Every drafted deck gets logged, so the meta is
+  visible, not folklore.
+
+## Real online multiplayer, from day one
+
+DEADWEIGHT isn't bots-only with multiplayer bolted on later — it shipped with a real,
+server-authoritative matchmaker from the start. A single dedicated server hosts many matches at
+once over a lightweight TCP wire protocol, so queueing into a live opponent and queueing into a
+bot feel the same from the client's side. No opponent online, or just want to warm up? A standing
+pool of heuristic bots sits on the same matchmaker humans use — no separate "practice mode," it's
+the same queue. Every match, human or bot, is tracked the same way: results, ratings, and drafted
+decks all land in the same place, so the game keeps a real record of how you're playing, not just
+whether you won the last round.
+
+## Where to start reading
+
+- `docs/VS0_SCOPING.md` — what card mode is, architecture, what's in vs. deferred
+- `docs/CARD_MODE_RULES.md` — the full rules and 105-card catalog
+- `docs/WIRE_PROTOCOL.md` — the network protocol clients speak to the server
+- `NORTHSTAR.md` — the long-horizon game design analysis
+
+## Honest status
+
+Card mode (random queue, live server, bots, Android client) is real and playable today. A few
+things are further along than others, and it's worth being precise about which:
+
+- **Rounds resolve with full animation and synthesized audio** in the Windows client — clash
+  scenes per triangle outcome and keyword, criticals, resource/status effects, the works (see
+  `docs/ANIMATION_AND_AUDIO.md`). The Android client doesn't have this yet, and the audio has been
+  verified numerically, not by ear.
+- **Draft mode** is implemented end-to-end — server, bots, Windows GUI, Android client — and
+  covered by unit and end-to-end tests. It is **not deployed to the live server yet**, and the
+  Android draft screens have only been type-checked against the SDK, never run on a real device.
+- **Constructed decks (bring your own deck)** — not built.
 
 ## Build (clean-build bar: this must be green before anything else merges)
 
@@ -34,3 +109,11 @@ truncate expressions longer than 511 characters.)
 
 `.github/workflows/ci.yml`: every push builds/tests everything; every green push to `main` auto-bumps the minor
 version and publishes a GitHub Release (server, Windows client, APK). Unlicense.
+
+---
+
+Long-term, DEADWEIGHT isn't just the card battler — it's the front end of a bigger idea, a
+spatial-knapsack "backpack battler" where you pack physical cargo into a grid and that same
+layout becomes your ship's combat loadout. **That mode does not exist yet** — it's a design-only,
+long-horizon plan (`NORTHSTAR.md` calls it VS1), with no code written toward it. Everything
+above this line is the real game, playable today.

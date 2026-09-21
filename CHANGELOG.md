@@ -1,5 +1,9 @@
 # CHANGELOG
 
+## 2026-09-21
+
+- docs(readme): full marketing rewrite of README.md for the card battler (triangle, keywords, draft/random queues, real online multiplayer from day one); backpack battler/VS1 mentioned only as the closing line, explicitly flagged as not built yet; honest-status section preserved from the prior README (draft not deployed live, Android draft screens untested on device, constructed decks not built)
+
 ## 2026-09-20
 
 - EMP visual effect redesigned for photosensitivity safety (pulsed flicker + scanlines + glitch bars); text drop shadows added for contrast (sess-20260920-1908-24cb3558)
