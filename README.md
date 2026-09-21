@@ -118,10 +118,11 @@ Android is paused, desktop is the real focus for Itch.io and Steam):
   defaults (still overridable via `--host`/`--port`/`--iduna-url` for developers, never surfaced
   in the UI), and boot goes straight from an "ESTABLISHING CONNECTION..." loading screen to the
   Main Menu with a real, server-assigned lore name (`Runner-A7B2`, `Cipher-6KHK`, ...) and a real
-  `TICKETS: 20/20`. A custom username is chosen later, via "Claim Account" (linking an email).
+  ticket balance (25/day for a Protofounder as of S522, up from 20 — see below). A custom email
+  identity is chosen later, via "Claim Account".
   **Live-verified end to end against production** (`https://okemily.com`, and directly against
   the local IDUNA process): a fresh boot registers a real guest account, gets a real
-  auto-generated name back, and shows the real 20-ticket grant — not a stale/cached value. The
+  auto-generated name back, and shows the real ticket grant — not a stale/cached value. The
   daily top-up resets on a **fixed UTC calendar-day boundary** (`date(last_ticket_topup_at) <
   date('now')`) — S512 shipped a rolling 24h-since-last-top-up window instead, reversed same-day
   (S515, exec real-time) once the retention downside was named: a rolling window drifts a
@@ -152,6 +153,20 @@ Android is paused, desktop is the real focus for Itch.io and Steam):
   against production (a real test account's draft-run `losses` incremented 0→1 from an actual
   played match) before calling it done — see `ops/systemd/dw.env.example` for the now-correct
   default, so a fresh deploy doesn't regress this again.
+- **Claim Account is a real modal now, and the Protofounder grant is 25/day (S522/S523)** — the
+  button ("SECURE CONNECTION (CLAIM ACCOUNT)") only appears for a real Guest, computed from
+  IDUNA's own `account_state` (not just "no email typed yet," so a restored session never shows
+  it again after claiming). Clicking it opens a bordered, brutalist modal with explicitly labeled
+  EMAIL/PASSWORD fields — the old inline boxes had no labels at all, a real usability gap the
+  founder caught in a live design pass. A claimed account shows a permanent "CONNECTION SECURED"
+  confirmation. Backend (`guest-upgrade`) was already correct — player_id/tickets/match history
+  are untouched by a claim, verified live including a 409 on double-claiming the same account.
+  Two more real bugs found and fixed in the same pass: maximizing/fullscreening the window left
+  the game pinned top-left instead of staying centered (SDL2's logical-size letterbox doesn't
+  reliably recompute on a live resize for this renderer — reproduced with a real window resize
+  before fixing, not assumed); the bitmap font never had `@` or `*` glyphs, so a typed email and
+  the password mask both rendered as `?`. Not built: player rename — Claim Account only ever
+  links an email, there is no display-name-change path anywhere in this client or IDUNA yet.
 
 ## Build (clean-build bar: this must be green before anything else merges)
 
