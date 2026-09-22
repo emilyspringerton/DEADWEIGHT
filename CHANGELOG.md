@@ -1,5 +1,10 @@
 # CHANGELOG
 
+## 2026-09-22
+
+- New scripts/onboarding_screenshots.sh -- automates real, live screenshot capture of the onboarding funnel (menu, Claim Account modal, queue, match, end) via Xvfb+xdotool driving the actual dw_gui binary. Kanban #422. (sess-20260920-1908-24cb3558)
+
+
 ## 2026-09-21
 - New Claim Account modal (brutalist, labeled EMAIL/PASSWORD, gated on real Guest state via account_state) replaces the old always-visible unlabeled inline fields; fixed a real bug where maximizing/fullscreening the window left content pinned top-left instead of centered; added missing '@'/'*' glyphs to the bitmap font (email/password fields were unreadable) (sess-20260920-1908-24cb3558)
 - Fix: production dw_server has run with --no-auth and no IDUNA config since it was first deployed -- match results, ELO stats, and draft win-loss tracking were never once reported to IDUNA. Wired in the real (already-provisioned) DEADWEIGHT-SERVER/DEADWEIGHT-BOTS agent credentials, redeployed, and verified end to end against production (a real match's loss correctly incremented a test account's draft run). (sess-20260920-1908-24cb3558)
