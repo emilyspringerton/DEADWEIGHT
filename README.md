@@ -167,6 +167,16 @@ Android is paused, desktop is the real focus for Itch.io and Steam):
   before fixing, not assumed); the bitmap font never had `@` or `*` glyphs, so a typed email and
   the password mask both rendered as `?`. Not built: player rename — Claim Account only ever
   links an email, there is no display-name-change path anywhere in this client or IDUNA yet.
+- **Onboarding screenshot automation (kanban #422)** — `scripts/onboarding_screenshots.sh` drives
+  the real `dw_gui` binary (not `--selftest`'s dummy video driver) under a real Xvfb X server via
+  `xdotool` mouse clicks computed from the client's own logical layout, and captures each real
+  screen with ImageMagick `import`: guest menu, Claim Account modal, matchmaking queue, a live
+  match, and the win/loss end screen — `docs/onboarding_screenshots/`. Live-verified end to end
+  against a throwaway local `dw_server` and real IDUNA guest auth (25 Protofounder tickets shown
+  correctly). Reuses one cached guest account across runs (`build/onboarding_shot_deps/`, gitignored)
+  so repeat runs don't burn through IDUNA's 3/day/IP guest-signup rate limit re-registering a fresh
+  account every time. No root needed — extracts `xdotool`/`libxdo3` from `.deb` locally if not
+  already on `PATH`.
 
 ## Build (clean-build bar: this must be green before anything else merges)
 
