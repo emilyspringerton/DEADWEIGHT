@@ -143,6 +143,59 @@ jobs:
             dw_gui_linux_x86_64.tar.gz
             dw_gui_windows.zip
           if-no-files-found: error
+      # S528, founder real-time: "we need an app repository in IDUNA signed in github somehow
+      # with emily session new for the build before each build ... figure out how to sign them
+      # with gpg keys". See IDUNA/docs/APP_RELEASE_SIGNING.md for the full mechanism (real,
+      # live-verified end to end there) and the one manual step still open: the two secrets this
+      # step reads (EINHORN_APP_RELEASES_GPG_PRIVATE_KEY, APP_RELEASES_CI_SECRET) haven't been
+      # added to this repo yet -- a human-only step, same class as every other secret in this
+      # monorepo. Until they exist, this step degrades to a clean, logged no-op rather than
+      # failing the whole job (a missing secret must never break an otherwise-green build).
+      - name: Sign + publish to IDUNA app-release registry
+        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        env:
+          GPG_PRIVATE_KEY: ${{ secrets.EINHORN_APP_RELEASES_GPG_PRIVATE_KEY }}
+          APP_RELEASES_CI_SECRET: ${{ secrets.APP_RELEASES_CI_SECRET }}
+          IDUNA_BASE_URL: https://okemily.com
+        run: |
+          set -euo pipefail
+          if [ -z "${GPG_PRIVATE_KEY:-}" ] || [ -z "${APP_RELEASES_CI_SECRET:-}" ]; then
+            echo "app-release signing secrets not configured yet -- skipping publish (see IDUNA/docs/APP_RELEASE_SIGNING.md)"
+            exit 0
+          fi
+          echo "$GPG_PRIVATE_KEY" | gpg --batch --import
+          KEYID="A9BEEFEC4DF16C2E"
+
+          # Real emily session new (public sibling repo, no token needed -- same pattern as the
+          # PARENA sibling checkout above) as a free, cheap, per-build provenance tag. EMILY_ROOT
+          # points at a throwaway CI workspace dir -- emily session new creates it itself.
+          git clone --depth 1 https://github.com/emilyspringerton/emily.cli.git /tmp/emily-cli
+          ( cd /tmp/emily-cli && go build -o /tmp/emily . )
+          SESSION_TAG="$(EMILY_ROOT=/tmp/emily-root /tmp/emily session new | grep '^tag:' | awk '{print $2}')"
+          echo "build session tag: $SESSION_TAG"
+
+          for pkg in dw_gui_linux_x86_64.tar.gz:linux_x86_64 dw_gui_windows.zip:windows_x86_64; do
+            file="${pkg%%:*}"; platform="${pkg##*:}"
+            gpg --batch --yes --local-user "$KEYID" --detach-sign --armor -o "$file.sig" "$file"
+
+            TOKEN="$(curl -sf -X POST "$IDUNA_BASE_URL/api/v1/auth/agent" \
+              -H 'Content-Type: application/json' \
+              -d "{\"agent_name\":\"APP-RELEASES-CI\",\"agent_secret\":\"$APP_RELEASES_CI_SECRET\"}" \
+              | python3 -c "import json,sys;print(json.load(sys.stdin)['access_token'])")"
+
+            curl -sf -X POST "$IDUNA_BASE_URL/api/v1/app-releases" \
+              -H "Authorization: Bearer $TOKEN" \
+              -F "binary=@${file}" \
+              -F "app_slug=deadweight" \
+              -F "platform=${platform}" \
+              -F "version=${{ needs.version.outputs.version }}" \
+              -F "session_tag=${SESSION_TAG}" \
+              -F "gpg_signature=$(cat "${file}.sig")" \
+              -F "gpg_key_id=${KEYID}" \
+              -F "github_commit_sha=${GITHUB_SHA}" \
+              -F "github_run_url=https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+            echo "published ${file} (${platform})"
+          done
 
   android:
     name: Android (JVM parity test + APK)
