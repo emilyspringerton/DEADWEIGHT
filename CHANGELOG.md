@@ -1,6 +1,7 @@
 # CHANGELOG
 
 ## 2026-09-22
+- CI now signs + publishes release binaries to IDUNA's new app-release registry (guarded no-op until GitHub secrets are configured). (sess-20260920-1908-24cb3558)
 
 - New scripts/onboarding_screenshots.sh -- automates real, live screenshot capture of the onboarding funnel (menu, Claim Account modal, queue, match, end) via Xvfb+xdotool driving the actual dw_gui binary. Kanban #422. (sess-20260920-1908-24cb3558)
 
