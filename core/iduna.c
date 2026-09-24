@@ -209,6 +209,122 @@ int dwi_email_login(DwIduna *d, const char *email, const char *password, char *t
     return dw_json_str(resp, "token", tok, tn) ? 0 : -1;
 }
 
+/* --- S537: friends, public profiles, friendly-challenge duels ------------------------------ */
+
+static void fillFriendRequest(const char *obj, DwFriendRequest *out) {
+    memset(out, 0, sizeof *out);
+    dw_json_int(obj, "id", &out->id);
+    dw_json_str(obj, "requester_id", out->requester_id, sizeof out->requester_id);
+    dw_json_str(obj, "recipient_id", out->recipient_id, sizeof out->recipient_id);
+    dw_json_str(obj, "status", out->status, sizeof out->status);
+}
+
+static void fillFriendSummary(const char *obj, DwFriendSummary *out) {
+    memset(out, 0, sizeof *out);
+    dw_json_str(obj, "player_id", out->player_id, sizeof out->player_id);
+    dw_json_str(obj, "display_name", out->display_name, sizeof out->display_name);
+    dw_json_int(obj, "rating", &out->rating);
+}
+
+static void fillDuel(const char *obj, DwDuel *out) {
+    memset(out, 0, sizeof *out);
+    dw_json_int(obj, "id", &out->id);
+    dw_json_str(obj, "challenger_id", out->challenger_id, sizeof out->challenger_id);
+    dw_json_str(obj, "challenged_id", out->challenged_id, sizeof out->challenged_id);
+    dw_json_str(obj, "status", out->status, sizeof out->status);
+}
+
+int dwi_profile(DwIduna *d, const char *player_id, DwProfile *out) {
+    char path[192], resp[1024]; int st = 0;
+    snprintf(path, sizeof path, GAME "/players/%s/profile", player_id);
+    if (dw_http("GET", d->host, d->port, d->use_tls, path, NULL, NULL, resp, sizeof resp, &st, TMO) != 0 || st != 200) return -1;
+    memset(out, 0, sizeof *out);
+    dw_json_str(resp, "player_id", out->player_id, sizeof out->player_id);
+    dw_json_str(resp, "display_name", out->display_name, sizeof out->display_name);
+    dw_json_int(resp, "rating", &out->rating);
+    dw_json_int(resp, "wins", &out->wins);
+    dw_json_int(resp, "losses", &out->losses);
+    dw_json_int(resp, "draws", &out->draws);
+    dw_json_int(resp, "matches", &out->matches);
+    dw_json_int(resp, "friend_count", &out->friend_count);
+    return 0;
+}
+
+int dwi_friend_request_send(DwIduna *d, const char *player_token, const char *to_player_id, int *out_status) {
+    char body[128], resp[512]; int st = 0;
+    snprintf(body, sizeof body, "{\"to_player_id\":\"%s\"}", to_player_id);
+    if (dw_http("POST", d->host, d->port, d->use_tls, GAME "/friend-requests", player_token, body, resp, sizeof resp, &st, TMO) != 0) { if (out_status) *out_status = 0; return -1; }
+    if (out_status) *out_status = st;
+    return (st == 200 || st == 201) ? 0 : -2;
+}
+
+int dwi_friend_requests_list(DwIduna *d, const char *player_token,
+                              DwFriendRequest *out_incoming, int max_incoming, int *out_incoming_n,
+                              DwFriendRequest *out_outgoing, int max_outgoing, int *out_outgoing_n) {
+    char resp[4096]; int st = 0;
+    if (dw_http("GET", d->host, d->port, d->use_tls, GAME "/friend-requests", player_token, NULL, resp, sizeof resp, &st, TMO) != 0 || st != 200) return -1;
+    if (out_incoming_n) {
+        int n = 0; const char *obj;
+        while (n < max_incoming && dw_json_array_at(resp, "incoming", n, &obj)) { fillFriendRequest(obj, &out_incoming[n]); n++; }
+        *out_incoming_n = n;
+    }
+    if (out_outgoing_n) {
+        int n = 0; const char *obj;
+        while (n < max_outgoing && dw_json_array_at(resp, "outgoing", n, &obj)) { fillFriendRequest(obj, &out_outgoing[n]); n++; }
+        *out_outgoing_n = n;
+    }
+    return 0;
+}
+
+int dwi_friend_request_respond(DwIduna *d, const char *player_token, int request_id, int accept) {
+    char path[128], resp[256]; int st = 0;
+    snprintf(path, sizeof path, GAME "/friend-requests/%d/%s", request_id, accept ? "accept" : "decline");
+    if (dw_http("POST", d->host, d->port, d->use_tls, path, player_token, "{}", resp, sizeof resp, &st, TMO) != 0) return -1;
+    return st == 200 ? 0 : -2;
+}
+
+int dwi_friends_list(DwIduna *d, const char *player_token, DwFriendSummary *out, int max_n, int *out_n) {
+    char resp[4096]; int st = 0;
+    if (dw_http("GET", d->host, d->port, d->use_tls, GAME "/friends", player_token, NULL, resp, sizeof resp, &st, TMO) != 0 || st != 200) return -1;
+    int n = 0; const char *obj; /* /friends is a bare top-level array -- key=NULL */
+    while (n < max_n && dw_json_array_at(resp, NULL, n, &obj)) { fillFriendSummary(obj, &out[n]); n++; }
+    if (out_n) *out_n = n;
+    return 0;
+}
+
+int dwi_friend_remove(DwIduna *d, const char *player_token, const char *friend_player_id) {
+    char path[192], resp[256]; int st = 0;
+    snprintf(path, sizeof path, GAME "/friends/%s", friend_player_id);
+    if (dw_http("DELETE", d->host, d->port, d->use_tls, path, player_token, NULL, resp, sizeof resp, &st, TMO) != 0) return -1;
+    return st == 200 ? 0 : -2;
+}
+
+int dwi_duel_create(DwIduna *d, const char *player_token, const char *to_player_id, int *out_id, int *out_status) {
+    char body[128], resp[256]; int st = 0;
+    snprintf(body, sizeof body, "{\"to_player_id\":\"%s\"}", to_player_id);
+    if (dw_http("POST", d->host, d->port, d->use_tls, GAME "/duels", player_token, body, resp, sizeof resp, &st, TMO) != 0) { if (out_status) *out_status = 0; return -1; }
+    if (out_status) *out_status = st;
+    if (st != 201) return -2;
+    if (out_id) dw_json_int(resp, "id", out_id);
+    return 0;
+}
+
+int dwi_duels_list(DwIduna *d, const char *player_token, DwDuel *out, int max_n, int *out_n) {
+    char resp[4096]; int st = 0;
+    if (dw_http("GET", d->host, d->port, d->use_tls, GAME "/duels", player_token, NULL, resp, sizeof resp, &st, TMO) != 0 || st != 200) return -1;
+    int n = 0; const char *obj; /* /duels is a bare top-level array -- key=NULL */
+    while (n < max_n && dw_json_array_at(resp, NULL, n, &obj)) { fillDuel(obj, &out[n]); n++; }
+    if (out_n) *out_n = n;
+    return 0;
+}
+
+int dwi_duel_respond(DwIduna *d, const char *player_token, int duel_id, int accept) {
+    char path[128], resp[256]; int st = 0;
+    snprintf(path, sizeof path, GAME "/duels/%d/%s", duel_id, accept ? "accept" : "decline");
+    if (dw_http("POST", d->host, d->port, d->use_tls, path, player_token, "{}", resp, sizeof resp, &st, TMO) != 0) return -1;
+    return st == 200 ? 0 : -2;
+}
+
 int dwi_ticket_consume(DwIduna *d, const char *pid, int *out_tickets) {
     char body[128], resp[512]; int st = 0;
     snprintf(body, sizeof body, "{\"player_id\":\"%s\"}", pid);

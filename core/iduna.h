@@ -13,6 +13,13 @@ typedef struct {
 
 typedef struct { char player_id[48]; char display_name[48]; int kind; /* 0 human, 1 bot */ } DwIdentity;
 
+/* S537: friends/profiles/friendly-challenge duels (IDUNA internal/http/handlers/game_social.go) --
+ * the same identity/routes WOTAN's friends.html/profile.html and the web client's social.ts use. */
+typedef struct { char player_id[48]; char display_name[48]; int rating; int wins, losses, draws, matches; int friend_count; } DwProfile;
+typedef struct { int id; char requester_id[48]; char recipient_id[48]; char status[16]; } DwFriendRequest;
+typedef struct { char player_id[48]; char display_name[48]; int rating; } DwFriendSummary;
+typedef struct { int id; char challenger_id[48]; char challenged_id[48]; char status[16]; } DwDuel;
+
 typedef struct {
     unsigned match_id, seed; char seat_pid[2][48];
     int winner;                       /* 0 / 1 / 2 = draw */
@@ -103,4 +110,24 @@ int dwi_email_login(DwIduna *d, const char *email, const char *password, char *t
  * (guest or steam, not an agent). 0 ok (fills out_tickets_granted/out_founder/out_balance), -1
  * network error, -2 IDUNA rejected the code (invalid/already-used/wrong game/bad auth). */
 int dwi_redeem(DwIduna *d, const char *player_token, const char *code, int *out_tickets_granted, int *out_founder, int *out_balance);
+
+/* Friends, public profiles, friendly-challenge duels (S537). Public GET, no auth needed. 0 ok, -1
+ * not found / network error. */
+int dwi_profile(DwIduna *d, const char *player_id, DwProfile *out);
+/* Everything below takes the CALLER'S OWN token (guest, steam, or email-linked -- any provider,
+ * same trust level as dwi_redeem/dwi_guest_upgrade above; friends/duels never need email-linking,
+ * unlike WOTAN's own friends.html which only requires that because it's a separate site with no
+ * other way to obtain a session). 0 ok, -2 IDUNA rejected (self-friend, not-yet-friends for a
+ * duel, already exists, etc. -- out_status carries the real HTTP status for a caller that wants
+ * to distinguish, may be NULL), -1 network/config error. */
+int dwi_friend_request_send(DwIduna *d, const char *player_token, const char *to_player_id, int *out_status);
+int dwi_friend_requests_list(DwIduna *d, const char *player_token,
+                              DwFriendRequest *out_incoming, int max_incoming, int *out_incoming_n,
+                              DwFriendRequest *out_outgoing, int max_outgoing, int *out_outgoing_n);
+int dwi_friend_request_respond(DwIduna *d, const char *player_token, int request_id, int accept);
+int dwi_friends_list(DwIduna *d, const char *player_token, DwFriendSummary *out, int max_n, int *out_n);
+int dwi_friend_remove(DwIduna *d, const char *player_token, const char *friend_player_id);
+int dwi_duel_create(DwIduna *d, const char *player_token, const char *to_player_id, int *out_id, int *out_status);
+int dwi_duels_list(DwIduna *d, const char *player_token, DwDuel *out, int max_n, int *out_n);
+int dwi_duel_respond(DwIduna *d, const char *player_token, int duel_id, int accept);
 #endif

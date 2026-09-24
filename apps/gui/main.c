@@ -95,7 +95,7 @@ static void text_c(int cx, int y, int scale, Col c, const char *fmt, ...) {
 }
 
 /* ---------- app state ---------- */
-enum { S_BOOT, S_MENU, S_QUEUE, S_MATCH, S_END, S_DRAFT, S_DRAFT_HUB, S_CLAIM };
+enum { S_BOOT, S_MENU, S_QUEUE, S_MATCH, S_END, S_DRAFT, S_DRAFT_HUB, S_CLAIM, S_SOCIAL };
 typedef struct {
     int screen;
     char name[DW_NAME_LEN + 1], host[64], port[8], token[DW_MAX_AUTH_TOKEN + 1];
@@ -118,6 +118,16 @@ typedef struct {
      * with "invalid or already-used code" no matter what the player typed/pasted. */
     char redeem_code[40]; char redeem_msg[64];
     char link_email[64], link_pass[32]; char link_msg[64];
+    /* S537: friends, public profile, friendly-challenge duels. social_tab: 0 FRIENDS, 1 REQUESTS,
+     * 2 DUELS. social_add_id is the one text field this screen has (a Player ID to friend --
+     * there is no player-search-by-name yet, matching WOTAN's own friends.html and the web
+     * client's social.ts, same real, named limit). Lists are refreshed on entry and after every
+     * action (refresh_social()), never streamed. */
+    int social_tab; char social_add_id[48]; char social_msg[64]; int social_msg_ok;
+    DwProfile social_me;
+    DwFriendSummary social_friends[8]; int social_friends_n;
+    DwFriendRequest social_incoming[6], social_outgoing[6]; int social_incoming_n, social_outgoing_n;
+    DwDuel social_duels[8]; int social_duels_n;
     DwClient c; int connected, welcomed;
     uint32_t match_id; int seat; char opp[DW_NAME_LEN + 1]; int opp_kind;
     int round, hull_you, hull_opp, energy_you, energy_opp, opp_hand; int8_t hand[4];
@@ -228,6 +238,39 @@ static void do_redeem(void) {
     A.redeem_code[0] = 0;
 }
 static void do_connect(void);           /* defined below -- start_draft_run/do_resume_uplink need it */
+
+/* ---------- Friends & Duels (S537) ---------- */
+static void refresh_social(void) {
+    if (!A.auth_ready) return;
+    dwi_profile(&A.idu, A.player_id, &A.social_me);
+    dwi_friends_list(&A.idu, A.token, A.social_friends, 8, &A.social_friends_n);
+    dwi_friend_requests_list(&A.idu, A.token, A.social_incoming, 6, &A.social_incoming_n, A.social_outgoing, 6, &A.social_outgoing_n);
+    dwi_duels_list(&A.idu, A.token, A.social_duels, 8, &A.social_duels_n);
+}
+static void social_send_request(void) {
+    if (!A.social_add_id[0]) return;
+    int st = 0;
+    int rc = dwi_friend_request_send(&A.idu, A.token, A.social_add_id, &st);
+    A.social_msg_ok = rc == 0;
+    snprintf(A.social_msg, sizeof A.social_msg, rc == 0 ? (st == 200 ? "NOW FRIENDS" : "REQUEST SENT") : "REQUEST FAILED");
+    if (rc == 0) A.social_add_id[0] = 0;
+    refresh_social();
+}
+static void social_respond_request(int id, int accept) {
+    dwi_friend_request_respond(&A.idu, A.token, id, accept);
+    refresh_social();
+}
+static void social_challenge(const char *player_id) {
+    int out_id = 0, st = 0;
+    int rc = dwi_duel_create(&A.idu, A.token, player_id, &out_id, &st);
+    A.social_msg_ok = rc == 0;
+    snprintf(A.social_msg, sizeof A.social_msg, rc == 0 ? "CHALLENGE SENT" : (st == 403 ? "NOT FRIENDS YET" : "CHALLENGE FAILED"));
+    refresh_social();
+}
+static void social_respond_duel(int id, int accept) {
+    dwi_duel_respond(&A.idu, A.token, id, accept);
+    refresh_social();
+}
 static void requeue(int same_deck);     /* defined below -- do_resume_uplink needs it */
 
 /* ---------- Draft Hub (S510) ---------- */
@@ -591,6 +634,7 @@ static void draw_menu(int mx, int my) {
         rect(40, 500, 400, 52, C_PANEL); frame(40, 500, 400, 52, C_GOOD, 2);
         text_c(W / 2, 519, 2, C_GOOD, "CONNECTION SECURED");
     }
+    if (A.auth_ready) button(40, 566, 400, 48, "FRIENDS & DUELS", (Col){140, 90, 200}, 1, mx, my);
     if (A.link_msg[0]) text_c(W / 2, 670, 1, C_GOOD, "%s", A.link_msg);
     else if (A.redeem_msg[0]) text_c(W / 2, 670, 1, C_GOOD, "%s", A.redeem_msg);
     else if (A.err[0]) text_c(W / 2, 670, 1, C_BAD, "%s", A.err);
@@ -618,6 +662,72 @@ static void draw_claim(int mx, int my) {
     button(bx + 24, by + 262, bw - 48, 44, "SUBMIT", (Col){70, 110, 200}, A.link_email[0] && A.link_pass[0], mx, my);
     if (A.link_msg[0]) text_c(W / 2, by + 322, 1, C_BAD, "%s", A.link_msg);
     text_c(W / 2, by + 346, 1, C_DIM, "ESC = CANCEL");
+}
+/* S537: shared row geometry between draw_social() and its click handler in click() -- both must
+ * compute identical coordinates, so they live here once rather than duplicated at each call site. */
+#define SOCIAL_TAB_Y 116
+#define SOCIAL_TAB_H 42
+#define SOCIAL_LIST_Y 172
+#define SOCIAL_ROW_H 68
+#define SOCIAL_ADD_Y 830
+static void draw_social(int mx, int my) {
+    text_c(W / 2, 30, 3, C_TEXT, "FRIENDS & DUELS");
+    text_c(W / 2, 70, 1, C_DIM, "%s  RATING %d  %dW %dL %dD  %d FRIEND%s",
+           A.social_me.display_name[0] ? A.social_me.display_name : A.name, A.social_me.rating,
+           A.social_me.wins, A.social_me.losses, A.social_me.draws, A.social_me.friend_count, A.social_me.friend_count == 1 ? "" : "S");
+    const char *tabs[3] = {"FRIENDS", "REQUESTS", "DUELS"};
+    for (int i = 0; i < 3; i++)
+        button(16 + i * 152, SOCIAL_TAB_Y, 144, SOCIAL_TAB_H, tabs[i], A.social_tab == i ? (Col){140, 90, 200} : C_PANEL, 1, mx, my);
+
+    if (A.social_tab == 0) {
+        if (A.social_friends_n == 0) text_c(W / 2, SOCIAL_LIST_Y + 20, 2, C_DIM, "NO FRIENDS YET");
+        for (int i = 0; i < A.social_friends_n; i++) {
+            int y = SOCIAL_LIST_Y + i * SOCIAL_ROW_H;
+            rect(16, y, W - 32, SOCIAL_ROW_H - 8, C_PANEL);
+            text(28, y + 10, 2, C_TEXT, "%s", A.social_friends[i].display_name);
+            text(28, y + 36, 1, C_DIM, "RATING %d", A.social_friends[i].rating);
+            button(W - 148, y + 10, 120, SOCIAL_ROW_H - 28, "DUEL", C_GOOD, 1, mx, my);
+        }
+    } else if (A.social_tab == 1) {
+        int y = SOCIAL_LIST_Y;
+        text(16, y, 1, C_DIM, "INCOMING (%d)", A.social_incoming_n); y += 20;
+        if (A.social_incoming_n == 0) { text(28, y, 1, C_DIM, "NONE"); y += 26; }
+        for (int i = 0; i < A.social_incoming_n; i++) {
+            rect(16, y, W - 32, 46, C_PANEL);
+            text(24, y + 6, 1, C_TEXT, "%.28s", A.social_incoming[i].requester_id);
+            button(W - 196, y + 2, 84, 42, "OK", C_GOOD, 1, mx, my);
+            button(W - 106, y + 2, 84, 42, "NO", C_BAD, 1, mx, my);
+            y += 52;
+        }
+        y += 14;
+        text(16, y, 1, C_DIM, "OUTGOING (%d)", A.social_outgoing_n); y += 20;
+        if (A.social_outgoing_n == 0) { text(28, y, 1, C_DIM, "NONE"); y += 26; }
+        for (int i = 0; i < A.social_outgoing_n; i++) {
+            text(24, y, 1, C_DIM, "%.28s  (WAITING)", A.social_outgoing[i].recipient_id);
+            y += 24;
+        }
+    } else {
+        if (A.social_duels_n == 0) text_c(W / 2, SOCIAL_LIST_Y + 20, 2, C_DIM, "NO DUELS YET");
+        for (int i = 0; i < A.social_duels_n; i++) {
+            int y = SOCIAL_LIST_Y + i * SOCIAL_ROW_H;
+            int mine_challenger = !strcmp(A.social_duels[i].challenger_id, A.player_id);
+            const char *other = mine_challenger ? A.social_duels[i].challenged_id : A.social_duels[i].challenger_id;
+            int incoming_pending = !mine_challenger && !strcmp(A.social_duels[i].status, "pending");
+            rect(16, y, W - 32, SOCIAL_ROW_H - 8, C_PANEL);
+            text(28, y + 8, 1, C_TEXT, "%.32s", other);
+            text(28, y + 30, 1, incoming_pending ? C_GOOD : C_DIM, "%s -- %s", A.social_duels[i].status, mine_challenger ? "YOU CHALLENGED" : "CHALLENGED YOU");
+            if (incoming_pending) {
+                button(W - 196, y + 8, 84, 42, "OK", C_GOOD, 1, mx, my);
+                button(W - 106, y + 8, 84, 42, "NO", C_BAD, 1, mx, my);
+            }
+        }
+    }
+
+    rect(16, SOCIAL_ADD_Y, W - 32, 44, C_BG); frame(16, SOCIAL_ADD_Y, W - 32, 44, C_SEL, 2);
+    text(26, SOCIAL_ADD_Y + 12, 2, C_TEXT, "%s%s", A.social_add_id, (SDL_GetTicks() / 500) % 2 ? "_" : "");
+    text(16, SOCIAL_ADD_Y - 20, 1, C_DIM, "ADD FRIEND -- ENTER THEIR PLAYER ID, PRESS ENTER");
+    if (A.social_msg[0]) text_c(W / 2, SOCIAL_ADD_Y + 62, 1, A.social_msg_ok ? C_GOOD : C_BAD, "%s", A.social_msg);
+    text_c(W / 2, 940, 1, C_DIM, "ESC = MENU");
 }
 #define DRAFT_BTN_X(card, m) (20 + (card) * 240 + (m) * 70)
 static int draft_mult_ok(int m) { return A.left[m - 1] > 0; }
@@ -710,6 +820,7 @@ static void draw(int mx, int my) {
     switch (A.screen) { case S_BOOT: draw_boot(); break; case S_MENU: draw_menu(mx, my); break; case S_QUEUE: draw_queue(mx, my); break;
                         case S_MATCH: draw_match(mx, my); break; case S_DRAFT: draw_draft(mx, my); break;
                         case S_DRAFT_HUB: draw_draft_hub(mx, my); break; case S_CLAIM: draw_claim(mx, my); break;
+                        case S_SOCIAL: draw_social(mx, my); break;
                         default: draw_end(mx, my); break; }
 }
 
@@ -750,12 +861,39 @@ static void click(int x, int y) {
         if (in_rect(x, y, 40, 338, 400, 60)) { A.mode = DW_MODE_CARD; do_connect(); }
         if (in_rect(x, y, 328, 438, 112, 46) && A.redeem_code[0]) do_redeem();
         if (in_rect(x, y, 40, 500, 400, 52) && A.is_guest) { A.screen = S_CLAIM; A.claim_focus = 0; A.link_msg[0] = 0; }
+        if (in_rect(x, y, 40, 566, 400, 48) && A.auth_ready) { A.screen = S_SOCIAL; A.social_tab = 0; A.social_msg[0] = 0; refresh_social(); }
         break;
     case S_CLAIM: {
         int bx = 40, by = 260, bw = 400;
         if (in_rect(x, y, bx + 24, by + 124, bw - 48, 40)) A.claim_focus = 0;
         if (in_rect(x, y, bx + 24, by + 202, bw - 48, 40)) A.claim_focus = 1;
         if (in_rect(x, y, bx + 24, by + 262, bw - 48, 44) && A.link_email[0] && A.link_pass[0]) do_link_email();
+        break;
+    }
+    case S_SOCIAL: {
+        for (int i = 0; i < 3; i++) if (in_rect(x, y, 16 + i * 152, SOCIAL_TAB_Y, 144, SOCIAL_TAB_H)) { A.social_tab = i; A.social_msg[0] = 0; }
+        if (A.social_tab == 0) {
+            for (int i = 0; i < A.social_friends_n; i++) {
+                int ry = SOCIAL_LIST_Y + i * SOCIAL_ROW_H;
+                if (in_rect(x, y, W - 148, ry + 10, 120, SOCIAL_ROW_H - 28)) social_challenge(A.social_friends[i].player_id);
+            }
+        } else if (A.social_tab == 1) {
+            int ry = SOCIAL_LIST_Y + 20;
+            for (int i = 0; i < A.social_incoming_n; i++) {
+                if (in_rect(x, y, W - 196, ry + 2, 84, 42)) social_respond_request(A.social_incoming[i].id, 1);
+                if (in_rect(x, y, W - 106, ry + 2, 84, 42)) social_respond_request(A.social_incoming[i].id, 0);
+                ry += 52;
+            }
+        } else {
+            for (int i = 0; i < A.social_duels_n; i++) {
+                int ry = SOCIAL_LIST_Y + i * SOCIAL_ROW_H;
+                int mine_challenger = !strcmp(A.social_duels[i].challenger_id, A.player_id);
+                int incoming_pending = !mine_challenger && !strcmp(A.social_duels[i].status, "pending");
+                if (!incoming_pending) continue;
+                if (in_rect(x, y, W - 196, ry + 8, 84, 42)) social_respond_duel(A.social_duels[i].id, 1);
+                if (in_rect(x, y, W - 106, ry + 8, 84, 42)) social_respond_duel(A.social_duels[i].id, 0);
+            }
+        }
         break;
     }
     case S_QUEUE: if (in_rect(x, y, 140, 520, 200, 64)) { send_simple(DW_C_LEAVE); to_menu(""); } break;
@@ -803,6 +941,11 @@ static void append_to_claim_field(int focus, const char *text) {
     for (const char *p = text; *p && n < claim_field_cap(focus); p++)
         if ((unsigned char)*p >= 32 && (unsigned char)*p < 127) { f[n++] = *p; f[n] = 0; }
 }
+static void append_to_social_field(const char *text) {
+    size_t n = strlen(A.social_add_id);
+    for (const char *p = text; *p && n < sizeof A.social_add_id - 1; p++)
+        if ((unsigned char)*p >= 32 && (unsigned char)*p < 127) { A.social_add_id[n++] = *p; A.social_add_id[n] = 0; }
+}
 static void key(SDL_Keycode k) {
     if (A.screen == S_MENU) {
         char *f = field(A.focus);
@@ -832,6 +975,16 @@ static void key(SDL_Keycode k) {
         else if (k == SDLK_RETURN || k == SDLK_KP_ENTER) {
             if (A.link_email[0] && A.link_pass[0]) do_link_email();
         }
+    } else if (A.screen == S_SOCIAL) {
+        if (k == SDLK_ESCAPE) { A.screen = S_MENU; A.social_msg[0] = 0; }
+        else if (k == SDLK_BACKSPACE && A.social_add_id[0]) A.social_add_id[strlen(A.social_add_id) - 1] = 0;
+        else if (k == SDLK_v && (SDL_GetModState() & KMOD_CTRL)) {
+            if (SDL_HasClipboardText()) {
+                char *clip = SDL_GetClipboardText();
+                if (clip) { append_to_social_field(clip); SDL_free(clip); }
+            }
+        }
+        else if (k == SDLK_RETURN || k == SDLK_KP_ENTER) social_send_request();
     } else if (A.screen == S_MATCH) {
         if (k == SDLK_m) sfx_set_muted(!sfx_is_muted());
         else if (k >= SDLK_1 && k <= SDLK_4) select_slot((int)(k - SDLK_1));
@@ -1058,6 +1211,7 @@ int main(int argc, char **argv) {
             else if (e.type == SDL_MOUSEBUTTONDOWN && e.button.button == SDL_BUTTON_LEFT) click(e.button.x, e.button.y);
             else if (e.type == SDL_TEXTINPUT && A.screen == S_MENU) append_to_field(A.focus, e.text.text);
             else if (e.type == SDL_TEXTINPUT && A.screen == S_CLAIM) append_to_claim_field(A.claim_focus, e.text.text);
+            else if (e.type == SDL_TEXTINPUT && A.screen == S_SOCIAL) append_to_social_field(e.text.text);
             else if (e.type == SDL_KEYDOWN) { if (e.key.keysym.sym == SDLK_ESCAPE && A.screen == S_MENU) running = 0; else key(e.key.keysym.sym); }
         }
         pump();

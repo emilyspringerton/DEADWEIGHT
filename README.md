@@ -97,6 +97,13 @@ Android is paused, desktop is the real focus for Itch.io and Steam):
   embedded CA bundle (see `docs/WINDOWS_TLS_BUILD.md`), but has **not been runtime-verified** — no
   Wine/Windows environment exists to actually execute the `.exe` and confirm a live handshake, so
   don't treat it as proven the way the Linux build is until someone runs it for real.
+- **Friends & Duels (S537)** — a real in-game social screen, reachable from the Main Menu once an
+  account is claimed: view your profile, send/accept/decline friend requests, and challenge a
+  friend to a duel. Backed by IDUNA's `/api/v1/games/deadweight/{friend-requests,friends,duels,
+  players/{id}/profile}` routes (same identity the browser client and WOTAN's `friends.html`/
+  `profile.html` use). Verified against a controlled fake IDUNA (unit tests) and a live screenshot
+  pass of the real compiled GUI binary. **A duel invite is accept/decline only for now** — turning
+  an accepted duel into an actual live match ("Duel Phase 2") isn't built yet.
 - **Draft Runs actually spend and pay out tickets now (S510)** — readying the Itch.io launch plan
   (free-to-play with a 20-ticket/day grandfathered guest cap — computed per-player from
   `registered_at` vs. a fixed cutoff date, see S516 below, not the 25 first floated in an early

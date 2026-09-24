@@ -21,6 +21,16 @@ int dw_json_int(const char *json, const char *key, int *out);
 /* Extract a flat JSON array of non-negative small ints: "key":[1,2,3]. Returns how many were
  * written into out (capped at max_n), 0 if the key wasn't found. */
 int dw_json_int_array(const char *json, const char *key, int *out, int max_n);
+/* Points *out_obj at the start of the (0-based) idx'th object inside a JSON array of objects
+ * ("key":[{...},{...}]) -- NOT a copy, NOT null-terminated at the object boundary, just a pointer
+ * into the original json buffer. Pass it straight to dw_json_str/dw_json_int to read that one
+ * object's own fields: since object idx's own fields always appear before any later sibling
+ * object's same-named field, a forward strstr from this pointer finds the right one. key may be
+ * NULL for a bare top-level array response ("[{...},{...}]" with no wrapping object at all).
+ * Same "escape-free" scope as the rest of this header (quote-tracked only enough to not miscount
+ * a brace inside a string value). Returns 1 if idx exists, 0 if the array ends first or the key
+ * wasn't found at all. */
+int dw_json_array_at(const char *json, const char *key, int idx, const char **out_obj);
 /* Parse http://host[:port][/...] or https://host[:port][/...] -> host/port/use_tls (1 for
  * https, 0 for http; default port 443/80 respectively). 0 ok, -1 unrecognized scheme. */
 int dw_parse_url(const char *url, char *host, size_t hn, int *port, int *use_tls);

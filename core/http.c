@@ -57,6 +57,35 @@ int dw_json_int(const char *json, const char *key, int *out) {
 /* Parses a flat JSON array of non-negative small ints, e.g. "deck":[1,2,3] -- the only array
  * shape any DEADWEIGHT<->IDUNA response needs (the draft-run deck). Not a general JSON parser:
  * no nesting, no negative numbers, no whitespace tolerance beyond what strtol itself skips. */
+int dw_json_array_at(const char *json, const char *key, int idx, const char **out_obj) {
+    const char *p = json;
+    if (key) {
+        char pat[80]; snprintf(pat, sizeof pat, "\"%s\"", key);
+        p = strstr(json, pat);
+        if (!p) return 0;
+        p += strlen(pat);
+        while (*p == ' ' || *p == ':') p++;
+    } else {
+        while (*p == ' ') p++;
+    }
+    if (*p != '[') return 0;
+    p++;
+    for (int i = 0; ; i++) {
+        while (*p == ' ' || *p == ',') p++;
+        if (*p != '{') return 0; /* array ended (']') or malformed */
+        if (i == idx) { *out_obj = p; return 1; }
+        int depth = 0, in_str = 0;
+        while (*p) {
+            char c = *p;
+            if (in_str) { if (c == '"') in_str = 0; }
+            else if (c == '"') in_str = 1;
+            else if (c == '{') depth++;
+            else if (c == '}') { depth--; if (depth == 0) { p++; break; } }
+            p++;
+        }
+    }
+}
+
 int dw_json_int_array(const char *json, const char *key, int *out, int max_n) {
     char pat[80]; snprintf(pat, sizeof pat, "\"%s\"", key);
     const char *p = strstr(json, pat);
