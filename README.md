@@ -111,8 +111,16 @@ Android is paused, desktop is the real focus for Itch.io and Steam):
   clicking it connects and queues with that token, same wire path a normal PLAY does, just with
   the token attached. Live-verified with a real compiled `dw_gui` clicked through under Xvfb
   (screenshotted showing the PLAY button) against a real `dw_server`, pairing with a real
-  `dw_client` CLI instance presenting the matching token — not just unit tests. **Still open**: the
-  web client and WOTAN don't wire this yet (tracked in `EMILY/BACKLOG.md` SECTION 537's Phase 3).
+  `dw_client` CLI instance presenting the matching token — not just unit tests. **The browser
+  client surfaces it too now**: the DUELS panel's Play button (`web/src/main.ts`) queues with the
+  duel's `match_token` via `encodeQueue`'s new optional third form (`web/src/proto.ts`) — queuing
+  immediately if already connected, or once WELCOME arrives if clicked mid-connect. Live-verified
+  with a real headless Chrome (CDP-driven, not a mock DOM) loading the real compiled
+  `web/dist/main.js`, through the real `ws-tcp-bridge.js`, against a real `dw_server`, clicking the
+  actual rendered Play button and pairing with a real `dw_client` CLI partner presenting the
+  matching token — confirmed from both sides' own logs (`MATCH_FOUND vs PARTNER` in the browser,
+  `match 1 vs WebPlayer` in the partner's log). `tsc` strict clean. **Still open**: WOTAN doesn't
+  wire this yet (tracked in `EMILY/BACKLOG.md` SECTION 537's Phase 3c).
 - **Draft Runs actually spend and pay out tickets now (S510)** — readying the Itch.io launch plan
   (free-to-play with a 20-ticket/day grandfathered guest cap — computed per-player from
   `registered_at` vs. a fixed cutoff date, see S516 below, not the 25 first floated in an early

@@ -1,6 +1,26 @@
 # CHANGELOG
 
 ## 2026-09-24
+- feat(web): DUELS panel gains a Play button for Duel Phase 3b (S537 Duel Phase 2, Phase 3 --
+  browser client half) -- an accepted duel with a live `match_token` now renders a "Play" button
+  in the DUELS list (`web/src/main.ts`'s `refreshDuels()`); clicking it (`playDuel()`) queues with
+  that token attached -- immediately via `client.queue(0, token)` if already `'ready'`, or deferred
+  through a `pendingMatchToken` consumed on the next `onState('ready')` if clicked before WELCOME
+  arrives (mirrors the native client's single-use `A.pending_match_token` pattern from Phase 3a,
+  adapted to the web client's async connect). `encodeQueue()` (`web/src/proto.ts`) gained an
+  optional `matchToken` param encoding the same purely-additive 33-byte wire form
+  (`same_deck`-byte-then-32-raw-token-bytes) `core/protocol.c` already decodes -- a second, real
+  consumer of the wire extension shipped in Phase 2, not a parallel design. `DeadweightClient`
+  (`web/src/client.ts`) gained `queue(sameDeck?, matchToken?)` and a `getState()` getter (needed to
+  tell "already ready" from "still connecting" synchronously). `Duel` (`web/src/social.ts`) gained
+  `match_token`/`match_token_expires_at`. Live-verified end to end, not just `tsc`-checked: a real
+  headless Chrome (Chrome DevTools Protocol, driven from a scratch Node script, not a DOM mock)
+  loaded the real compiled `web/dist/main.js` through the real `ws-tcp-bridge.js` against a real
+  `dw_server`, read an accepted duel + live token from a fake (CORS-enabled-for-this-harness-only)
+  IDUNA, clicked the actual rendered Play button, and paired with a real `dw_client` CLI partner
+  presenting the same token -- confirmed from both sides' own logs (browser: `MATCH_FOUND vs
+  PARTNER`; partner: `match 1 vs WebPlayer`). `tsc -p tsconfig.json` strict clean. WOTAN (Phase 3c)
+  still needs its own wiring. (sess-20260923-1030-4a526255)
 - feat(gui): DUELS tab gains a PLAY button for Duel Phase 3a (S537 Duel Phase 2, Phase 3 -- native
   SDL2 client half) -- an accepted duel with a live (unexpired) `match_token` now shows a green
   PLAY button in `S_SOCIAL`'s DUELS tab (`apps/gui/main.c`); clicking it (`social_play_duel()`)

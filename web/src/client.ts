@@ -57,8 +57,12 @@ export class DeadweightClient {
         };
     }
 
-    queue() {
-        this.send(proto.encodeQueue());
+    queue(sameDeck?: 0 | 1, matchToken?: string) {
+        this.send(proto.encodeQueue(sameDeck, matchToken));
+    }
+
+    getState(): ClientState {
+        return this.state;
     }
 
     play(slot: number) {

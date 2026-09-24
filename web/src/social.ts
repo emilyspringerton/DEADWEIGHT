@@ -37,6 +37,11 @@ export interface Duel {
     challenged_id: string;
     status: string;
     created_at: string;
+    // match_token/match_token_expires_at (S537 Duel Phase 2): only present while status ===
+    // "accepted" and the 15-min TTL hasn't lapsed (IDUNA's duelsList) -- absent/undefined
+    // otherwise, whether pending, declined, or expired.
+    match_token?: string;
+    match_token_expires_at?: string;
 }
 
 async function api(idunaBase: string, token: string, path: string, opts?: RequestInit): Promise<any> {

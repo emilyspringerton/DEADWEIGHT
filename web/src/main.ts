@@ -35,6 +35,10 @@ let locked = false;
 let beforeArmorYou = 0, beforeArmorOpp = 0, beforeVaultYou = 0, beforeVaultOpp = 0;
 let fxDrawState: fx.FxDrawState | null = null;
 let fxRafHandle = 0;
+// Duel Phase 2 (S537): set by playDuel() right before a duel's PLAY button, consumed (and
+// cleared) the next time the client reaches 'ready' -- either immediately, if it's already
+// connected, or once WELCOME arrives if the duel was clicked before connect() finished.
+let pendingMatchToken: string | null = null;
 
 function log(line: string) {
     const el = $('log');
@@ -139,6 +143,12 @@ async function start() {
     client = new DeadweightClient(bridgeUrl, {
         onState(s) {
             setStatus(s);
+            if (s === 'ready' && pendingMatchToken) {
+                const tok = pendingMatchToken;
+                pendingMatchToken = null;
+                client.queue(0, tok);
+                ($('queue-btn') as HTMLButtonElement).disabled = true;
+            }
         },
         onLog(line) {
             log(line);
@@ -392,11 +402,34 @@ async function refreshDuels() {
                 actions.appendChild(a);
                 actions.appendChild(dec);
                 row.appendChild(actions);
+            } else if (d.status === 'accepted' && d.match_token) {
+                // Live (unexpired) match_token -- IDUNA stops surfacing it once the 15-min TTL
+                // lapses, matching its own stated limit, so an expired one just shows no button.
+                const actions = document.createElement('div');
+                const p = document.createElement('button');
+                p.textContent = 'Play';
+                p.onclick = () => playDuel(d.match_token!);
+                actions.appendChild(p);
+                row.appendChild(actions);
             }
             el.appendChild(row);
         });
     } catch (e) {
         el.textContent = (e as Error).message;
+    }
+}
+
+// Duel Phase 2: queue with the duel's match_token, the same wire path an ordinary queue-btn click
+// uses (encodeQueue's now-optional 3rd form), just with the token attached so dw_server's
+// find_token_pair() pairs this connection with the specific friend who accepted, ahead of and
+// exempt from normal FIFO/bot pairing.
+function playDuel(token: string) {
+    if (client && client.getState() === 'ready') {
+        client.queue(0, token);
+        ($('queue-btn') as HTMLButtonElement).disabled = true;
+    } else {
+        pendingMatchToken = token;
+        setStatus('connecting… will queue for this duel once ready');
     }
 }
 

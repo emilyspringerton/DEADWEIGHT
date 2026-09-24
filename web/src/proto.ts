@@ -90,9 +90,22 @@ export function encodeHello(mode: 0 | 1 | 2, kind: 0 | 1, name: string, token: s
     return frame(ClientMsg.HELLO, w.toBytes());
 }
 
-export function encodeQueue(sameDeck?: 0 | 1): Uint8Array {
+/** matchToken (S537 Duel Phase 2): a purely additive, no-proto-bump extension of QUEUE's already-
+ * variable payload (0, 1, or 33 bytes -- docs/WIRE_PROTOCOL.md). When present, the wire form is
+ * ALWAYS same_deck-byte-then-32-raw-token-bytes (matching core/protocol.c's dw_encode -- same_deck
+ * is written even when 0, since the 33-byte length itself is what signals "token present" to the
+ * decoder). Encoded to exactly 32 bytes, zero-padded/truncated, matching the C client's fixed
+ * char[33] buffer (IDUNA always mints exactly 32 hex chars, so this never actually truncates). */
+export function encodeQueue(sameDeck?: 0 | 1, matchToken?: string): Uint8Array {
     const w = new Writer();
-    if (sameDeck !== undefined) w.u8(sameDeck);
+    if (matchToken) {
+        w.u8(sameDeck ?? 0);
+        const tokenBytes = new Uint8Array(32);
+        tokenBytes.set(new TextEncoder().encode(matchToken).slice(0, 32));
+        w.bytesRaw(tokenBytes);
+    } else if (sameDeck !== undefined) {
+        w.u8(sameDeck);
+    }
     return frame(ClientMsg.QUEUE, w.toBytes());
 }
 
