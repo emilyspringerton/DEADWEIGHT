@@ -6,6 +6,7 @@
 import { DeadweightClient } from './client.js';
 import * as rules from './generated/CardRules.js';
 import * as fx from './fx.js';
+import * as account from './account.js';
 
 type CardEntry = { id: number; name: string; kind: string; keyword: string; cost: number; power: number; credit: number; text: string };
 type CardsData = { version: string; cards: CardEntry[] };
@@ -16,6 +17,7 @@ const KIND_COLORS = ['#c0392b', '#d4a017', '#2f6fb0'];
 const $ = (id: string) => document.getElementById(id)!;
 
 let client: DeadweightClient;
+let currentAccount: account.Account | null = null;
 // Fetched at startup (not a static JSON import) so this works unbundled, straight from
 // index.html's <script type="module">, with no import-assertion browser-compatibility gap.
 let cardsData: CardsData = { version: '', cards: [] };
@@ -107,7 +109,22 @@ function runFxAnimation(timeline: fx.FxTimeline, input: fx.FxRoundInput) {
 
 async function start() {
     const name = ($('name') as HTMLInputElement).value.trim() || 'BrowserPlayer';
+    const idunaUrl = ($('iduna-url') as HTMLInputElement).value.trim();
     const bridgeUrl = ($('bridge-url') as HTMLInputElement).value.trim();
+    const startBtn = $('start-btn') as HTMLButtonElement;
+    const acctStatus = $('account-status');
+    startBtn.disabled = true;
+    acctStatus.textContent = 'Contacting IDUNA…';
+    try {
+        currentAccount = await account.bootstrapAccount(idunaUrl, name);
+        acctStatus.textContent =
+            'Playing as ' + currentAccount.displayName + (currentAccount.emailLinked ? ' (linked account)' : ' (guest)');
+        ($('link-email-box') as HTMLElement).style.display = currentAccount.emailLinked ? 'none' : 'block';
+    } catch (e) {
+        acctStatus.textContent = 'IDUNA account error: ' + (e as Error).message + ' — connecting unauthenticated (only works against a --no-auth server).';
+        currentAccount = null;
+    }
+    startBtn.disabled = false;
     $('setup').style.display = 'none';
     $('game').style.display = 'block';
 
@@ -179,10 +196,29 @@ async function start() {
             log(`ERROR code ${f.code}`);
         },
     });
-    client.connect(name);
+    client.connect(currentAccount ? currentAccount.displayName : name, currentAccount ? currentAccount.token : '');
 }
 
 $('start-btn').addEventListener('click', start);
+$('link-btn').addEventListener('click', async () => {
+    const idunaUrl = ($('iduna-url') as HTMLInputElement).value.trim();
+    const email = ($('link-email') as HTMLInputElement).value.trim();
+    const password = ($('link-password') as HTMLInputElement).value;
+    const msg = $('link-msg');
+    if (!currentAccount) {
+        msg.textContent = 'No account yet — click Connect first.';
+        return;
+    }
+    msg.textContent = 'Linking…';
+    try {
+        currentAccount = await account.linkEmail(idunaUrl, currentAccount, email, password);
+        msg.textContent = 'Linked — you can sign in with this email on WOTAN’s Friends & Duels page too.';
+        ($('link-email-box') as HTMLElement).style.display = 'none';
+        ($('account-status') as HTMLElement).textContent = 'Playing as ' + currentAccount.displayName + ' (linked account)';
+    } catch (e) {
+        msg.textContent = (e as Error).message;
+    }
+});
 $('queue-btn').addEventListener('click', () => {
     client.queue();
     $('queue-btn').setAttribute('disabled', 'true');

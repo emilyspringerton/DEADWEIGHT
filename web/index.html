@@ -28,16 +28,27 @@
 <div class="warn">
   <b>VS0.5-web, not a shipped client.</b> This is a real, working proof that PARENA's TypeScript
   emitter can drive a live browser client against the real dw_server over the real wire protocol —
-  see <code>web/README.md</code> for honest status, limits, and how to run it. No account linking,
-  no draft mode, no animation/audio yet.
+  see <code>web/README.md</code> for honest status, limits, and how to run it. Real IDUNA account
+  wiring (S537), no draft mode, no animation/audio yet.
 </div>
 
 <div id="setup">
-  <label for="name">Player name</label>
+  <label for="name">Player name (used only if creating a new guest account)</label>
   <input id="name" value="BrowserPlayer" maxlength="16">
+  <label for="iduna-url">IDUNA base URL</label>
+  <input id="iduna-url" value="http://localhost:8080">
   <label for="bridge-url">WebSocket bridge URL</label>
   <input id="bridge-url" value="ws://localhost:8765">
   <button id="start-btn">Connect</button>
+  <div id="account-status" style="margin-top:10px;font-size:0.85rem;opacity:0.85;"></div>
+  <div id="link-email-box" style="display:none;margin-top:10px;">
+    <label for="link-email">Link an email (optional — same identity WOTAN's Friends &amp; Duels page uses)</label>
+    <input id="link-email" type="email">
+    <label for="link-password">Password (8+ characters)</label>
+    <input id="link-password" type="password">
+    <button id="link-btn">Link email</button>
+    <div id="link-msg" style="font-size:0.8rem;margin-top:6px;"></div>
+  </div>
 </div>
 
 <div id="game">

@@ -93,9 +93,29 @@ Not just "it compiles" — a real, live, end-to-end match:
 - **Random queue only.** Draft mode's own `DRAFT_OFFER`/`DRAFT_PICK`/`DRAFT_DONE` frames are typed
   in `proto.ts` but `main.ts`'s UI never sends a draft pick — draft is real everywhere else
   (server, bots, Windows GUI, Android) but not wired into this client.
-- **No IDUNA auth.** Connects with `HELLO`'s empty inline token, matching `--no-auth` servers only
-  (same precedent the Windows GUI/Android clients document). AUTH (`0x06`, real IDUNA JWTs) is
-  typed in `proto.ts`'s constants but never sent.
+- **IDUNA auth (S537, 2026-09-24): real, wired, partially verified.** `src/account.ts` mirrors
+  `apps/gui/main.c`'s own shipped account flow: auto guest-register on first load, a persisted
+  `guest_secret` for silent re-login (`guest-login`) on return visits, and a "Link email" form
+  (`guest-upgrade`) that claims the guest account in place -- the same identity WOTAN's
+  `friends.html`/`profile.html` operate on. `client.connect()` now takes a real token and passes
+  it into `HELLO` (previously always `''`). Live-verified against the real, running IDUNA
+  (127.0.0.1:8080): `bootstrapAccount()` mints a real guest account and a second call correctly
+  reuses the same `player_id` via `guest-login` (not a fresh register) once a browser-shaped
+  `localStorage` is present. **Not verified this pass**: an actual `dw_server` (with `--iduna-url`
+  set, i.e. auth required, not `--no-auth`) accepting a real web-client token over `HELLO` --
+  IDUNA's real per-IP daily signup cap (3/day, by design) was hit by this session's own repeated
+  test registrations before that check could run, and bypassing it (even locally, even for
+  testing) was correctly refused as a security-weakening action. `encodeHello`'s wire format
+  itself is unchanged, pre-existing code already proven against real tokens by the native
+  clients -- the residual risk is narrow, but this specific path is code-reviewed, not live-run.
+  Re-run once the cap clears (~24h) or from a different source IP. **Still missing**: no CORS
+  headers on IDUNA's `/api/v1/games/` routes. A browser treats `localhost:8791` (this static
+  site) and `localhost:8080` (IDUNA) as different origins even on the same machine, so a real
+  browser run of this page needs either a same-origin reverse proxy (WOTAN's own
+  `ops/nginx-wotan.conf` `/api/` pattern) or IDUNA-side CORS support -- neither exists yet. The
+  live verification above used Node's `fetch` directly (not a browser), which isn't
+  CORS-restricted, so the account-bootstrap logic is proven but a real browser tab hitting this
+  same flow is not yet.
 - **Animation/audio rendering not verified in a real browser.** `fx.ts`'s Canvas2D drawing and Web
   Audio playback have never been opened in an actual browser window in this sandbox (no display) —
   only the shared decision layer they're driven by has been checked live (see above). The visuals

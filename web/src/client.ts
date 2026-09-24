@@ -31,16 +31,17 @@ export class DeadweightClient {
 
     constructor(private bridgeUrl: string, private ev: ClientEvents) {}
 
-    connect(name: string) {
+    connect(name: string, token: string = '') {
         this.setState('connecting');
         this.ws = new WebSocket(this.bridgeUrl);
         this.ws.binaryType = 'arraybuffer';
         this.ws.onopen = () => {
             this.ev.onLog?.(`connected to bridge ${this.bridgeUrl}`);
-            // mode 0 = random queue, kind 0 = human, no auth token (--no-auth server, matching
-            // the GUI/Android clients' own documented "name-only play works with --no-auth
-            // servers" precedent — apps/gui/main.c's own header comment).
-            this.send(proto.encodeHello(0, 0, name, ''));
+            // mode 0 = random queue, kind 0 = human. token is a real IDUNA player token (S537,
+            // account.ts) when one was obtained; empty still works against a --no-auth server,
+            // matching the GUI/Android clients' own documented "name-only play works with
+            // --no-auth servers" precedent — apps/gui/main.c's own header comment.
+            this.send(proto.encodeHello(0, 0, name, token));
         };
         this.ws.onmessage = (ev) => {
             const chunk = new Uint8Array(ev.data as ArrayBuffer);
