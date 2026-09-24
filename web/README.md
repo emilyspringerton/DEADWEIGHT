@@ -93,6 +93,20 @@ Not just "it compiles" — a real, live, end-to-end match:
 - **Random queue only.** Draft mode's own `DRAFT_OFFER`/`DRAFT_PICK`/`DRAFT_DONE` frames are typed
   in `proto.ts` but `main.ts`'s UI never sends a draft pick — draft is real everywhere else
   (server, bots, Windows GUI, Android) but not wired into this client.
+- **Friends & Duels (S537 continued, 2026-09-24): real, in-page UI.** `src/social.ts` +
+  `main.ts`'s "Friends & Duels" panel (shown once an account is bootstrapped) let any account
+  (guest or email-linked — the IDUNA routes only need a valid per-game player token, unlike
+  WOTAN's own `friends.html` which requires email login because that's a separate site with no
+  other session) add a friend by Player ID, accept/decline requests, list/remove friends, and
+  challenge/accept/decline duels — the same IDUNA routes and identity WOTAN's `friends.html`/
+  `profile.html` use. Verified: `tsc` strict-mode clean (catches field/type mismatches against
+  `social.ts`'s own `Profile`/`FriendRequest`/`FriendSummary`/`Duel` interfaces, which mirror
+  `game_social.go`'s real JSON shapes field-for-field, cross-checked the same way WOTAN's pages
+  were), compiled JS syntax-checked, headless-Chrome screenshot of the page shell. **Not verified
+  this pass**: clicking through the actual panel in a real browser against a live server — the
+  underlying IDUNA routes aren't deployed yet (see the IDUNA account-wiring note above), and this
+  session's own IDUNA per-IP signup cap was already exhausted testing the account-wiring piece
+  earlier the same day, so a fresh live token wasn't available to drive it end to end.
 - **IDUNA auth (S537, 2026-09-24): real, wired, partially verified.** `src/account.ts` mirrors
   `apps/gui/main.c`'s own shipped account flow: auto guest-register on first load, a persisted
   `guest_secret` for silent re-login (`guest-login`) on return visits, and a "Link email" form

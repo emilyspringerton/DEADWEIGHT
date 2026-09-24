@@ -21,6 +21,14 @@
   #log { margin-top: 16px; height: 220px; overflow-y: auto; background: #0c0e12; border: 1px solid #2a2d36; padding: 8px; font-size: 0.8rem; font-family: monospace; }
   #match, #game { display: none; }
   #fx-canvas { width: 100%; max-width: 480px; height: 220px; background: #0c0e12; border: 1px solid #2a2d36; border-radius: 6px; display: block; margin-bottom: 10px; }
+  #social { margin-top: 16px; border-top: 1px solid #2a2d36; padding-top: 12px; }
+  #social h2 { font-size: 1rem; margin: 0 0 8px; }
+  #social h3 { font-size: 0.85rem; margin: 14px 0 4px; opacity: 0.9; }
+  .srow { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 6px 0; border-bottom: 1px solid #1f222b; font-size: 0.85rem; }
+  .srow:last-child { border-bottom: none; }
+  .srow .sid { opacity: 0.75; font-size: 0.75rem; word-break: break-all; }
+  .srow button { margin-top: 0; padding: 4px 10px; font-size: 0.8rem; }
+  .smuted { opacity: 0.7; font-size: 0.85rem; }
 </style>
 </head>
 <body>
@@ -68,6 +76,26 @@
   </div>
 
   <div id="log"></div>
+
+  <div id="social">
+    <h2>Friends &amp; Duels</h2>
+    <div id="social-me" class="smuted"></div>
+
+    <h3>Add a friend</h3>
+    <label for="add-friend-id">Their Player ID</label>
+    <input id="add-friend-id" placeholder="e.g. 3fa2c1e0-...">
+    <button id="add-friend-btn">Send friend request</button>
+    <div id="add-friend-msg" class="smuted" style="margin-top:4px;"></div>
+
+    <h3>Friend requests</h3>
+    <div id="requests-list" class="smuted">—</div>
+
+    <h3>Friends</h3>
+    <div id="friends-list" class="smuted">—</div>
+
+    <h3>Duels</h3>
+    <div id="duels-list" class="smuted">—</div>
+  </div>
 </div>
 
 <script type="module" src="./dist/main.js"></script>

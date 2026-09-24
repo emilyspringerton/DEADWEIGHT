@@ -7,6 +7,7 @@ import { DeadweightClient } from './client.js';
 import * as rules from './generated/CardRules.js';
 import * as fx from './fx.js';
 import * as account from './account.js';
+import * as social from './social.js';
 
 type CardEntry = { id: number; name: string; kind: string; keyword: string; cost: number; power: number; credit: number; text: string };
 type CardsData = { version: string; cards: CardEntry[] };
@@ -18,6 +19,7 @@ const $ = (id: string) => document.getElementById(id)!;
 
 let client: DeadweightClient;
 let currentAccount: account.Account | null = null;
+let idunaBaseUrl = '';
 // Fetched at startup (not a static JSON import) so this works unbundled, straight from
 // index.html's <script type="module">, with no import-assertion browser-compatibility gap.
 let cardsData: CardsData = { version: '', cards: [] };
@@ -125,8 +127,11 @@ async function start() {
         currentAccount = null;
     }
     startBtn.disabled = false;
+    idunaBaseUrl = idunaUrl;
     $('setup').style.display = 'none';
     $('game').style.display = 'block';
+
+    if (currentAccount) initSocial();
 
     cardsData = await (await fetch('./src/generated/cards.json')).json();
     log(`loaded ${cardsData.cards.length}-card catalog (v${cardsData.version})`);
@@ -227,4 +232,202 @@ $('requeue').addEventListener('click', () => {
     $('requeue').style.display = 'none';
     ($('queue-btn') as HTMLButtonElement).disabled = false;
     client.queue();
+});
+
+// --- Friends & Duels (S537 continued) --------------------------------------------------------
+// Works for ANY account (guest or email-linked) -- the IDUNA routes themselves only need a valid
+// per-game player token, not a linked email; email-linking is only required on WOTAN's own
+// friends.html because that's a separate static site with no other way to obtain a session here.
+
+function escapeHtml(s: string): string {
+    const d = document.createElement('div');
+    d.textContent = s;
+    return d.innerHTML;
+}
+
+function socialToken(): string {
+    return currentAccount ? currentAccount.token : '';
+}
+
+async function initSocial() {
+    if (!currentAccount) return;
+    const me = $('social-me');
+    try {
+        const p = await social.getProfile(idunaBaseUrl, currentAccount.playerID);
+        me.innerHTML =
+            'You: <b>' + escapeHtml(p.display_name) + '</b> — rating ' + Math.round(p.rating) + ', ' +
+            p.wins + 'W ' + p.losses + 'L ' + p.draws + 'D, ' + p.friend_count + ' friend(s)<br>' +
+            '<span class="sid">Your Player ID (share this to be added): ' + escapeHtml(p.player_id) + '</span>';
+    } catch (e) {
+        me.textContent = 'Could not load your profile: ' + (e as Error).message;
+    }
+    await Promise.all([refreshRequests(), refreshFriends(), refreshDuels()]);
+}
+
+async function refreshRequests() {
+    const el = $('requests-list');
+    if (!currentAccount) return;
+    try {
+        const r = await social.listFriendRequests(idunaBaseUrl, socialToken());
+        el.innerHTML = '';
+        if (r.incoming.length === 0 && r.outgoing.length === 0) {
+            el.textContent = 'No pending requests.';
+            return;
+        }
+        r.incoming.forEach((fr) => {
+            const row = document.createElement('div');
+            row.className = 'srow';
+            row.innerHTML = '<div>' + escapeHtml(fr.requester_id) + ' <i>(incoming)</i></div>';
+            const actions = document.createElement('div');
+            const a = document.createElement('button');
+            a.textContent = 'Accept';
+            a.onclick = () => respond(fr.id, true);
+            const d = document.createElement('button');
+            d.textContent = 'Decline';
+            d.onclick = () => respond(fr.id, false);
+            actions.appendChild(a);
+            actions.appendChild(d);
+            row.appendChild(actions);
+            el.appendChild(row);
+        });
+        r.outgoing.forEach((fr) => {
+            const row = document.createElement('div');
+            row.className = 'srow';
+            row.innerHTML = '<div>' + escapeHtml(fr.recipient_id) + ' <i>(outgoing, waiting)</i></div>';
+            el.appendChild(row);
+        });
+    } catch (e) {
+        el.textContent = (e as Error).message;
+    }
+}
+
+async function respond(id: number, accept: boolean) {
+    try {
+        await social.respondFriendRequest(idunaBaseUrl, socialToken(), id, accept);
+        await Promise.all([refreshRequests(), refreshFriends(), initSocial()]);
+    } catch (e) {
+        $('requests-list').textContent = (e as Error).message;
+    }
+}
+
+async function refreshFriends() {
+    const el = $('friends-list');
+    if (!currentAccount) return;
+    try {
+        const friends = await social.listFriends(idunaBaseUrl, socialToken());
+        el.innerHTML = '';
+        if (friends.length === 0) {
+            el.textContent = 'No friends yet.';
+            return;
+        }
+        friends.forEach((f) => {
+            const row = document.createElement('div');
+            row.className = 'srow';
+            row.innerHTML = '<div>' + escapeHtml(f.display_name) + ' <span class="sid">rating ' + Math.round(f.rating) + '</span></div>';
+            const actions = document.createElement('div');
+            const duelBtn = document.createElement('button');
+            duelBtn.textContent = 'Duel';
+            duelBtn.onclick = () => challengeDuel(f.player_id, duelBtn);
+            const removeBtn = document.createElement('button');
+            removeBtn.textContent = 'Remove';
+            removeBtn.onclick = () => unfriend(f.player_id);
+            actions.appendChild(duelBtn);
+            actions.appendChild(removeBtn);
+            row.appendChild(actions);
+            el.appendChild(row);
+        });
+    } catch (e) {
+        el.textContent = (e as Error).message;
+    }
+}
+
+async function unfriend(playerID: string) {
+    try {
+        await social.removeFriend(idunaBaseUrl, socialToken(), playerID);
+        await Promise.all([refreshFriends(), initSocial()]);
+    } catch (e) {
+        $('friends-list').textContent = (e as Error).message;
+    }
+}
+
+async function challengeDuel(playerID: string, btn: HTMLButtonElement) {
+    btn.disabled = true;
+    try {
+        await social.createDuel(idunaBaseUrl, socialToken(), playerID);
+        await refreshDuels();
+    } catch (e) {
+        $('duels-list').textContent = (e as Error).message;
+    } finally {
+        btn.disabled = false;
+    }
+}
+
+async function refreshDuels() {
+    const el = $('duels-list');
+    if (!currentAccount) return;
+    try {
+        const duels = await social.listDuels(idunaBaseUrl, socialToken());
+        el.innerHTML = '';
+        if (duels.length === 0) {
+            el.textContent = 'No duels yet.';
+            return;
+        }
+        duels.forEach((d) => {
+            const mine = currentAccount!.playerID;
+            const incoming = d.challenged_id === mine && d.status === 'pending';
+            const other = d.challenger_id === mine ? d.challenged_id : d.challenger_id;
+            const row = document.createElement('div');
+            row.className = 'srow';
+            row.innerHTML =
+                '<div>' + escapeHtml(other) + ' — <b>' + escapeHtml(d.status) + '</b> ' +
+                '<i>(' + (d.challenger_id === mine ? 'you challenged' : 'challenged you') + ')</i></div>';
+            if (incoming) {
+                const actions = document.createElement('div');
+                const a = document.createElement('button');
+                a.textContent = 'Accept';
+                a.onclick = () => respondDuelBtn(d.id, true);
+                const dec = document.createElement('button');
+                dec.textContent = 'Decline';
+                dec.onclick = () => respondDuelBtn(d.id, false);
+                actions.appendChild(a);
+                actions.appendChild(dec);
+                row.appendChild(actions);
+            }
+            el.appendChild(row);
+        });
+    } catch (e) {
+        el.textContent = (e as Error).message;
+    }
+}
+
+async function respondDuelBtn(id: number, accept: boolean) {
+    try {
+        await social.respondDuel(idunaBaseUrl, socialToken(), id, accept);
+        await refreshDuels();
+    } catch (e) {
+        $('duels-list').textContent = (e as Error).message;
+    }
+}
+
+$('add-friend-btn').addEventListener('click', async () => {
+    const input = $('add-friend-id') as HTMLInputElement;
+    const msg = $('add-friend-msg');
+    const id = input.value.trim();
+    if (!currentAccount) {
+        msg.textContent = 'Connect first.';
+        return;
+    }
+    if (!id) {
+        msg.textContent = 'Player ID required.';
+        return;
+    }
+    msg.textContent = 'Sending…';
+    try {
+        const body = await social.sendFriendRequest(idunaBaseUrl, socialToken(), id);
+        msg.textContent = body.status === 'accepted' ? 'You are now friends.' : 'Request sent.';
+        input.value = '';
+        await Promise.all([refreshRequests(), refreshFriends()]);
+    } catch (e) {
+        msg.textContent = (e as Error).message;
+    }
 });
