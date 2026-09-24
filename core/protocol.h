@@ -38,7 +38,13 @@ typedef struct {
         struct { uint8_t proto, mode, kind; char name[DW_NAME_LEN + 1]; uint8_t token_len; uint8_t token[DW_MAX_TOKEN]; } hello;
         struct { uint16_t token_len; uint8_t token[DW_MAX_AUTH_TOKEN]; } auth;
         struct { uint32_t match_id; uint8_t round; int8_t slot; } play;
-        struct { uint8_t same_deck; } queue;         /* C_QUEUE, optional 1-byte payload (draft: 1 = replay last deck, 0 = redraft) */
+        struct { uint8_t same_deck; uint8_t has_match_token; char match_token[33]; } queue;
+        /* C_QUEUE payload is 0, 1, or 33 bytes (purely additive, no proto bump needed -- same
+         * "optional trailing field" shape same_deck itself already established): same_deck alone
+         * (draft: 1 = replay last deck, 0 = redraft), optionally followed by a 32-ASCII-char
+         * match_token (IDUNA's duel-accept token, see game_social.go's duelRespond) that pairs
+         * this connection with another queued connection presenting the identical token ahead of
+         * normal FIFO pairing -- S537 Duel Phase 2. match_token is NUL-terminated (33rd byte). */
         struct { uint8_t index, mult; } draft_pick;  /* index 0/1 into the offer, mult 1..3 */
         struct { uint8_t pick_no, total; int8_t card[2]; uint8_t left[3]; } draft_offer;   /* left = 1-of/2-of/3-of buckets remaining */
         struct { uint32_t deck_id; int8_t cards[DW_DRAFT_DECK]; } draft_done;

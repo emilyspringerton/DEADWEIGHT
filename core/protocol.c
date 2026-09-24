@@ -31,7 +31,14 @@ int dw_encode(const DwMsg *m, uint8_t *buf, size_t cap) {
         wname(&w, m->u.hello.name); w8(&w, m->u.hello.token_len);
         for (unsigned i = 0; i < m->u.hello.token_len; i++) w8(&w, m->u.hello.token[i]);
         break;
-    case DW_C_QUEUE: if (m->u.queue.same_deck) w8(&w, 1); break;
+    case DW_C_QUEUE:
+        if (m->u.queue.has_match_token) {
+            w8(&w, m->u.queue.same_deck);
+            for (int i = 0; i < 32; i++) w8(&w, (uint8_t)m->u.queue.match_token[i]);
+        } else if (m->u.queue.same_deck) {
+            w8(&w, 1);
+        }
+        break;
     case DW_C_LEAVE: break;
     case DW_C_DRAFT_PICK: w8(&w, m->u.draft_pick.index); w8(&w, m->u.draft_pick.mult); break;
     case DW_C_DRAFT_RESUME: for (int i = 0; i < DW_DRAFT_DECK; i++) w8(&w, (uint8_t)m->u.draft_resume.cards[i]); break;
@@ -84,10 +91,10 @@ int dw_encode(const DwMsg *m, uint8_t *buf, size_t cap) {
     return (int)w.n;
 }
 
-/* Fixed payload sizes (bytes after the type byte); HELLO is variable (>= 20). */
+/* Fixed payload sizes (bytes after the type byte); HELLO is variable (>= 20), QUEUE is 0/1/33. */
 static int payload_size(uint8_t t) {
     switch (t) {
-    case DW_C_HELLO: return -2; case DW_C_AUTH: return -3; case DW_C_QUEUE: return -4; case DW_C_LEAVE: return 0;
+    case DW_C_HELLO: return -2; case DW_C_AUTH: return -3; case DW_C_QUEUE: return -5; case DW_C_LEAVE: return 0;
     case DW_C_DRAFT_PICK: return 2; case DW_S_DRAFT_OFFER: return 7; case DW_S_DRAFT_DONE: return 4 + DW_DRAFT_DECK; case DW_C_PLAY: return 6;
     case DW_C_DRAFT_RESUME: return DW_DRAFT_DECK;
     case DW_C_PING: case DW_S_PONG: return 4; case DW_S_WELCOME: return 5; case DW_S_QUEUED: return 2;
@@ -109,7 +116,7 @@ int dw_decode(const uint8_t *buf, size_t len, DwMsg *out, size_t *consumed) {
     if (ps >= 0 && (size_t)ps != plen) return -1;
     if (ps == -2 && plen < 20) return -1;
     if (ps == -3 && plen < 2) return -1;
-    if (ps == -4 && plen > 1) return -1;
+    if (ps == -5 && !(plen == 0 || plen == 1 || plen == 33)) return -1;
     R r = { buf + 3, plen, 0 };
     memset(out, 0, sizeof *out);
     out->type = type;
@@ -120,7 +127,14 @@ int dw_decode(const uint8_t *buf, size_t len, DwMsg *out, size_t *consumed) {
         if (out->u.hello.token_len > DW_MAX_TOKEN || (size_t)out->u.hello.token_len != plen - 20) return -1;
         memcpy(out->u.hello.token, r.p + r.n, out->u.hello.token_len);
         break;
-    case DW_C_QUEUE: out->u.queue.same_deck = plen ? (uint8_t)(r8(&r) ? 1 : 0) : 0; break;
+    case DW_C_QUEUE:
+        out->u.queue.same_deck = plen ? (uint8_t)(r8(&r) ? 1 : 0) : 0;
+        out->u.queue.has_match_token = plen == 33 ? 1 : 0;
+        if (out->u.queue.has_match_token) {
+            for (int i = 0; i < 32; i++) out->u.queue.match_token[i] = (char)r8(&r);
+            out->u.queue.match_token[32] = 0;
+        }
+        break;
     case DW_C_LEAVE: break;
     case DW_C_DRAFT_PICK: out->u.draft_pick.index = (uint8_t)r8(&r); out->u.draft_pick.mult = (uint8_t)r8(&r); break;
     case DW_C_DRAFT_RESUME: for (int i = 0; i < DW_DRAFT_DECK; i++) out->u.draft_resume.cards[i] = (int8_t)r8(&r); break;

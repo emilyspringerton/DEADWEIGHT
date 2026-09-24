@@ -103,7 +103,15 @@ Android is paused, desktop is the real focus for Itch.io and Steam):
   players/{id}/profile}` routes (same identity the browser client and WOTAN's `friends.html`/
   `profile.html` use). Verified against a controlled fake IDUNA (unit tests) and a live screenshot
   pass of the real compiled GUI binary. **A duel invite is accept/decline only for now** — turning
-  an accepted duel into an actual live match ("Duel Phase 2") isn't built yet.
+  an accepted duel into an actual live match ("Duel Phase 2") isn't fully built yet. The
+  server-side half is real, though: `QUEUE` can now carry the shared `match_token` IDUNA mints on
+  duel accept, and `dw_server`'s matchmaker pairs two connections presenting the identical token
+  with each other specifically, ahead of and exempt from its normal FIFO/bot pairing (so a lone
+  duelist waiting for their friend is never swept into a match with a stranger). Live-verified end
+  to end with real `dw_server`/`dw_client` processes over real TCP, not just unit tests. **No
+  client surfaces this yet** — the native GUI, web client, and WOTAN all still need a "duel
+  accepted → queue for this duel" affordance wired to it (tracked in `EMILY/BACKLOG.md`
+  SECTION 537's Phase 3).
 - **Draft Runs actually spend and pay out tickets now (S510)** — readying the Itch.io launch plan
   (free-to-play with a 20-ticket/day grandfathered guest cap — computed per-player from
   `registered_at` vs. a fixed cutoff date, see S516 below, not the 25 first floated in an early

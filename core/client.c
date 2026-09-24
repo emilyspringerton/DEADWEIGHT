@@ -51,6 +51,15 @@ static void bot_draft_pick(uint32_t *rng, const DwMsg *offer, DwMsg *out) {
     memset(out, 0, sizeof *out); out->type = DW_C_DRAFT_PICK; out->u.draft_pick.index = (uint8_t)idx; out->u.draft_pick.mult = (uint8_t)mult;
 }
 
+/* S537 Duel Phase 2: stamps o->match_token (if any) onto a QUEUE message about to be sent. */
+static void fill_queue_token(DwMsg *q, const DwRunOpts *o) {
+    if (o->match_token && o->match_token[0]) {
+        q->u.queue.has_match_token = 1;
+        size_t l = strlen(o->match_token); if (l > 32) l = 32;
+        memcpy(q->u.queue.match_token, o->match_token, l);
+    }
+}
+
 int dwc_run(DwClient *c, DwRunOpts *o) {
     uint32_t drng = o->seed * 2654435761u ^ 0xA5A5A5A5u; if (!drng) drng = 1;
     DwMsg m; DwPolicyCtx ctx; uint32_t match_id = 0; int8_t last_hand[4] = {-1, -1, -1, -1};
@@ -74,7 +83,7 @@ int dwc_run(DwClient *c, DwRunOpts *o) {
         if (r == 0) { idle += 500; if (o->idle_timeout_ms > 0 && idle >= o->idle_timeout_ms) return -1; continue; }
         idle = 0;
         switch (m.type) {
-        case DW_S_WELCOME: { DwMsg q; memset(&q, 0, sizeof q); q.type = DW_C_QUEUE; if (dwc_send(c, &q)) return -1; break; }
+        case DW_S_WELCOME: { DwMsg q; memset(&q, 0, sizeof q); q.type = DW_C_QUEUE; fill_queue_token(&q, o); if (dwc_send(c, &q)) return -1; break; }
         case DW_S_QUEUED: break;
         case DW_S_DRAFT_OFFER: { DwMsg p; bot_draft_pick(&drng, &m, &p); if (dwc_send(c, &p)) return -1; break; }
         case DW_S_DRAFT_DONE: if (o->verbose) printf("deck %u drafted\n", m.u.draft_done.deck_id); break;
@@ -118,6 +127,7 @@ int dwc_run(DwClient *c, DwRunOpts *o) {
             if (o->target_matches > 0 && o->done >= o->target_matches) return 0;
             { DwMsg q; memset(&q, 0, sizeof q); q.type = DW_C_QUEUE;
               if (o->mode == DW_MODE_DRAFT) q.u.queue.same_deck = m.u.match_end.result != DW_RES_LOSS;   /* keep a winning deck, redraft after a loss */
+              fill_queue_token(&q, o);
               if (dwc_send(c, &q)) return -1; }
             break;
         case DW_S_ERROR: if (o->verbose) printf("server error %d\n", m.u.error.code); return -2;

@@ -32,6 +32,7 @@ typedef struct {
     uint8_t in[INBUF]; size_t in_n;
     uint8_t out[OUTBUF]; size_t out_n;
     char name[DW_NAME_LEN + 1]; uint8_t kind, mode; char player_id[48];
+    char match_token[33];                   /* S537 Duel Phase 2: set from QUEUE, cleared to "" when absent */
     int match, seat; uint64_t queued_seq, connect_ms; int close_after_flush;
     DwDraft draft;                          /* draft mode: the in-progress draft */
     int8_t deck[DW_DRAFT_DECK]; int deck_n; uint32_t deck_id;   /* draft mode: the last completed deck (replayable via QUEUE same_deck) */
@@ -271,12 +272,17 @@ static int start_match(int a, int b, int mode) {
     return 1;
 }
 
-/* oldest queued conn of a kind, optionally skipping one; -1 if none */
+/* oldest queued conn of a kind, optionally skipping one; -1 if none. A conn carrying a
+ * match_token is excluded from ordinary FIFO/bot pairing -- it's reserved for the specific
+ * duel partner presenting the identical token (find_token_pair, checked before this ever runs),
+ * not fair game for a stranger just because that partner hasn't queued up yet. Without this
+ * exclusion a lone duelist queuing into an already-busy queue would get FIFO-matched with a
+ * stranger before their friend even connects, defeating the entire point of Duel Phase 2. */
 static int oldest_queued(int mode, int kind, int skip, int *count) {
     int best = -1, n = 0;
     for (int i = 0; i < MAX_CONNS; i++) {
         Conn *c = &conns[i];
-        if (c->state != S_QUEUED || c->kind != kind || c->mode != mode) continue;
+        if (c->state != S_QUEUED || c->kind != kind || c->mode != mode || c->match_token[0]) continue;
         n++;
         if (i != skip && (best < 0 || c->queued_seq < conns[best].queued_seq)) best = i;
     }
@@ -284,10 +290,32 @@ static int oldest_queued(int mode, int kind, int skip, int *count) {
     return best;
 }
 
+/* S537 Duel Phase 2: two queued connections in the same mode presenting an identical, non-empty
+ * match_token (minted by IDUNA on duel accept -- game_social.go's duelRespond) are a friendly-
+ * challenge pair, not strangers in the FIFO line. The token is trusted at face value, the same
+ * client-reported trust level as same_deck; the server never calls back to IDUNA to validate it
+ * -- both players already went through real IDUNA auth to obtain one, so this is a pairing
+ * convenience, not a second authorization check. */
+static int find_token_pair(int mode, int *out_a, int *out_b) {
+    for (int i = 0; i < MAX_CONNS; i++) {
+        Conn *ci = &conns[i];
+        if (ci->state != S_QUEUED || ci->mode != mode || !ci->match_token[0]) continue;
+        for (int j = i + 1; j < MAX_CONNS; j++) {
+            Conn *cj = &conns[j];
+            if (cj->state != S_QUEUED || cj->mode != mode || !cj->match_token[0]) continue;
+            if (strcmp(ci->match_token, cj->match_token) == 0) { *out_a = i; *out_b = j; return 1; }
+        }
+    }
+    return 0;
+}
+
 /* Pairing rule: humans first (human-human, then human-oldest-bot); bots only pair with each other while at
- * least one other bot remains waiting, so a late-joining human always finds a bot. */
+ * least one other bot remains waiting, so a late-joining human always finds a bot. Token-paired duelists
+ * (find_token_pair) always go first, ahead of this normal FIFO/bot logic. */
 static void try_pair_mode(int mode) {
     for (;;) {
+        int ta, tb;
+        if (find_token_pair(mode, &ta, &tb)) { if (!start_match(ta, tb, mode)) break; continue; }
         int nh, nb;
         int h1 = oldest_queued(mode, DW_KIND_HUMAN, -1, &nh);
         int b1 = oldest_queued(mode, DW_KIND_BOT, -1, &nb);
@@ -472,6 +500,11 @@ static void handle_msg(int ci, const DwMsg *m) {
         return;
     case DW_C_QUEUE:
         if (c->state != S_READY) { send_error(ci, DW_ERR_BAD_STATE); return; }
+        /* Stash the match_token (if any) on the Conn before the draft/direct-queue fork -- a
+         * fresh draft's DRAFT_PICK messages don't carry it, so it has to survive on the
+         * connection itself until draft_pick()'s own enter_queue() call at the end. */
+        if (m->u.queue.has_match_token) memcpy(c->match_token, m->u.queue.match_token, sizeof c->match_token);
+        else c->match_token[0] = 0;
         if (c->mode == DW_MODE_DRAFT && !(m->u.queue.same_deck && c->deck_n == DW_DRAFT_DECK)) { start_draft(ci); return; }   /* redraft (or no deck yet) */
         enter_queue(ci);
         return;

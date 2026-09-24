@@ -15,6 +15,7 @@ void dwc_close(DwClient *c);
 typedef struct {
     const char *name; int kind;            /* DW_KIND_* */
     const char *token;                     /* optional IDUNA token; sent as AUTH after HELLO (needed when the server requires auth) */
+    const char *match_token;               /* S537 Duel Phase 2: optional 32-char IDUNA duel match_token, sent on every QUEUE */
     int policy; uint32_t seed;
     int mode;                              /* DW_MODE_CARD (random, default) or DW_MODE_DRAFT: draft a deck, then requeue same-deck on win/draw, redraft on loss */
     /* DW_POL_HYBRID only: brain config copied into the policy context (survives per-match resets) */

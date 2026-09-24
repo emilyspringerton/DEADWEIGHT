@@ -80,6 +80,16 @@ int main(void) {
     memset(&m, 0, sizeof m); m.type = DW_C_QUEUE; m.u.queue.same_deck = 1; roundtrip(&m);
     { uint8_t qb[8]; int qn = dw_encode(&m, qb, sizeof qb); CHECK(qn == 4); DwMsg qd; size_t qu; CHECK(dw_decode(qb, (size_t)qn, &qd, &qu) == 1 && qd.u.queue.same_deck == 1);
       memset(&m, 0, sizeof m); m.type = DW_C_QUEUE; qn = dw_encode(&m, qb, sizeof qb); CHECK(qn == 3); CHECK(dw_decode(qb, (size_t)qn, &qd, &qu) == 1 && qd.u.queue.same_deck == 0); }
+    /* S537 Duel Phase 2: QUEUE's optional 32-byte match_token (purely additive, no proto bump). */
+    memset(&m, 0, sizeof m); m.type = DW_C_QUEUE; m.u.queue.same_deck = 1; m.u.queue.has_match_token = 1;
+    memcpy(m.u.queue.match_token, "0123456789abcdef0123456789abcdef", 32); roundtrip(&m);
+    { uint8_t qb[40]; int qn = dw_encode(&m, qb, sizeof qb); CHECK(qn == 2 + 1 + 33 && qb[0] == 34);
+      DwMsg qd; size_t qu; CHECK(dw_decode(qb, (size_t)qn, &qd, &qu) == 1 && qd.u.queue.same_deck == 1 && qd.u.queue.has_match_token == 1);
+      CHECK(memcmp(qd.u.queue.match_token, "0123456789abcdef0123456789abcdef", 32) == 0 && qd.u.queue.match_token[32] == 0);
+      /* same_deck = 0 with a token still carries it -- has_match_token is independent of same_deck. */
+      memset(&m, 0, sizeof m); m.type = DW_C_QUEUE; m.u.queue.has_match_token = 1;
+      memcpy(m.u.queue.match_token, "ffffffffffffffffffffffffffffffff", 32); roundtrip(&m);
+      qn = dw_encode(&m, qb, sizeof qb); CHECK(dw_decode(qb, (size_t)qn, &qd, &qu) == 1 && qd.u.queue.same_deck == 0 && qd.u.queue.has_match_token == 1); }
     memset(&m, 0, sizeof m); m.type = DW_C_DRAFT_PICK; m.u.draft_pick.index = 1; m.u.draft_pick.mult = 3; roundtrip(&m);
     memset(&m, 0, sizeof m); m.type = DW_C_DRAFT_RESUME;
     for (int i = 0; i < DW_DRAFT_DECK; i++) m.u.draft_resume.cards[i] = (int8_t)(i % 17);
@@ -95,7 +105,9 @@ int main(void) {
     uint8_t bad9[] = { 2, 0, DW_C_AUTH, 0 };      CHECK(dw_decode(bad9, 4, &d, &used) == -1);   /* AUTH shorter than its length field */
     uint8_t bad10[] = { 4, 0, DW_C_AUTH, 5, 0, 'a' }; CHECK(dw_decode(bad10, 6, &d, &used) == -1);   /* AUTH len/payload mismatch */
     uint8_t bad3[] = { 1, 0, 0x77 };              CHECK(dw_decode(bad3, 3, &d, &used) == -1);   /* unknown type */
-    uint8_t bad4[] = { 3, 0, DW_C_QUEUE, 0, 0 };  CHECK(dw_decode(bad4, 5, &d, &used) == -1);   /* QUEUE with a 2-byte payload (0 or 1 byte only) */
+    uint8_t bad4[] = { 3, 0, DW_C_QUEUE, 0, 0 };  CHECK(dw_decode(bad4, 5, &d, &used) == -1);   /* QUEUE with a 2-byte payload (only 0, 1, or 33 valid) */
+    uint8_t bad11[2 + 1 + 32]; memset(bad11, 0, sizeof bad11); bad11[0] = 33; bad11[2] = DW_C_QUEUE; /* QUEUE with a 32-byte payload (one short of a full match_token) */
+    CHECK(dw_decode(bad11, sizeof bad11, &d, &used) == -1);
     uint8_t bad5[] = { 3, 0, DW_C_PLAY, 0, 0 };   CHECK(dw_decode(bad5, 5, &d, &used) == -1);   /* short PLAY */
     uint8_t bad6[2 + 1 + 20]; memset(bad6, 0, sizeof bad6); bad6[0] = 21; bad6[2] = DW_C_HELLO; bad6[22] = 5; /* token_len 5, none present */
     CHECK(dw_decode(bad6, sizeof bad6, &d, &used) == -1);
