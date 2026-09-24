@@ -1,5 +1,8 @@
 # CHANGELOG
 
+## 2026-09-24
+- docs(NORTHSTAR): logged S537 -- IDUNA online accounts + social features (profiles/friends/friendly-challenge duels), founder real-time. Real work landed in IDUNA (`game_social.go`, new `/api/v1/games/deadweight/{friend-requests,friends,duels,players/{id}/profile}` routes, commit 70b6b06) and WOTAN (`friends.html`/`profile.html`, commit 46e3ab0) -- no DEADWEIGHT repo code changed this pass. Real, named, deferred here: wiring `web/src/client.ts` itself to real accounts (still `--no-auth server` today), in-game friends/duel UI, and turning an accepted duel into a live match (Duel Phase 2). See `NORTHSTAR.md`'s own new update section and `EMILY/BACKLOG.md` SECTION 537. (sess-20260923-1030-4a526255)
+
 ## 2026-09-22
 - CI now signs + publishes release binaries to IDUNA's new app-release registry (guarded no-op until GitHub secrets are configured). (sess-20260920-1908-24cb3558)
 

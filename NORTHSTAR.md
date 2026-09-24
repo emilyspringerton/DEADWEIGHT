@@ -243,3 +243,34 @@ already sets for a captured-transcript source document.
 action space, no inventory UI, bot- and RL-friendly), Android-first over a TCP server-authoritative backend with a
 bot pool of 3 from day one. The backpack battler (this doc's core mechanic, D1) becomes **VS1** on the same server
 and wire protocol (`mode=1` reserved). The V0 item cut, deferrals, and hole findings in this doc all stand.
+
+## Update 2026-09-24 (S537): online accounts + social features (friends/profiles/duels)
+
+Founder real-time: "add iduna online accounts / add social features / profiles / friends /
+friendly challenges (duels) / for DEADWEIGHT / WOTAN". This doc's own scoping above is
+substantially overtaken by events elsewhere in the repo (the server, draft runs, tickets, and
+guest/email accounts are all real and live — this section documents the social layer only, not a
+rewrite of the doc above).
+
+Real, checked-first state: IDUNA's per-game online-services layer (`game_online.go`) already gave
+DEADWEIGHT full guest-register/guest-login/guest-upgrade/email-login accounts server-side, but
+the web client (`web/src/client.ts`) never called any of it (`--no-auth server`) — the real gap
+was client-side, not server-side. No friends/profile/duel concept existed anywhere in the
+codebase before this.
+
+Shipped this pass (IDUNA-side): `GET players/{id}/profile` (public), `POST`/`GET
+friend-requests` + `{id}/accept`/`decline`, `GET friends` + `DELETE friends/{id}`, `POST`/`GET
+duels` + `{id}/accept`/`decline`, all under `/api/v1/games/deadweight/...`
+(`internal/http/handlers/game_social.go`). Friendship is derived from accepted `friend_requests`
+rows; duels require an existing friendship. V0-scoped to the invite lifecycle only — an accepted
+duel does not launch a live match yet. IDUNA `70b6b06`.
+
+Shipped this pass (WOTAN-side): `friends.html` (login with a DEADWEIGHT account, manage
+requests/friends/duels) and `profile.html` (public lookup). WOTAN `46e3ab0`.
+
+Real, named, deferred (see `EMILY/BACKLOG.md` SECTION 537):
+- Wiring `web/src/client.ts` itself to real accounts (the literal "online accounts for
+  DEADWEIGHT" client-side gap).
+- In-game friends/duel UI for both the web and native C clients.
+- Duel Phase 2: turning an accepted duel into an actual live match instance (needs DEADWEIGHT's
+  own ticket/queue match-start mechanism).
