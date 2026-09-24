@@ -232,6 +232,7 @@ static void fillDuel(const char *obj, DwDuel *out) {
     dw_json_str(obj, "challenger_id", out->challenger_id, sizeof out->challenger_id);
     dw_json_str(obj, "challenged_id", out->challenged_id, sizeof out->challenged_id);
     dw_json_str(obj, "status", out->status, sizeof out->status);
+    dw_json_str(obj, "match_token", out->match_token, sizeof out->match_token);
 }
 
 int dwi_profile(DwIduna *d, const char *player_id, DwProfile *out) {

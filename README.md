@@ -102,16 +102,17 @@ Android is paused, desktop is the real focus for Itch.io and Steam):
   friend to a duel. Backed by IDUNA's `/api/v1/games/deadweight/{friend-requests,friends,duels,
   players/{id}/profile}` routes (same identity the browser client and WOTAN's `friends.html`/
   `profile.html` use). Verified against a controlled fake IDUNA (unit tests) and a live screenshot
-  pass of the real compiled GUI binary. **A duel invite is accept/decline only for now** — turning
-  an accepted duel into an actual live match ("Duel Phase 2") isn't fully built yet. The
-  server-side half is real, though: `QUEUE` can now carry the shared `match_token` IDUNA mints on
-  duel accept, and `dw_server`'s matchmaker pairs two connections presenting the identical token
-  with each other specifically, ahead of and exempt from its normal FIFO/bot pairing (so a lone
-  duelist waiting for their friend is never swept into a match with a stranger). Live-verified end
-  to end with real `dw_server`/`dw_client` processes over real TCP, not just unit tests. **No
-  client surfaces this yet** — the native GUI, web client, and WOTAN all still need a "duel
-  accepted → queue for this duel" affordance wired to it (tracked in `EMILY/BACKLOG.md`
-  SECTION 537's Phase 3).
+  pass of the real compiled GUI binary. The server-side matchmaker half is real too: `QUEUE` can
+  carry the shared `match_token` IDUNA mints on duel accept, and `dw_server`'s matchmaker pairs two
+  connections presenting the identical token with each other specifically, ahead of and exempt
+  from its normal FIFO/bot pairing (so a lone duelist waiting for their friend is never swept into
+  a match with a stranger). **The native SDL2 client now surfaces this end to end**: an accepted
+  duel with a live (unexpired, 15-min TTL) `match_token` shows a PLAY button on the DUELS tab —
+  clicking it connects and queues with that token, same wire path a normal PLAY does, just with
+  the token attached. Live-verified with a real compiled `dw_gui` clicked through under Xvfb
+  (screenshotted showing the PLAY button) against a real `dw_server`, pairing with a real
+  `dw_client` CLI instance presenting the matching token — not just unit tests. **Still open**: the
+  web client and WOTAN don't wire this yet (tracked in `EMILY/BACKLOG.md` SECTION 537's Phase 3).
 - **Draft Runs actually spend and pay out tickets now (S510)** — readying the Itch.io launch plan
   (free-to-play with a 20-ticket/day grandfathered guest cap — computed per-player from
   `registered_at` vs. a fixed cutoff date, see S516 below, not the 25 first floated in an early

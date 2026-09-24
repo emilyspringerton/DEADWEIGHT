@@ -128,6 +128,10 @@ typedef struct {
     DwFriendSummary social_friends[8]; int social_friends_n;
     DwFriendRequest social_incoming[6], social_outgoing[6]; int social_incoming_n, social_outgoing_n;
     DwDuel social_duels[8]; int social_duels_n;
+    /* Duel Phase 2 (S537): set by social_play_duel() right before do_connect(), consumed (and
+     * cleared) the first time DW_S_WELCOME auto-queues -- so a later requeue()/redraft never
+     * accidentally resends a stale/single-use duel token. */
+    char pending_match_token[33];
     DwClient c; int connected, welcomed;
     uint32_t match_id; int seat; char opp[DW_NAME_LEN + 1]; int opp_kind;
     int round, hull_you, hull_opp, energy_you, energy_opp, opp_hand; int8_t hand[4];
@@ -271,6 +275,14 @@ static void social_respond_duel(int id, int accept) {
     dwi_duel_respond(&A.idu, A.token, id, accept);
     refresh_social();
 }
+/* Duel Phase 2: an accepted duel with a live match_token queues for that specific opponent
+ * (card mode only -- the same mode the ordinary MENU "PLAY" button uses; a duel is a quick
+ * challenge, not a draft-deck commitment). */
+static void social_play_duel(const char *token) {
+    snprintf(A.pending_match_token, sizeof A.pending_match_token, "%s", token);
+    A.mode = DW_MODE_CARD;
+    do_connect();
+}
 static void requeue(int same_deck);     /* defined below -- do_resume_uplink needs it */
 
 /* ---------- Draft Hub (S510) ---------- */
@@ -413,6 +425,12 @@ static void handle_msg(const DwMsg *m) {
             DwMsg rm; memset(&rm, 0, sizeof rm); rm.type = DW_C_DRAFT_RESUME; memcpy(rm.u.draft_resume.cards, A.deck, DW_DRAFT_DECK);
             A.resume_pending = 0; A.awaiting_resume_queue = 1;
             if (dwc_send(&A.c, &rm)) to_menu("Connection lost");
+        } else if (A.pending_match_token[0]) {
+            DwMsg qm; memset(&qm, 0, sizeof qm); qm.type = DW_C_QUEUE;
+            qm.u.queue.has_match_token = 1;
+            snprintf(qm.u.queue.match_token, sizeof qm.u.queue.match_token, "%s", A.pending_match_token);
+            A.pending_match_token[0] = 0;   /* single-use: never resent on a later requeue */
+            if (dwc_send(&A.c, &qm)) to_menu("Connection lost");
         } else send_simple(DW_C_QUEUE);
         break;
     case DW_S_QUEUED: A.waiting = m->u.queued.waiting; break;
@@ -719,6 +737,11 @@ static void draw_social(int mx, int my) {
             if (incoming_pending) {
                 button(W - 196, y + 8, 84, 42, "OK", C_GOOD, 1, mx, my);
                 button(W - 106, y + 8, 84, 42, "NO", C_BAD, 1, mx, my);
+            } else if (!strcmp(A.social_duels[i].status, "accepted") && A.social_duels[i].match_token[0]) {
+                /* Duel Phase 2: a live (unexpired) match_token means both sides can queue for
+                 * each other right now -- an expired token just falls back to no button (IDUNA
+                 * stops surfacing it once the 15-min TTL lapses, matching its own stated limit). */
+                button(W - 148, y + 8, 120, 42, "PLAY", C_GOOD, 1, mx, my);
             }
         }
     }
@@ -889,9 +912,12 @@ static void click(int x, int y) {
                 int ry = SOCIAL_LIST_Y + i * SOCIAL_ROW_H;
                 int mine_challenger = !strcmp(A.social_duels[i].challenger_id, A.player_id);
                 int incoming_pending = !mine_challenger && !strcmp(A.social_duels[i].status, "pending");
-                if (!incoming_pending) continue;
-                if (in_rect(x, y, W - 196, ry + 8, 84, 42)) social_respond_duel(A.social_duels[i].id, 1);
-                if (in_rect(x, y, W - 106, ry + 8, 84, 42)) social_respond_duel(A.social_duels[i].id, 0);
+                if (incoming_pending) {
+                    if (in_rect(x, y, W - 196, ry + 8, 84, 42)) social_respond_duel(A.social_duels[i].id, 1);
+                    if (in_rect(x, y, W - 106, ry + 8, 84, 42)) social_respond_duel(A.social_duels[i].id, 0);
+                } else if (!strcmp(A.social_duels[i].status, "accepted") && A.social_duels[i].match_token[0]) {
+                    if (in_rect(x, y, W - 148, ry + 8, 120, 42)) social_play_duel(A.social_duels[i].match_token);
+                }
             }
         }
         break;

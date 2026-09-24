@@ -18,7 +18,10 @@ typedef struct { char player_id[48]; char display_name[48]; int kind; /* 0 human
 typedef struct { char player_id[48]; char display_name[48]; int rating; int wins, losses, draws, matches; int friend_count; } DwProfile;
 typedef struct { int id; char requester_id[48]; char recipient_id[48]; char status[16]; } DwFriendRequest;
 typedef struct { char player_id[48]; char display_name[48]; int rating; } DwFriendSummary;
-typedef struct { int id; char challenger_id[48]; char challenged_id[48]; char status[16]; } DwDuel;
+/* match_token: 32 hex chars + NUL, only ever populated by IDUNA while status=="accepted" and the
+ * token's 15-min TTL hasn't expired (game_social.go's duelsList) -- empty means "no live token",
+ * whether because it's still pending, was declined, or the window already lapsed. */
+typedef struct { int id; char challenger_id[48]; char challenged_id[48]; char status[16]; char match_token[33]; } DwDuel;
 
 typedef struct {
     unsigned match_id, seed; char seat_pid[2][48];
