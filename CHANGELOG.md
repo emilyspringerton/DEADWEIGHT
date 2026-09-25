@@ -1,5 +1,10 @@
 # CHANGELOG
 
+## 2026-09-25
+
+- feat: Create Account page (web client) + claim-account login fallback (web + native C GUI) + new PARENA account_rules.prn (C target, display-name validation) (sess-20260923-1030-4a526255)
+
+
 ## 2026-09-24
 - feat(web): DUELS panel gains a Play button for Duel Phase 3b (S537 Duel Phase 2, Phase 3 --
   browser client half) -- an accepted duel with a live `match_token` now renders a "Play" button
