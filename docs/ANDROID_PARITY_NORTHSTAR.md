@@ -22,11 +22,16 @@ or (c) something else entirely. Flagged in `EMILY/BACKLOG.md`; not built until s
   flat rectangles, 2px frames, a 5x7 bitmap font, cards drawn as vector shapes/text at render
   time (`card_box()`), not image assets. ~a few thousand lines of C, single-file.
 - **Android client** (`android/src/main/java/...`): ~2100 lines of Java. Real: wire protocol
-  codec (`core/Protocol.java`), session/socket transport, draft model, and PARENA-generated
-  scalar decision logic (`generated/CardRules.java`, from `PARENA/stdlib/deadweight/
-  card_rules.prn`). **Not real yet: no rendering/UI layer at all** — no Activity, no View, no
-  Canvas/OpenGL drawing code exists in this repo today. "Bring to parity" is not a reskin of an
-  existing screen; it is building the Android UI layer from zero.
+  codec (`core/Protocol.java`), session/socket transport, draft model, PARENA-generated scalar
+  decision logic (`generated/CardRules.java`, from `PARENA/stdlib/deadweight/card_rules.prn`),
+  and — **correction, found on closer read; the first pass of this doc missed the top-level
+  package and wrongly said no UI existed** — a real, working `MainActivity`/`CardView`/`BarView`
+  UI: standard Android widgets (Button/TextView/LinearLayout) for menu/queue/draft/match screens,
+  `CardView` drawing the old NOCK `card_<id>.png` art (falling back to a plain rounded rect),
+  `BarView` drawing hull/energy meters. So "bring to parity" is a **re-render** of an already
+  functional screen flow, not a from-zero build — the state machine, screens, and interactions
+  are done; only the visual language (Canvas draw calls in `CardView`/`BarView`, plus
+  `MainActivity`'s stock widget styling) needs to become brutalist to match the desktop client.
 - **Art**: `art/build_art.sh` + `art/recipes/lib.sh` (NOCK/ImageMagick gradient card art) is the
   old, now-superseded Android-only pipeline. Per the founder's own new direction, the target is
   no longer that pipeline — it's the desktop client's vector/bitmap-font rendering *approach*,
@@ -42,10 +47,14 @@ or (c) something else entirely. Flagged in `EMILY/BACKLOG.md`; not built until s
 
 ## Real, phased plan
 
-1. **Rendering port** — a Java Canvas-based renderer replicating the desktop's flat-rect/2px-
-   frame/bitmap-font style: port the palette constants and glyph table from `apps/gui/main.c`
-   into a shared resource (constants class + bitmap font asset), build the actual Android
-   Activity/View/Canvas draw loop (does not exist yet).
+1. **Rendering port** — port the desktop's `Col` palette and 5x7 bitmap-`FONT` table
+   (`apps/gui/main.c`) into `Theme.java`/`PixelFont.java`, and re-implement `CardView.onDraw`/
+   `BarView.onDraw` to draw the brutalist flat-rect/2px-frame/bitmap-font style (matching
+   `card_box()`) instead of the NOCK PNG art + system font. Retire the NOCK art bitmaps from the
+   live render path (kept in `res/drawable-nodpi` as a historical asset per
+   `BRAND_STYLE_GUIDE.md`'s own precedent, not deleted outright, but no longer drawn). Re-theme
+   `MainActivity`'s stock widget backgrounds/text colors to the same palette — the screen flow
+   and state machine are already real and don't change.
 2. **PARENA-driven fx parity** — extend `scripts/gen_rules.sh` to also emit `FxRules.java` from
    `fx_rules.prn`, wire it into the new Android renderer's round-resolution timeline, matching
    `apps/gui/fx.c` and `web/src/fx.ts`'s existing decision calls.

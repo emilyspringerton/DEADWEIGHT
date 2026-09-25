@@ -1,6 +1,15 @@
 # CHANGELOG
 
 ## 2026-09-25
+- Android (S555 phase 1, reverses S513 shelving): re-rendered `CardView`/`BarView` in the desktop
+  client's brutalist style — ported `apps/gui/main.c`'s `Col` palette (`Theme.java`) and 5x7
+  bitmap `FONT` table (`PixelFont.java`) verbatim, retired the old NOCK `card_<id>.png` art from
+  the live render path, re-themed `MainActivity`'s stock widget colors to match. Screen flow/
+  state machine unchanged (already real). **Honest limitation**: no Android SDK/Bazel toolchain
+  in this sandbox to build-verify against real `android.*` APIs — reviewed by hand against the
+  existing call sites, not run on a device or emulator yet. See
+  `docs/ANDROID_PARITY_NORTHSTAR.md`.
+
 - Add tools/replay_dump.c + scripts/build.sh step: replays a matches.ndjson record through the real match core and prints a full round-by-round JSON trace, for WOTAN's new match replay viewer (S547). Verified 300/300 clean on the most recent live matches; dw-server/dw-bot were not touched (sess-20260923-1030-4a526255)
 
 - feat: Create Account page (web client) + claim-account login fallback (web + native C GUI) + new PARENA account_rules.prn (C target, display-name validation) (sess-20260923-1030-4a526255)
