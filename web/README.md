@@ -130,6 +130,28 @@ Not just "it compiles" — a real, live, end-to-end match:
   live verification above used Node's `fetch` directly (not a browser), which isn't
   CORS-restricted, so the account-bootstrap logic is proven but a real browser tab hitting this
   same flow is not yet.
+- **Create Account + claim-account login fallback (2026-09-25): real, code-complete, browser click-
+  through not verified.** Founder real-time: "it should let me create a deadweight account right
+  there with a button" + "on the client if there is an account it should try to log you in with the
+  email and password". New `account.registerAndClaim(idunaBase, name, email, password)` (guest-
+  register with a player-CHOSEN name, then immediately claim it) drives a new "Create Account" box
+  in `index.html`, wired to `main.ts`'s `createAccount()` -- `start()`'s own connect-and-play tail
+  was extracted into a shared `enterGame()` so both the existing guest-then-Connect path and this
+  new one reach the same live-game state. `account.claimOrLogin()` (used by both this and the
+  existing "Link email" box) now catches a 409 from `guest-upgrade` specifically (a real, honest
+  `ApiError` class carrying the HTTP status, not string-matching) and retries as a plain
+  `loginWithEmail` with the same credentials, switching the active session to the pre-existing
+  identity rather than dead-ending -- the same fix landed in the native C GUI's own `do_link_email`
+  (`dwi_guest_upgrade` gained an `out_status` param). Verified: `npm run build` (tsc) clean;
+  `isValidDisplayName` (the new "Create Account" box's live name feedback) checked byte-for-byte
+  against a real PARENA-generated C implementation (`core/account_rules.c`, from `PARENA/stdlib/
+  deadweight/account_rules.prn`) via 8 matching test vectors, both ASan/UBSan-clean (C) and Node-
+  verified (TS) -- see `EMILY/BACKLOG.md` SECTION 544. Real, honest, named gap: `isValidDisplayName`
+  is hand-written in `account.ts`, NOT PARENA-emitted, because PARENA's TypeScript emitter cannot
+  build ANYTHING depending on `stdlib/string.prn` yet (a real, previously-undiscovered compiler
+  bug, also named in SECTION 544, not routed around silently). Not verified this pass, same class of
+  gap as the IDUNA auth bullet above: an actual browser click-through of either the new Create
+  Account box or the updated Link Email fallback (no headless Chrome in this sandbox).
 - **Animation/audio rendering not verified in a real browser.** `fx.ts`'s Canvas2D drawing and Web
   Audio playback have never been opened in an actual browser window in this sandbox (no display) —
   only the shared decision layer they're driven by has been checked live (see above). The visuals

@@ -336,21 +336,43 @@ static void do_resume_uplink(void) {
     A.resume_pending = 1;
     do_connect();
 }
+/* claim -> login fallback (2026-09-25, founder real-time: "on the client if there is an account
+ * it should try to log you in with the email and password"): a 409 from guest-upgrade means this
+ * exact email already belongs to SOME OTHER player_id -- most often a real, pre-existing account
+ * (this same player registered generically through IDUNA's own SSO page on WOTAN, or is
+ * reinstalling/switching machines and already claimed this email before). Rather than dead-ending
+ * on "email already taken", this switches the active session to that pre-existing identity via a
+ * plain email-login with the same credentials just typed -- IDUNA's own claimGamePlayer
+ * (game_online.go) claims it for DEADWEIGHT on the spot if it was never scoped to a game yet. The
+ * fresh guest session this run started as is simply abandoned (never deleted server-side, just no
+ * longer active) -- same "no server-side merge" boundary IDUNA's own claim-on-login fix
+ * deliberately drew, so two genuinely different players' histories can never accidentally
+ * combine. */
 static void do_link_email(void) {
     if (!A.link_email[0] || !A.link_pass[0]) return;
     if (!A.auth_ready) { snprintf(A.link_msg, sizeof A.link_msg, "No account (IDUNA offline)"); return; }
     if (strlen(A.link_pass) < 8) { snprintf(A.link_msg, sizeof A.link_msg, "Password needs 8+ characters"); return; }
     char tok[DW_MAX_AUTH_TOKEN + 1];
-    int rc = dwi_guest_upgrade(&A.idu, A.token, A.link_email, A.link_pass, tok, sizeof tok);
+    int status = 0;
+    int rc = dwi_guest_upgrade(&A.idu, A.token, A.link_email, A.link_pass, tok, sizeof tok, &status);
+    int logged_in_instead = 0;
+    if (rc != 0 && status == 409) {
+        rc = dwi_email_login(&A.idu, A.link_email, A.link_pass, tok, sizeof tok, NULL);
+        logged_in_instead = (rc == 0);
+    }
     if (rc != 0) { snprintf(A.link_msg, sizeof A.link_msg, "Link failed (email taken or bad login)"); return; }
     snprintf(A.token, sizeof A.token, "%s", tok);
     /* S522: player_id/tickets/stats are untouched by design (guestUpgrade never creates a new
      * player row) -- closing the modal and flipping is_guest is the only client-side state change
      * a successful claim needs. "CONNECTION SECURED" is a persistent state (drawn from is_guest),
-     * not a transient toast, matching the spec's "hide the Claim button, show confirmation." */
+     * not a transient toast, matching the spec's "hide the Claim button, show confirmation." The
+     * login-fallback path swaps to a genuinely different player_id/token, same end state though --
+     * this screen has no per-field player identity to reconcile. */
     A.is_guest = 0;
     A.screen = S_MENU;
-    snprintf(A.link_msg, sizeof A.link_msg, "Linked! Progress now saved.");
+    snprintf(A.link_msg, sizeof A.link_msg, "%s", logged_in_instead
+        ? "This email already had an account -- signed in to it instead."
+        : "Linked! Progress now saved.");
     A.link_email[0] = 0; A.link_pass[0] = 0;
 }
 

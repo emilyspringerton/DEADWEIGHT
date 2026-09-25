@@ -45,4 +45,16 @@ gcc -std=c99 -Wall -Wextra -Werror -Icore -Icore/runtime -DPARENA_NO_GRAPHICS ap
 # card_kind/card_power/kind_beats without prototypes). Skipped quietly if the .prn isn't present.
 BRAIN_PRN="${PARENA_BRAIN_PRN:-/home/fatbaby/PARENA/stdlib/deadweight/bot_brain.prn}"
 if [ -f "$BRAIN_PRN" ]; then "$PARENA_BIN" build "$BRAIN_PRN" -o core/bot_brain.c; fi
-echo "regenerated core/card_rules.c, core/fx_rules.c, $JAVA_OUT, $TS_OUT, $FX_TS_OUT, tests/parity_vectors.txt"
+# Display-name validation (2026-09-25, founder real-time: "have a new page for [creating a
+# deadweight account]... port it right into TS with PARENA (abstract into parena if not
+# already)"). C target only for now -- string.prn's own length/char-at are declared with @
+# Region (needed for the C target's real region-safety verification), which PARENA's TS emitter
+# v0 hard-rejects on ANY function that transitively depends on them (confirmed: even string.prn
+# alone fails `parena build ... -o *.ts`), a real, previously-undiscovered compiler gap named in
+# EMILY/BACKLOG.md, not routed around here. Combined with string.prn (not card_rules.prn's own
+# scalar-only file) since it needs string/length + string/char-at -- these are real runtime deps,
+# not something account_rules.prn redeclares itself.
+ACCOUNT_PRN="${PARENA_ACCOUNT_PRN:-/home/fatbaby/PARENA/stdlib/deadweight/account_rules.prn}"
+STRING_PRN="${PARENA_STRING_PRN:-/home/fatbaby/PARENA/stdlib/string.prn}"
+if [ -f "$ACCOUNT_PRN" ]; then "$PARENA_BIN" build "$STRING_PRN" "$ACCOUNT_PRN" -o core/account_rules.c; fi
+echo "regenerated core/card_rules.c, core/fx_rules.c, core/account_rules.c, $JAVA_OUT, $TS_OUT, $FX_TS_OUT, tests/parity_vectors.txt"

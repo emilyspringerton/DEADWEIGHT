@@ -192,10 +192,11 @@ int dwi_draft_run_abort(DwIduna *d, const char *player_token, int *out_wins, int
     return 0;
 }
 
-int dwi_guest_upgrade(DwIduna *d, const char *player_token, const char *email, const char *password, char *tok, size_t tn) {
+int dwi_guest_upgrade(DwIduna *d, const char *player_token, const char *email, const char *password, char *tok, size_t tn, int *out_status) {
     char body[512], resp[2048]; int st = 0;
     snprintf(body, sizeof body, "{\"email\":\"%s\",\"password\":\"%s\"}", email, password);
-    if (dw_http("POST", d->host, d->port, d->use_tls, GAME "/guest-upgrade", player_token, body, resp, sizeof resp, &st, TMO) != 0) return -1;
+    if (dw_http("POST", d->host, d->port, d->use_tls, GAME "/guest-upgrade", player_token, body, resp, sizeof resp, &st, TMO) != 0) { if (out_status) *out_status = 0; return -1; }
+    if (out_status) *out_status = st;
     if (st != 200) return -2;
     return dw_json_str(resp, "token", tok, tn) ? 0 : -1;
 }

@@ -103,8 +103,10 @@ int dwi_draft_run_abort(DwIduna *d, const char *player_token, int *out_wins, int
 /* Guest -> email upgrade ("Link Email, Save Progress"): player_token is the player's OWN existing
  * token (any provider). Keeps the same player_id -- tickets/stats/founder-flag/draft-run all
  * carry over automatically. 0 ok (fills tok, >= 1536 bytes), -2 IDUNA rejected (bad email/
- * password/already-linked). */
-int dwi_guest_upgrade(DwIduna *d, const char *player_token, const char *email, const char *password, char *tok, size_t tn);
+ * password/already-linked -- out_status distinguishes: 409 means this exact email already
+ * belongs to some OTHER player_id, the real trigger for a login-fallback rather than a bad
+ * request; may be NULL if the caller doesn't need to tell those apart). */
+int dwi_guest_upgrade(DwIduna *d, const char *player_token, const char *email, const char *password, char *tok, size_t tn, int *out_status);
 /* Returning email/password login -- same game-scoped token shape every other login path here
  * issues. 0 ok, -2 invalid credentials. */
 int dwi_email_login(DwIduna *d, const char *email, const char *password, char *tok, size_t tn, int *out_tickets);

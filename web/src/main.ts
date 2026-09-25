@@ -113,24 +113,11 @@ function runFxAnimation(timeline: fx.FxTimeline, input: fx.FxRoundInput) {
     fxRafHandle = requestAnimationFrame(step);
 }
 
-async function start() {
-    const name = ($('name') as HTMLInputElement).value.trim() || 'BrowserPlayer';
-    const idunaUrl = ($('iduna-url') as HTMLInputElement).value.trim();
-    const bridgeUrl = ($('bridge-url') as HTMLInputElement).value.trim();
-    const startBtn = $('start-btn') as HTMLButtonElement;
-    const acctStatus = $('account-status');
-    startBtn.disabled = true;
-    acctStatus.textContent = 'Contacting IDUNA…';
-    try {
-        currentAccount = await account.bootstrapAccount(idunaUrl, name);
-        acctStatus.textContent =
-            'Playing as ' + currentAccount.displayName + (currentAccount.emailLinked ? ' (linked account)' : ' (guest)');
-        ($('link-email-box') as HTMLElement).style.display = currentAccount.emailLinked ? 'none' : 'block';
-    } catch (e) {
-        acctStatus.textContent = 'IDUNA account error: ' + (e as Error).message + ' — connecting unauthenticated (only works against a --no-auth server).';
-        currentAccount = null;
-    }
-    startBtn.disabled = false;
+// enterGame is start()'s own real tail, extracted (2026-09-25) so createAccount() below can
+// reach the exact same "connected and playing" state without duplicating the client wiring --
+// both paths only differ in HOW currentAccount got resolved (bootstrap vs. a fresh
+// register+claim), never in what happens once it's resolved.
+async function enterGame(idunaUrl: string, bridgeUrl: string, fallbackName: string) {
     idunaBaseUrl = idunaUrl;
     $('setup').style.display = 'none';
     $('game').style.display = 'block';
@@ -211,10 +198,70 @@ async function start() {
             log(`ERROR code ${f.code}`);
         },
     });
-    client.connect(currentAccount ? currentAccount.displayName : name, currentAccount ? currentAccount.token : '');
+    client.connect(currentAccount ? currentAccount.displayName : fallbackName, currentAccount ? currentAccount.token : '');
+}
+
+async function start() {
+    const name = ($('name') as HTMLInputElement).value.trim() || 'BrowserPlayer';
+    const idunaUrl = ($('iduna-url') as HTMLInputElement).value.trim();
+    const bridgeUrl = ($('bridge-url') as HTMLInputElement).value.trim();
+    const startBtn = $('start-btn') as HTMLButtonElement;
+    const acctStatus = $('account-status');
+    startBtn.disabled = true;
+    acctStatus.textContent = 'Contacting IDUNA…';
+    try {
+        currentAccount = await account.bootstrapAccount(idunaUrl, name);
+        acctStatus.textContent =
+            'Playing as ' + currentAccount.displayName + (currentAccount.emailLinked ? ' (linked account)' : ' (guest)');
+        ($('link-email-box') as HTMLElement).style.display = currentAccount.emailLinked ? 'none' : 'block';
+    } catch (e) {
+        acctStatus.textContent = 'IDUNA account error: ' + (e as Error).message + ' — connecting unauthenticated (only works against a --no-auth server).';
+        currentAccount = null;
+    }
+    startBtn.disabled = false;
+    await enterGame(idunaUrl, bridgeUrl, name);
+}
+
+// createAccount is the real "Create Account" flow (2026-09-25, founder real-time: "it should let
+// me create a deadweight account right there with a button"): one button, real, live client-side
+// name feedback (account.isValidDisplayName, mirroring IDUNA's own server-side check -- see its
+// own doc comment for the honest PARENA-TS-emitter gap this hand-written copy works around),
+// register-with-a-chosen-name + immediately claim with email/password, then straight into the
+// game exactly like the existing guest-then-Connect path does.
+async function createAccount() {
+    const name = ($('create-name') as HTMLInputElement).value.trim();
+    const email = ($('create-email') as HTMLInputElement).value.trim();
+    const password = ($('create-password') as HTMLInputElement).value;
+    const idunaUrl = ($('iduna-url') as HTMLInputElement).value.trim();
+    const bridgeUrl = ($('bridge-url') as HTMLInputElement).value.trim();
+    const createBtn = $('create-account-btn') as HTMLButtonElement;
+    const msg = $('create-account-msg');
+    if (!name || !account.isValidDisplayName(name)) {
+        msg.textContent = 'Name must be 1-16 characters, no control characters.';
+        return;
+    }
+    if (!email || !password) {
+        msg.textContent = 'Email and password required.';
+        return;
+    }
+    if (password.length < 8) {
+        msg.textContent = 'Password needs 8+ characters.';
+        return;
+    }
+    createBtn.disabled = true;
+    msg.textContent = 'Creating…';
+    try {
+        currentAccount = await account.registerAndClaim(idunaUrl, name, email, password);
+        msg.textContent = '';
+        await enterGame(idunaUrl, bridgeUrl, name);
+    } catch (e) {
+        msg.textContent = (e as Error).message;
+        createBtn.disabled = false;
+    }
 }
 
 $('start-btn').addEventListener('click', start);
+$('create-account-btn').addEventListener('click', createAccount);
 $('link-btn').addEventListener('click', async () => {
     const idunaUrl = ($('iduna-url') as HTMLInputElement).value.trim();
     const email = ($('link-email') as HTMLInputElement).value.trim();
@@ -226,8 +273,11 @@ $('link-btn').addEventListener('click', async () => {
     }
     msg.textContent = 'Linking…';
     try {
-        currentAccount = await account.linkEmail(idunaUrl, currentAccount, email, password);
-        msg.textContent = 'Linked — you can sign in with this email on WOTAN’s Friends & Duels page too.';
+        const before = currentAccount.playerID;
+        currentAccount = await account.claimOrLogin(idunaUrl, currentAccount, email, password);
+        msg.textContent = currentAccount.playerID === before
+            ? 'Linked — you can sign in with this email on WOTAN’s Friends & Duels page too.'
+            : 'This email already had an account — signed in to it instead (your fresh guest session is unused, not lost).';
         ($('link-email-box') as HTMLElement).style.display = 'none';
         ($('account-status') as HTMLElement).textContent = 'Playing as ' + currentAccount.displayName + ' (linked account)';
     } catch (e) {
