@@ -1,5 +1,15 @@
 # DEADWEIGHT — Brand & Style Guide (v1, S513)
 
+**Reversal (founder real-time, 2026-09-25, same day as this doc's own S513 shelving call):**
+Android is un-shelved. The founder has asked for the Android client to be brought to full feature
+and visual parity with the desktop client — same brutalist rendering approach (not the old NOCK
+gradient card-art pipeline described in Section 2B below), plus copy/paste and a "key unlock"
+feature set (scoping still open — see `docs/ANDROID_PARITY_NORTHSTAR.md`). Section 2B's own
+gradient/NOCK art direction is retired, not being revived; the target Android visual language is
+Section 2A's desktop language, ported. Everything below this note is the original S513 text,
+kept for the historical record of how the shelving decision was reached — read
+`ANDROID_PARITY_NORTHSTAR.md` for the current, real plan.
+
 **Status: this is the first written version of this document.** There was no prior lore bible or
 style guide to "reverse-engineer" — what existed before this pass was code (a real GUI color
 palette, a real card-art generation pipeline) and scattered UI copy, not a canon document. This
