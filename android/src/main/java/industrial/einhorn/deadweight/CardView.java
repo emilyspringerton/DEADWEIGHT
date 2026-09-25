@@ -1,113 +1,114 @@
 package industrial.einhorn.deadweight;
 
 import android.content.Context;
-import android.graphics.Bitmap;
-import android.graphics.BitmapFactory;
 import android.graphics.Canvas;
-import android.graphics.ColorMatrix;
-import android.graphics.ColorMatrixColorFilter;
 import android.graphics.Paint;
-import android.graphics.RectF;
 import android.view.View;
 import industrial.einhorn.deadweight.generated.CardRules;
 
-/** Card face: NOCK-generated art (res/drawable-nodpi/card_<id>.png) with power/cost overlaid; falls back to a coloured
- *  rounded rect + tier pips if the resource is missing. id < 0 = empty. */
+/** Card face, brutalist-rendered to match apps/gui/main.c's card_box(): flat rects, a 2px frame,
+ *  the shared 5x7 PixelFont — no art bitmaps. id < 0 = empty ("PASS") slot. Retires the old
+ *  NOCK card_<id>.png art from the live render path per docs/ANDROID_PARITY_NORTHSTAR.md Phase 1
+ *  (BRAND_STYLE_GUIDE.md Section 2A is now Android's target visual language too). */
 final class CardView extends View {
-    private static final int[] KIND_COLOR = {0xFFD9534F, 0xFFE0A030, 0xFF4A86E8}; // Offense (red), Operations (yellow), Defense (blue)
-    private final Paint p = new Paint(Paint.ANTI_ALIAS_FLAG);
-    private final RectF r = new RectF();
-    private static final Bitmap[] ART = new Bitmap[9];
-    private static final boolean[] ART_TRIED = new boolean[9];
-    private static final Paint GREY = new Paint(Paint.ANTI_ALIAS_FLAG);
-    static {
-        ColorMatrix cm = new ColorMatrix();
-        cm.setSaturation(0f);
-        GREY.setColorFilter(new ColorMatrixColorFilter(cm));
-        GREY.setAlpha(150);
-    }
-    private final Paint artPaint = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.FILTER_BITMAP_FLAG);
+    private final Paint fill = new Paint();
+    private final Paint text = new Paint();
     int cardId = -1;
     boolean enabled = true, selected = false, slotLocked = false;
 
-    CardView(Context c) { super(c); }
-
-    private Bitmap art(int id) {
-        if (id < 0 || id >= ART.length) return null;
-        synchronized (ART) {
-            if (!ART_TRIED[id]) {
-                ART_TRIED[id] = true;
-                try {
-                    int res = getResources().getIdentifier("card_" + id, "drawable", getContext().getPackageName());
-                    if (res != 0) ART[id] = BitmapFactory.decodeResource(getResources(), res);
-                } catch (RuntimeException e) { ART[id] = null; }
-            }
-            return ART[id];
-        }
-    }
+    CardView(Context c) { super(c); text.setColor(Theme.TEXT); }
 
     void set(int id, boolean enabled, boolean selected, boolean slotLocked) {
         cardId = id; this.enabled = enabled; this.selected = selected; this.slotLocked = slotLocked; invalidate();
     }
 
-    /** Greedy word-wrap of `text` into at most maxLines lines of width maxW, drawn centred at x. */
-    private void wrap(Canvas cv, String text, float x, float y, float maxW, int maxLines) {
-        String[] words = text.split(" ");
+    private void rect(Canvas cv, float x, float y, float w, float h, int color) {
+        fill.setStyle(Paint.Style.FILL); fill.setColor(color);
+        cv.drawRect(x, y, x + w, y + h, fill);
+    }
+
+    private void frame(Canvas cv, float x, float y, float w, float h, int color, float t) {
+        rect(cv, x, y, w, t, color); rect(cv, x, y + h - t, w, t, color);
+        rect(cv, x, y, t, h, color); rect(cv, x + w - t, y, t, h, color);
+    }
+
+    /** Greedy word-wrap into lines of at most `per` chars — mirrors apps/gui/main.c's wrap_next/wrap_lines. */
+    private static String[] wrap(String s, int per) {
+        if (per < 1) per = 1;
+        java.util.List<String> lines = new java.util.ArrayList<>();
         StringBuilder line = new StringBuilder();
-        int n = 0;
-        for (String w : words) {
+        for (String w : s.split(" ")) {
             String cand = line.length() == 0 ? w : line + " " + w;
-            if (p.measureText(cand) > maxW && line.length() > 0) {
-                cv.drawText(line.toString(), x, y + n * p.getTextSize() * 1.15f, p);
-                if (++n >= maxLines) return;
-                line = new StringBuilder(w);
-            } else line = new StringBuilder(cand);
+            if (cand.length() > per && line.length() > 0) { lines.add(line.toString()); line = new StringBuilder(w); }
+            else line = new StringBuilder(cand);
         }
-        if (line.length() > 0 && n < maxLines) cv.drawText(line.toString(), x, y + n * p.getTextSize() * 1.15f, p);
+        if (line.length() > 0) lines.add(line.toString());
+        return lines.toArray(new String[0]);
     }
 
     @Override protected void onDraw(Canvas cv) {
-        float w = getWidth(), h = getHeight(), pad = w * 0.05f;
-        r.set(pad, pad, w - pad, h - pad);
-        if (cardId < 0) { p.setColor(0x33FFFFFF); p.setStyle(Paint.Style.STROKE); p.setStrokeWidth(3); cv.drawRoundRect(r, 18, 18, p); return; }
-        int base = KIND_COLOR[CardRules.cardKind(cardId)];
-        Bitmap face = art(cardId);
-        p.setStyle(Paint.Style.FILL);
-        if (face != null) {
-            cv.drawBitmap(face, null, r, enabled ? artPaint : GREY);
+        float w = getWidth(), h = getHeight();
+        if (cardId < 0) {
+            rect(cv, 0, 0, w, h, Theme.PANEL);
+            frame(cv, 0, 0, w, h, Theme.LOCK, 2);
+            text.setColor(Theme.DIM);
+            PixelFont.drawCentered(cv, text, w / 2, h / 2 - 7, 2, "PASS");
+            return;
+        }
+        rect(cv, 0, 0, w, h, Theme.PANEL);
+        int kc = Theme.KIND_COLOR[CardRules.cardKind(cardId)];
+        if (!enabled) kc = Theme.dim(kc, 3);
+        int tc = enabled ? Theme.TEXT : Theme.DIM;
+        boolean big = w >= 200;
+        float sc = big ? 2 : 1;
+
+        // header: kind-colored band with the name
+        float headerH = big ? 30 : 22;
+        rect(cv, 0, 0, w, headerH, kc);
+        text.setColor(Theme.TEXT);
+        String nm = CardText.name(cardId);
+        float nameScale = sc;
+        if (PixelFont.width(nm, nameScale) > w - 8) {
+            while (nameScale > 1 && PixelFont.width(nm, nameScale) > w - 8) nameScale -= 0.5f;
+            if (PixelFont.width(nm, nameScale) > w - 8) {
+                int fit = (int) ((w - 8) / (6 * nameScale));
+                nm = fit > 0 ? nm.substring(0, Math.min(nm.length(), fit)) : "";
+            }
+        }
+        PixelFont.drawCentered(cv, text, w / 2, big ? 8 : 6, nameScale, nm);
+
+        float ty;
+        text.setColor(tc);
+        if (big) {
+            PixelFont.drawCentered(cv, text, w / 2, headerH + 6, 2, "COST " + CardRules.cardCost(cardId) + "  PWR " + CardRules.cardPower(cardId));
+            text.setColor(Theme.DIM);
+            String kwLine = Theme.KIND_NAME[CardRules.cardKind(cardId)];
+            String credit = CardRules.cardCredit(cardId) > 0 ? " $" : "";
+            PixelFont.drawCentered(cv, text, w / 2, headerH + 24, 1, kwLine + credit);
+            ty = headerH + 38;
         } else {
-            p.setColor(enabled ? base : 0xFF555555);
-            cv.drawRoundRect(r, 18, 18, p);
+            PixelFont.drawCentered(cv, text, w / 2, headerH + 6, 1, "COST " + CardRules.cardCost(cardId) + " PWR " + CardRules.cardPower(cardId));
+            ty = headerH + 18;
         }
-        if (selected) { p.setStyle(Paint.Style.STROKE); p.setStrokeWidth(8); p.setColor(0xFFFFFFFF); cv.drawRoundRect(r, 18, 18, p); }
-        p.setStyle(Paint.Style.FILL);
-        p.setColor(0xFFFFFFFF); p.setTextAlign(Paint.Align.CENTER);
-        if (cardId < 9 && CardText.text(cardId).isEmpty()) {   // vanilla base cards; the Operations base line has a Flank rider and uses the text layout
-            p.setTextSize(h * 0.36f); cv.drawText(String.valueOf(CardRules.cardPower(cardId)), w / 2, h * 0.58f, p);
-            p.setTextSize(h * 0.14f);
-            cv.drawText(CardText.name(cardId), w / 2, h * 0.86f, p);
-        } else {
-            // Guild card: name on top, power (if any) in the middle, rule text at the bottom
-            p.setTextSize(h * 0.085f); p.setFakeBoldText(true);
-            wrap(cv, CardText.name(cardId), w * 0.62f, h * 0.14f, w * 0.5f, 2);
-            p.setFakeBoldText(false);
-            int pw = CardRules.cardPower(cardId);
-            if (pw > 0) { p.setTextSize(h * 0.26f); cv.drawText(String.valueOf(pw), w / 2, h * 0.53f, p); }
-            p.setTextSize(h * 0.072f); p.setColor(0xFFEEEEEE);
-            wrap(cv, CardText.text(cardId), w / 2, h * 0.66f, w * 0.86f, 5);
+
+        String body = CardText.text(cardId);
+        if (!body.isEmpty()) {
+            text.setColor(Theme.DIM);
+            int per = (int) ((w - 8) / (6 * sc));
+            String[] lines = wrap(body, per);
+            float lh = sc * 9;
+            for (String ln : lines) {
+                if (ty + 8 * sc > h - 2) break;
+                PixelFont.draw(cv, text, 4, ty, sc, ln);
+                ty += lh;
+            }
         }
-        p.setColor(0xCC000000); cv.drawCircle(w * 0.2f, h * 0.17f, h * 0.11f, p);
-        p.setColor(0xFFFFD54F); p.setTextSize(h * 0.15f); p.setTextAlign(Paint.Align.CENTER);
-        cv.drawText(String.valueOf(CardRules.cardCost(cardId)), w * 0.2f, h * 0.22f, p);
-        int credit = CardRules.cardCredit(cardId);
-        if (credit > 0) {
-            p.setColor(0xCC000000); cv.drawCircle(w * 0.2f, h * 0.39f, h * 0.11f, p);
-            p.setColor(0xFF7CFC9A); p.setTextSize(h * 0.12f); cv.drawText("$" + credit, w * 0.2f, h * 0.435f, p);
-        }
-        if (cardId < 9 && face == null) for (int i = 0; i <= CardRules.cardTier(cardId); i++) cv.drawCircle(w * (0.62f + 0.12f * i), h * 0.17f, h * 0.04f, p);
+
+        if (selected) frame(cv, 0, 0, w, h, Theme.SEL, big ? 4 : 3);
         if (slotLocked) {
-            p.setColor(0xB0000000); cv.drawRoundRect(r, 18, 18, p);
-            p.setColor(0xFFFF6E6E); p.setTextSize(h * 0.11f); p.setTextAlign(Paint.Align.CENTER); cv.drawText("LOCKED", w / 2, h * 0.5f, p);
+            rect(cv, 0, 0, w, h, 0xB0000000);
+            text.setColor(Theme.BAD);
+            PixelFont.drawCentered(cv, text, w / 2, h / 2 - 4, sc, "LOCKED");
         }
     }
 }

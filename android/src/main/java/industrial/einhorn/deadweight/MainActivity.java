@@ -2,7 +2,6 @@ package industrial.einhorn.deadweight;
 
 import android.app.Activity;
 import android.content.SharedPreferences;
-import android.graphics.Color;
 import android.graphics.Typeface;
 import android.os.Bundle;
 import android.text.InputType;
@@ -46,7 +45,7 @@ public final class MainActivity extends Activity implements Session.Listener {
         prefs = getSharedPreferences(PREFS, MODE_PRIVATE);
         root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
-        root.setBackgroundColor(0xFF15171C);
+        root.setBackgroundColor(Theme.BG);
         root.setPadding(24, 48, 24, 24);
         setContentView(root);
         render();
@@ -118,7 +117,7 @@ public final class MainActivity extends Activity implements Session.Listener {
             case DRAFTING: renderDraft(s); break;
             case QUEUED: renderQueue(s); break;
             case READY: if (m != null && m.result >= 0) renderEnd(s, m); else renderLobby(s); break;
-            default: text("Connecting…", 22, Color.WHITE); break;
+            default: text("Connecting…", 22, Theme.TEXT); break;
         }
     }
 
@@ -142,7 +141,7 @@ public final class MainActivity extends Activity implements Session.Listener {
 
     private EditText field(String hint, String value, int inputType) {
         EditText e = new EditText(this);
-        e.setHint(hint); e.setText(value); e.setInputType(inputType); e.setTextColor(Color.WHITE); e.setHintTextColor(0xFF888888);
+        e.setHint(hint); e.setText(value); e.setInputType(inputType); e.setTextColor(Theme.TEXT); e.setHintTextColor(Theme.DIM);
         e.setSingleLine(true);
         root.addView(e, new LinearLayout.LayoutParams(-1, -2));
         return e;
@@ -155,14 +154,14 @@ public final class MainActivity extends Activity implements Session.Listener {
         sv.addView(col);
         LinearLayout saved = root; // temporarily build into the scroll column
         root = col;
-        text("DEADWEIGHT", 34, Color.WHITE).setTypeface(Typeface.DEFAULT_BOLD);
-        text("Card duel, 1v1", 16, 0xFFAAAAAA);
+        text("DEADWEIGHT", 34, Theme.TEXT).setTypeface(Typeface.DEFAULT_BOLD);
+        text("Card duel, 1v1", 16, Theme.DIM);
         EditText name = field("Your name (1-16 chars)", prefs.getString("name", defaultName()), InputType.TYPE_CLASS_TEXT);
         EditText host = field("Server host", prefs.getString("host", Config.DEFAULT_HOST), InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_URI);
         EditText port = field("Server port", String.valueOf(prefs.getInt("port", Config.DEFAULT_PORT)), InputType.TYPE_CLASS_NUMBER);
         EditText iduna = field("IDUNA URL (blank = name only)", prefs.getString("iduna", Config.DEFAULT_IDUNA_URL), InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_URI);
-        text(status, 15, 0xFFFFB74D);
-        text("Random: the whole shuffled catalog.  Draft: pick 16 cards into a 23-card deck first.", 13, 0xFFAAAAAA);
+        text(status, 15, 0xFFFAD246);
+        text("Random: the whole shuffled catalog.  Draft: pick 16 cards into a 23-card deck first.", 13, Theme.DIM);
         Button playRandom = button(connecting ? "Connecting…" : "PLAY RANDOM", v -> startFromMenu(name, host, port, iduna, Protocol.MODE_CARD), null, 0);
         Button playDraft = button(connecting ? "Connecting…" : "PLAY DRAFT", v -> startFromMenu(name, host, port, iduna, Protocol.MODE_DRAFT), null, 0);
         playRandom.setEnabled(!connecting);
@@ -210,16 +209,16 @@ public final class MainActivity extends Activity implements Session.Listener {
     private String defaultName() { return "Player" + (1000 + new java.util.Random().nextInt(9000)); }
 
     private void renderLobby(Session s) {
-        text("Connected", 26, Color.WHITE);
-        text("Ready for a match.", 16, 0xFFAAAAAA);
+        text("Connected", 26, Theme.TEXT);
+        text("Ready for a match.", 16, Theme.DIM);
         button("FIND MATCH", v -> s.queue(), null, 0);
         button("Disconnect", v -> disconnect(), null, 0);
     }
 
     private void renderQueue(Session s) {
-        if (s.isDraft() && s.deck() != null) text("Deck " + s.deckId() + " locked in (" + s.deck().length + " cards).", 16, 0xFF9AD0FF);
-        text("Searching for an opponent…", 24, Color.WHITE);
-        text("A bot will take the seat if no human is waiting.", 14, 0xFFAAAAAA);
+        if (s.isDraft() && s.deck() != null) text("Deck " + s.deckId() + " locked in (" + s.deck().length + " cards).", 16, 0xFF468CE6);
+        text("Searching for an opponent…", 24, Theme.TEXT);
+        text("A bot will take the seat if no human is waiting.", 14, Theme.DIM);
         button("Cancel", v -> { s.leave(); }, null, 0);
     }
 
@@ -227,9 +226,9 @@ public final class MainActivity extends Activity implements Session.Listener {
 
     private void renderEnd(Session s, MatchModel m) {
         String res = m.result == Protocol.RESULT_WIN ? "VICTORY" : m.result == Protocol.RESULT_LOSS ? "DEFEAT" : "DRAW";
-        int col = m.result == Protocol.RESULT_WIN ? 0xFF43A967 : m.result == Protocol.RESULT_LOSS ? 0xFFD9534F : 0xFFFFD54F;
+        int col = m.result == Protocol.RESULT_WIN ? Theme.GOOD : m.result == Protocol.RESULT_LOSS ? Theme.BAD : 0xFFFAD246;
         text(res, 40, col).setGravity(Gravity.CENTER);
-        text("vs " + m.oppName + "  |  " + m.hullYou + " - " + m.hullOpp + "  |  " + REASONS[Math.max(0, Math.min(4, m.endReason))], 16, 0xFFCCCCCC).setGravity(Gravity.CENTER);
+        text("vs " + m.oppName + "  |  " + m.hullYou + " - " + m.hullOpp + "  |  " + REASONS[Math.max(0, Math.min(4, m.endReason))], 16, Theme.DIM).setGravity(Gravity.CENTER);
         if (s.isDraft()) {
             button("SAME DECK", v -> s.queue(true), null, 0);
             button("REDRAFT", v -> s.queue(false), null, 0);
@@ -239,8 +238,8 @@ public final class MainActivity extends Activity implements Session.Listener {
 
     private void renderDraft(Session s) {
         DraftModel d = s.draft();
-        text("DRAFT  pick " + Math.min(d.pickNo + 1, d.total) + " / " + d.total, 26, Color.WHITE).setGravity(Gravity.CENTER);
-        text("Copies left:   1x " + d.left[0] + "     2x " + d.left[1] + "     3x " + d.left[2], 16, 0xFFAAAAAA).setGravity(Gravity.CENTER);
+        text("DRAFT  pick " + Math.min(d.pickNo + 1, d.total) + " / " + d.total, 26, Theme.TEXT).setGravity(Gravity.CENTER);
+        text("Copies left:   1x " + d.left[0] + "     2x " + d.left[1] + "     3x " + d.left[2], 16, Theme.DIM).setGravity(Gravity.CENTER);
         LinearLayout row = new LinearLayout(this);
         row.setWeightSum(2);
         root.addView(row, new LinearLayout.LayoutParams(-1, 0, 1));
@@ -265,7 +264,7 @@ public final class MainActivity extends Activity implements Session.Listener {
         ScrollView sv = new ScrollView(this);
         TextView deckText = new TextView(this);
         deckText.setText("Your deck so far (" + d.picks().size() + "/" + d.total + ")\n" + sb);
-        deckText.setTextSize(15); deckText.setTextColor(0xFFCCCCCC);
+        deckText.setTextSize(15); deckText.setTextColor(Theme.DIM);
         sv.addView(deckText);
         root.addView(sv, new LinearLayout.LayoutParams(-1, 240));
         button("Leave", v -> { s.leave(); disconnect(); }, null, 0, 110);
@@ -276,22 +275,22 @@ public final class MainActivity extends Activity implements Session.Listener {
         // Top: opponent + hull/energy
         BarView opp = new BarView(this);
         boolean oppHidden = m.energyOpp == Protocol.HIDDEN_U8;
-        opp.set(m.oppName + " hull" + meters(m.armorOpp, m.vaultOpp, m.statusOpp, oppHidden), m.hullOpp, 20, oppHidden ? 0 : m.energyOpp, 0xFFD9534F);
+        opp.set(m.oppName + " hull" + meters(m.armorOpp, m.vaultOpp, m.statusOpp, oppHidden), m.hullOpp, 20, oppHidden ? 0 : m.energyOpp, Theme.BAD);
         root.addView(opp, new LinearLayout.LayoutParams(-1, 130));
         BarView me = new BarView(this);
-        me.set("You hull" + meters(m.armorYou, m.vaultYou, m.statusYou, false), m.hullYou, 20, m.energyYou, 0xFF43A967);
+        me.set("You hull" + meters(m.armorYou, m.vaultYou, m.statusYou, false), m.hullYou, 20, m.energyYou, Theme.GOOD);
         root.addView(me, new LinearLayout.LayoutParams(-1, 130));
-        text("Round " + m.round + " / " + CardRules.maxRounds() + "   (opp hand: " + m.oppHandSize + ")", 16, 0xFFAAAAAA);
+        text("Round " + m.round + " / " + CardRules.maxRounds() + "   (opp hand: " + m.oppHandSize + ")", 16, Theme.DIM);
         // Middle: last round reveal (grows to fill)
         String hint = selectedSlot >= 0 && m.hand[selectedSlot] >= 0
             ? CardText.name(m.hand[selectedSlot]) + ": " + CardText.text(m.hand[selectedSlot]) : "";
-        TextView log = text(lastRound.isEmpty() ? "Pick a card and lock in." : lastRound, 18, Color.WHITE);
+        TextView log = text(lastRound.isEmpty() ? "Pick a card and lock in." : lastRound, 18, Theme.TEXT);
         log.setGravity(Gravity.CENTER);
         ((LinearLayout.LayoutParams) log.getLayoutParams()).height = 0;
         ((LinearLayout.LayoutParams) log.getLayoutParams()).weight = 1;
-        if (!hint.isEmpty() && !m.locked) text(hint, 16, 0xFF9AD0FF).setGravity(Gravity.CENTER);
-        if (m.locked) text("Locked in. Waiting for opponent…", 16, 0xFFFFD54F).setGravity(Gravity.CENTER);
-        else if (!status.isEmpty()) text(status, 14, 0xFFFFB74D).setGravity(Gravity.CENTER);
+        if (!hint.isEmpty() && !m.locked) text(hint, 16, 0xFF468CE6).setGravity(Gravity.CENTER);
+        if (m.locked) text("Locked in. Waiting for opponent…", 16, 0xFFFAD246).setGravity(Gravity.CENTER);
+        else if (!status.isEmpty()) text(status, 14, 0xFFFAD246).setGravity(Gravity.CENTER);
         // Thumb zone (bottom): action row, then the hand
         LinearLayout actions = new LinearLayout(this);
         root.addView(actions, new LinearLayout.LayoutParams(-1, -2));
