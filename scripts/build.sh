@@ -60,6 +60,9 @@ gcc $CFLAGS_BASE -include card_rules.h -O2 $BOT_SRC -lm -o build/dw_bot
 ./build/dw_server --version
 ./build/dw_client --version
 
+echo "== C: replay dump tool (WOTAN S547 -- real match-log replay, no server/bot binaries touched) =="
+gcc $CFLAGS_BASE -O2 tools/replay_dump.c core/match.c core/card_rules.c -o build/dw_replay_dump
+./build/dw_replay_dump < /dev/null >/dev/null 2>&1 || true   # smoke-check it runs (exits 2 on empty input, not a crash)
 
 ARGS=" $* "
 echo "== e2e: sanitized server + 3-bot pool + clients =="

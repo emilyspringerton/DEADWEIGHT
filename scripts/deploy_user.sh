@@ -9,7 +9,7 @@ BIN="$HOME/.local/opt/deadweight/bin"; CONF="$HOME/.config/deadweight"; UNITS="$
 # S521: match logs live outside the git checkout now (see dw.env.example) -- the service's own
 # ExecStartPre already mkdir -p's DW_MATCH_LOG_DIR, no need to pre-create a repo-relative path here.
 mkdir -p "$BIN" "$CONF" "$UNITS"
-install -m 0755 build/dw_server build/dw_bot "$BIN/"
+install -m 0755 build/dw_server build/dw_bot build/dw_replay_dump "$BIN/"
 if [ ! -f "$CONF/dw.env" ]; then sed "s|/home/USER|$HOME|" ops/systemd/dw.env.example > "$CONF/dw.env"; fi
 cp ops/systemd/dw-server.service 'ops/systemd/dw-bot@.service' 'ops/systemd/dw-draft-bot@.service' "$UNITS/"
 systemctl --user daemon-reload
