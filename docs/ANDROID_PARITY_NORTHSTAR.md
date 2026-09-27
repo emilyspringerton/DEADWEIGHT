@@ -62,6 +62,56 @@ until scoped.
   ROUND_RESULT against a live `dw_server` + `dw_bot`. **Not done**: audio, particles/ships; energy-
   delta and new-status stages (same wire-protocol gap as the browser, see `web/src/fx.ts`); any
   on-device run.
+- **Phase 1B — menu/title screen parity + zero-friction auth — done** (2026-09-27, founder
+  real-time: "port more of the deadweight graphics into parena we need full java parity including
+  the launcher title screen it should look just like our windows app"). Phase 1 re-themed
+  `CardView`/`BarView` (in-match UI) but left `MainActivity`'s login/menu screen on raw
+  `android.widget.EditText`/`Button`/`TextView` requiring manual name/host/port/IDUNA-URL entry —
+  a genuinely different app from the Windows client's own zero-friction `draw_boot()`/
+  `draw_menu()`, not just a color mismatch. Real, found-live gap fixed along the way: `Config.
+  DEFAULT_IDUNA_URL` was `""` (Android had no IDUNA account, no tickets, ever, by default) while
+  the desktop client's own S508d fix pointed it at the real, live `https://okemily.com` months
+  ago — Android's default now matches.
+  - New `PixelLabel.java` (one line of `PixelFont` text, self-sizing) and `BrutButton.java` (flat
+    filled rect + centered `PixelFont` label, dimmed when disabled) — the menu-screen equivalents
+    of `text()`/`text_c()`/`button()`. `Theme.java` gained `BLUE`/`FOUNDER_GOLD` (the two menu
+    colors that weren't already `KIND_COLOR` reuse — DRAFT's orange genuinely IS
+    `KIND_COLOR[1]`/Operations in the C source, not a coincidence).
+  - `MainActivity.bootstrapAuth()` ports `iduna_bootstrap()`'s real shape, once at launch: try a
+    saved guest login, fall through to registering a brand-new lore-named guest on ANY failure
+    (network or rejected) — the one genuinely surprising behavior kept intentionally, since
+    that's the real desktop client's own accepted risk, not a bug to fix while porting. `GuestAuth`
+    gained `tickets`/`isGuest` on `Result`, plus `redeem()`/`upgrade()`/`emailLogin()` (mirroring
+    `dwi_redeem`/`dwi_guest_upgrade`/`dwi_email_login`), including the 409-is-not-a-failure
+    login-fallback `do_link_email` establishes.
+  - Menu now shows: title, name + ticket count (or the real reason there's no account, not a
+    generic "offline"), a session-local FOUNDER tag after a founder-granting redeem (matches
+    `A.is_founder` exactly — not persisted/re-fetched on a later boot, on either client), DRAFT
+    (disabled at 0 tickets)/PRACTICE brutalist buttons, REDEEM CODE, and CLAIM ACCOUNT (guest) /
+    CONNECTION SECURED (claimed). No manual name/host/port/IDUNA-URL fields anywhere.
+  - Verified: `javac --release 8` against the real `com.google.android:android:4.1.1.4` stub jar
+    (Phase 1's own method) — clean, zero warnings, every `src/main` file. `CoreTest`'s real
+    `guestAuth()` case (a live `com.sun.net.httpserver.HttpServer` fake IDUNA, plain JVM, no
+    Android runtime needed) — 228 checks, 0 failures, confirming `GuestAuth`'s rewritten
+    constructor/response-parsing didn't regress register/login/`AuthRejected`. Bazel wasn't
+    available in this sandbox to re-run `//android:core_test`/`//android:fx_parity_test`, but
+    neither test imports anything this pass touched (only `generated.CardRules`/`FxRules`) --
+    confirmed by reading their imports, not assumed.
+  - **Honest, named simplifications, not hidden**: Claim Account is a native `AlertDialog` with
+    two theme-colored `EditText`s, not a fully custom-rendered modal like `draw_claim()` — real
+    touch-keyboard capture into a hand-drawn field is a materially bigger lift than two lines of
+    text entry justify. Never run on a device/emulator (same limitation Phase 1/2 already have).
+    FRIENDS & DUELS (`S_SOCIAL`) has no Android equivalent at all yet — not a redraw, a whole new
+    feature (friend lists, requests, duel challenges) with no client-side code to re-skin; left
+    out of the menu entirely rather than shipped as a dead button, named as real future work below
+    rather than silently dropped.
+- **Phase 1C — remaining screens (queue/lobby/draft/match-end/social) — not started.** These
+  still render via `text()`/`button()`'s own `android.widget.*` helpers in `MainActivity`
+  (theme-colored, but still host-widget chrome: rounded corners, ripple, system font) — a real,
+  visible gap from the Windows client's fully brutalist `draw_queue()`/`draw_draft()`/`draw_end()`
+  the founder's "full java parity" ask hasn't reached yet. In-match UI (`CardView`/`BarView`/
+  `FxView`) and now the menu are the two screens that got the real treatment; everything else is
+  phased next work, not forgotten.
 - **Phase 3 / 4 — not started** (phase 4 still blocked on the open question above). Tracked in
   `EMILY/BACKLOG.md` SECTION 555.
 

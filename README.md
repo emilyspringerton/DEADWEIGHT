@@ -101,6 +101,12 @@ the launch target for Itch.io and Steam; Android is catching up per the S555 not
   embedded CA bundle (see `docs/WINDOWS_TLS_BUILD.md`), but has **not been runtime-verified** — no
   Wine/Windows environment exists to actually execute the `.exe` and confirm a live handshake, so
   don't treat it as proven the way the Linux build is until someone runs it for real.
+  The **Android client** now also defaults to the real production IDUNA URL (a real, found-live
+  gap fixed 2026-09-27 — it previously shipped with no IDUNA URL configured at all, so it had no
+  account, no tickets, ever) and does the same zero-friction guest-register/login/redeem/claim
+  flow at launch, with no manual name/host/port/IDUNA-URL entry. Compile-checked and unit-tested
+  (a real fake-IDUNA HTTP server, plain JVM) only — never run on a device, same limitation the
+  rest of the Android client has (see `docs/ANDROID_PARITY_NORTHSTAR.md`).
 - **Friends & Duels (S537)** — a real in-game social screen, reachable from the Main Menu once an
   account is claimed: view your profile, send/accept/decline friend requests, and challenge a
   friend to a duel. Backed by IDUNA's `/api/v1/games/deadweight/{friend-requests,friends,duels,

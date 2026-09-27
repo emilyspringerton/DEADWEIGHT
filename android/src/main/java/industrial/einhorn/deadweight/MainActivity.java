@@ -1,8 +1,10 @@
 package industrial.einhorn.deadweight;
 
 import android.app.Activity;
+import android.app.AlertDialog;
 import android.content.SharedPreferences;
 import android.graphics.Typeface;
+import android.graphics.drawable.GradientDrawable;
 import android.os.Bundle;
 import android.os.SystemClock;
 import android.text.InputType;
@@ -22,6 +24,7 @@ import industrial.einhorn.deadweight.core.MatchModel;
 import industrial.einhorn.deadweight.core.Protocol;
 import industrial.einhorn.deadweight.core.Session;
 import industrial.einhorn.deadweight.core.SocketTransport;
+import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 
 /**
@@ -47,6 +50,19 @@ public final class MainActivity extends Activity implements Session.Listener {
     private long fxStartMs;
     private boolean menuMode = true;      // true = show login/menu regardless of session state
 
+    // Zero-friction IDUNA auth (docs/ANDROID_PARITY_NORTHSTAR.md menu-parity pass, porting
+    // apps/gui/main.c's S508 iduna_bootstrap() -- see bootstrapAuth()). Runs once at launch, not
+    // per-play: the player never sees a name/host/port/IDUNA-URL field, matching the desktop
+    // client's own S512 "zero-friction auth" UX exactly.
+    private GuestAuth.Iduna iduna;
+    private boolean authBooting = true;   // true until the boot-time login/register attempt finishes
+    private boolean authReady = false;
+    private String authErr = "";
+    private String authToken = "", authName = "";
+    private int tickets = 0;
+    private boolean isGuest = true, isFounder = false;   // isFounder is session-local only, matching A.is_founder
+    private String redeemMsg = "";
+
     @Override protected void onCreate(Bundle b) {
         super.onCreate(b);
         prefs = getSharedPreferences(PREFS, MODE_PRIVATE);
@@ -56,6 +72,7 @@ public final class MainActivity extends Activity implements Session.Listener {
         root.setPadding(24, 48, 24, 24);
         setContentView(root);
         render();
+        bootstrapAuth();
     }
 
     @Override protected void onDestroy() {
@@ -158,74 +175,202 @@ public final class MainActivity extends Activity implements Session.Listener {
         return b;
     }
 
-    private EditText field(String hint, String value, int inputType) {
+    // ---------------- IDUNA zero-friction auth (S508/S512 parity, apps/gui/main.c iduna_bootstrap) ----------------
+
+    /** Runs once at launch, not per-play. Mirrors iduna_bootstrap()'s real shape exactly, including
+     *  its one genuinely surprising behavior: ANY login failure -- network error or a rejected
+     *  saved secret alike -- falls through to registering a brand-new guest, same as the C client's
+     *  own unconditional `if (!ok) { ...register... }`. That's a real, accepted risk on the desktop
+     *  client already (a flaky network on launch can abandon a saved account), not something to
+     *  "fix" while porting -- matching it exactly is the actual parity target. */
+    private void bootstrapAuth() {
+        if (Config.DEFAULT_IDUNA_URL.isEmpty()) { authBooting = false; render(); return; }
+        iduna = new GuestAuth.Iduna(Config.DEFAULT_IDUNA_URL);
+        authBooting = true; render();
+        new Thread(() -> {
+            String pid = prefs.getString("player_id", ""), sec = prefs.getString("guest_secret", "");
+            GuestAuth.Result r = null;
+            if (!pid.isEmpty() && !sec.isEmpty()) {
+                try { r = iduna.login(pid, sec); } catch (IOException e) { /* fall through to register */ }
+            }
+            String err = "";
+            if (r == null) {
+                try {
+                    // S512 zero-friction auth: an empty display_name is the real, expected path --
+                    // IDUNA auto-assigns a lore-friendly one ("Runner-A7B2"), same as the desktop
+                    // client's own wantname="" default (a --name dev override has no Android
+                    // equivalent and isn't needed -- this app has no CLI).
+                    r = iduna.register("");
+                    prefs.edit().putString("player_id", r.playerId).putString("guest_secret", r.guestSecret).apply();
+                } catch (IOException e) {
+                    err = "IDUNA unreachable -- playing without an account (no tickets)";
+                }
+            }
+            final GuestAuth.Result rr = r; final String ferr = err;
+            ui(() -> {
+                authBooting = false;
+                if (rr != null) {
+                    authToken = rr.token; authName = rr.displayName; tickets = rr.tickets; isGuest = rr.isGuest;
+                    authReady = true;
+                } else authErr = ferr;
+                render();
+            });
+        }, "dw-auth-bootstrap").start();
+    }
+
+    private void doRedeem(String code) {
+        if (code.isEmpty()) return;
+        if (!authReady) { redeemMsg = "No account (IDUNA offline)"; render(); return; }
+        new Thread(() -> {
+            try {
+                GuestAuth.RedeemResult r = iduna.redeem(authToken, code);
+                ui(() -> {
+                    tickets = r.balance; if (r.founder) isFounder = true;
+                    redeemMsg = "+" + r.ticketsGranted + " ticket" + (r.ticketsGranted == 1 ? "" : "s") + (r.founder ? " + FOUNDER" : "");
+                    render();
+                });
+            } catch (IOException e) {
+                ui(() -> { redeemMsg = "Invalid or already-used code"; render(); });
+            }
+        }, "dw-redeem").start();
+    }
+
+    /** "SECURE CONNECTION (CLAIM ACCOUNT)" -- a native AlertDialog rather than a fully custom
+     *  brutalist modal (apps/gui/main.c's own S_CLAIM screen): a real, honest simplification named
+     *  in docs/ANDROID_PARITY_NORTHSTAR.md, not hidden -- two lines of real text entry don't
+     *  justify reimplementing raw touch-keyboard capture, and the fields are still theme-colored. */
+    private void showClaimDialog() {
+        LinearLayout col = new LinearLayout(this);
+        col.setOrientation(LinearLayout.VERTICAL);
+        col.setPadding(48, 16, 48, 0);
+        EditText email = brutField("EMAIL", InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_EMAIL_ADDRESS);
+        EditText pass = brutField("PASSWORD", InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD);
+        col.addView(email); col.addView(pass);
+        new AlertDialog.Builder(this)
+            .setTitle("SECURE CONNECTION")
+            .setMessage("Link email -- keep your progress")
+            .setView(col)
+            .setPositiveButton("SUBMIT", (d, w) -> doClaim(email.getText().toString().trim(), pass.getText().toString()))
+            .setNegativeButton("CANCEL", null)
+            .show();
+    }
+
+    private EditText brutField(String hint, int inputType) {
         EditText e = new EditText(this);
-        e.setHint(hint); e.setText(value); e.setInputType(inputType); e.setTextColor(Theme.TEXT); e.setHintTextColor(Theme.DIM);
-        e.setSingleLine(true);
-        root.addView(e, new LinearLayout.LayoutParams(-1, -2));
+        e.setHint(hint); e.setInputType(inputType); e.setSingleLine(true);
+        e.setTextColor(Theme.TEXT); e.setHintTextColor(Theme.DIM); e.setTypeface(Typeface.MONOSPACE);
+        GradientDrawable bg = new GradientDrawable();
+        bg.setColor(Theme.BG); bg.setStroke(2, Theme.LOCK);
+        e.setBackground(bg);
+        e.setPadding(20, 16, 20, 16);
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1, -2);
+        lp.topMargin = 16;
+        e.setLayoutParams(lp);
         return e;
     }
 
+    /** Mirrors do_link_email exactly, including its 409-is-not-a-failure login-fallback: this
+     *  email already belongs to a DIFFERENT player_id, so the real, intended response is signing
+     *  into THAT account instead, not surfacing an error. */
+    private void doClaim(String email, String pass) {
+        if (email.isEmpty() || pass.isEmpty()) return;
+        if (!authReady) { redeemMsg = "No account (IDUNA offline)"; render(); return; }
+        if (pass.length() < 8) { redeemMsg = "Password needs 8+ characters"; render(); return; }
+        new Thread(() -> {
+            String newTok = null, err = null; boolean loggedInInstead = false;
+            try { newTok = iduna.upgrade(authToken, email, pass); }
+            catch (GuestAuth.EmailTaken e) {
+                try { newTok = iduna.emailLogin(email, pass); loggedInInstead = true; }
+                catch (IOException e2) { err = "Link failed (email taken or bad login)"; }
+            } catch (IOException e) { err = "Link failed (email taken or bad login)"; }
+            final String tok = newTok, ferr = err; final boolean instead = loggedInInstead;
+            ui(() -> {
+                if (tok != null) {
+                    authToken = tok; isGuest = false;
+                    redeemMsg = instead ? "This email already had an account -- signed in to it instead." : "Linked! Progress now saved.";
+                } else redeemMsg = ferr;
+                render();
+            });
+        }, "dw-claim").start();
+    }
+
+    // ---------------- menu (brutalist parity pass -- docs/ANDROID_PARITY_NORTHSTAR.md) ----------------
+
+    private PixelLabel label(String t, float scale, int color) {
+        PixelLabel v = new PixelLabel(this, t, scale, color);
+        v.setGravity(Gravity.CENTER_HORIZONTAL);
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1, -2);
+        lp.topMargin = (int) (6 * scale);
+        root.addView(v, lp);
+        return v;
+    }
+
+    private BrutButton brutButton(String label, int color, boolean enabled, Runnable onClick) {
+        BrutButton b = new BrutButton(this);
+        b.set(label, color, enabled, onClick);
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1, 130);
+        lp.topMargin = 18;
+        root.addView(b, lp);
+        return b;
+    }
+
     private void renderMenu() {
-        ScrollView sv = new ScrollView(this);
-        LinearLayout col = new LinearLayout(this);
-        col.setOrientation(LinearLayout.VERTICAL);
-        sv.addView(col);
-        LinearLayout saved = root; // temporarily build into the scroll column
-        root = col;
-        text("DEADWEIGHT", 34, Theme.TEXT).setTypeface(Typeface.DEFAULT_BOLD);
-        text("Card duel, 1v1", 16, Theme.DIM);
-        EditText name = field("Your name (1-16 chars)", prefs.getString("name", defaultName()), InputType.TYPE_CLASS_TEXT);
-        EditText host = field("Server host", prefs.getString("host", Config.DEFAULT_HOST), InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_URI);
-        EditText port = field("Server port", String.valueOf(prefs.getInt("port", Config.DEFAULT_PORT)), InputType.TYPE_CLASS_NUMBER);
-        EditText iduna = field("IDUNA URL (blank = name only)", prefs.getString("iduna", Config.DEFAULT_IDUNA_URL), InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_URI);
-        text(status, 15, 0xFFFAD246);
-        text("Random: the whole shuffled catalog.  Draft: pick 16 cards into a 23-card deck first.", 13, Theme.DIM);
-        Button playRandom = button(connecting ? "Connecting…" : "PLAY RANDOM", v -> startFromMenu(name, host, port, iduna, Protocol.MODE_CARD), null, 0);
-        Button playDraft = button(connecting ? "Connecting…" : "PLAY DRAFT", v -> startFromMenu(name, host, port, iduna, Protocol.MODE_DRAFT), null, 0);
-        playRandom.setEnabled(!connecting);
-        playDraft.setEnabled(!connecting);
-        root = saved;
-        root.addView(sv, new LinearLayout.LayoutParams(-1, -1));
+        label("DEADWEIGHT", 5, Theme.TEXT);
+        if (authBooting) {
+            label("ESTABLISHING CONNECTION...", 2, Theme.DIM);
+            return;
+        }
+        if (authReady) {
+            label(authName, 3, Theme.TEXT);
+            label("TICKETS: " + tickets, 2, Theme.DIM);
+            if (isFounder) label("FOUNDER", 1, Theme.FOUNDER_GOLD);
+        } else {
+            label(authErr.isEmpty() ? "NO ACCOUNT" : authErr, 2, Theme.DIM);
+        }
+        boolean canDraft = tickets > 0;
+        brutButton(connecting ? "CONNECTING..." : canDraft ? "DRAFT  (COST: 1 TICKET)" : "DRAFT  (NO TICKETS)",
+            Theme.KIND_COLOR[1], !connecting && canDraft, () -> connect(Protocol.MODE_DRAFT));
+        brutButton(connecting ? "CONNECTING..." : "PRACTICE  (RANDOM DECK, FREE)", Theme.GOOD, !connecting, () -> connect(Protocol.MODE_CARD));
+
+        label("REDEEM CODE", 2, Theme.DIM);
+        EditText redeem = brutField("CODE", InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_CAP_CHARACTERS);
+        root.addView(redeem);   // uses the LayoutParams brutField() already set (topMargin included)
+        brutButton("REDEEM", Theme.BLUE, true, () -> doRedeem(redeem.getText().toString().trim()));
+
+        if (authReady && isGuest) {
+            brutButton("SECURE CONNECTION (CLAIM ACCOUNT)", Theme.BLUE, true, this::showClaimDialog);
+        } else if (authReady) {
+            label("CONNECTION SECURED", 2, Theme.GOOD);
+        }
+        // Same priority order as apps/gui/main.c's draw_menu(): link/redeem confirmations first
+        // (Theme.GOOD, even though a redeem failure message reuses this field -- matches Windows'
+        // own single-color-for-both-outcomes choice), then a connection failure.
+        if (!redeemMsg.isEmpty()) label(redeemMsg, 1, Theme.GOOD);
+        else if (!status.isEmpty()) label(status, 1, Theme.BAD);
+        label("V" + versionName(), 1, Theme.DIM);
     }
 
-    private void startFromMenu(EditText name, EditText host, EditText port, EditText iduna, int mode) {
-        int p;
-        try { p = Integer.parseInt(port.getText().toString().trim()); } catch (NumberFormatException e) { p = -1; }
-        String n = name.getText().toString().trim();
-        if (n.isEmpty() || n.length() > 16) { status = "Name must be 1-16 characters"; render(); return; }
-        if (p < 1 || p > 65535) { status = "Bad port"; render(); return; }
-        prefs.edit().putString("name", n).putString("host", host.getText().toString().trim()).putInt("port", p)
-            .putString("iduna", iduna.getText().toString().trim()).apply();
-        connect(n, host.getText().toString().trim(), p, iduna.getText().toString().trim(), mode);
-    }
-
-    private void connect(String name, String host, int port, String idunaUrl, int mode) {
-        connecting = true; status = idunaUrl.isEmpty() ? "" : "Signing in…"; render();
-        final String fn = name;
+    private void connect(int mode) {
+        connecting = true; status = ""; render();
+        final String name = authReady ? authName : ("Player" + (1000 + new java.util.Random().nextInt(9000)));
+        final byte[] token = authReady ? authToken.getBytes(StandardCharsets.UTF_8) : new byte[0];
         new Thread(() -> {
             try {
-                byte[] token = new byte[0];
-                String shown = fn;
-                if (!idunaUrl.isEmpty()) {
-                    GuestAuth auth = new GuestAuth.Iduna(idunaUrl);
-                    String pid = prefs.getString("player_id", ""), sec = prefs.getString("guest_secret", "");
-                    GuestAuth.Result r = pid.isEmpty() ? auth.register(fn) : auth.login(pid, sec);
-                    // Persist the identity; losing it loses the account (no recovery, by design).
-                    prefs.edit().putString("player_id", r.playerId).putString("guest_secret", r.guestSecret).apply();
-                    token = r.token.getBytes(StandardCharsets.UTF_8);
-                    shown = r.displayName;
-                }
-                Session ns = new Session(new SocketTransport(host, port, 5000), this, mode, Protocol.KIND_HUMAN, shown, token);
+                Session ns = new Session(new SocketTransport(Config.DEFAULT_HOST, Config.DEFAULT_PORT, 5000), this, mode, Protocol.KIND_HUMAN, name, token);
                 ns.setAutoQueue(true);
                 ui(() -> { session = ns; connecting = false; status = ""; menuMode = false; ns.start(); render(); });
             } catch (Exception e) {
-                ui(() -> { connecting = false; status = "Sign-in failed: " + e.getMessage(); render(); });
+                ui(() -> { connecting = false; status = "Connection failed: " + e.getMessage(); render(); });
             }
         }, "dw-connect").start();
     }
 
-    private String defaultName() { return "Player" + (1000 + new java.util.Random().nextInt(9000)); }
+    /** apps/gui/main.c's own V%s footer reads a build-time DW_VERSION macro; the closest Android
+     *  equivalent is the manifest's real versionName (android:versionName, AndroidManifest.xml). */
+    private String versionName() {
+        try { return getPackageManager().getPackageInfo(getPackageName(), 0).versionName; }
+        catch (Exception e) { return "?"; }
+    }
 
     private void renderLobby(Session s) {
         text("Connected", 26, Theme.TEXT);

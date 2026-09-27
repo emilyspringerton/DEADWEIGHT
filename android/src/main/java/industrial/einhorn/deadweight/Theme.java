@@ -19,6 +19,12 @@ final class Theme {
     static final int[] KIND_COLOR = {0xFFD7463C, 0xFFE1A028, 0xFF468CE6};
     static final String[] KIND_NAME = {"OFFENSE", "OPERATIONS", "DEFENSE"};
 
+    /** Menu-screen button colors (apps/gui/main.c draw_menu()): DRAFT reuses KIND_COLOR[1]
+     *  (Operations) verbatim -- the same real orange, not a coincidence. BLUE is REDEEM/CLAIM's
+     *  own distinct blue, not KIND_COLOR[2] (Defense is a different, lighter shade). */
+    static final int BLUE = 0xFF466EC8;
+    static final int FOUNDER_GOLD = 0xFFFFC83C;
+
     static int dim(int color, int div) {
         int a = color & 0xFF000000;
         int r = ((color >> 16) & 0xFF) / div, g = ((color >> 8) & 0xFF) / div, b = (color & 0xFF) / div;
