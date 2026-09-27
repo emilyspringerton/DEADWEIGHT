@@ -7,6 +7,7 @@ java_library(
     name = "core_lib",
     srcs = glob(["src/main/java/industrial/einhorn/deadweight/core/**/*.java"]) + [
         "src/main/java/industrial/einhorn/deadweight/generated/CardRules.java",
+        "src/main/java/industrial/einhorn/deadweight/generated/FxRules.java",
     ],
     visibility = ["//visibility:public"],
 )
@@ -16,6 +17,15 @@ java_binary(
     name = "core_test",
     srcs = ["src/test/java/industrial/einhorn/deadweight/ParityTest.java"],
     main_class = "industrial.einhorn.deadweight.ParityTest",
+    deps = [":core_lib"],
+)
+
+# fx_parity_test: PARENA fx decision layer, C == Java (tests/fx_parity_vectors.txt) + FxTimeline scenario checks.
+# Run: bazel run //android:fx_parity_test -- $PWD/tests/fx_parity_vectors.txt
+java_binary(
+    name = "fx_parity_test",
+    srcs = ["src/test/java/industrial/einhorn/deadweight/core/FxParityTest.java"],
+    main_class = "industrial.einhorn.deadweight.core.FxParityTest",
     deps = [":core_lib"],
 )
 

@@ -2,7 +2,7 @@
 
 ## What this is
 
-New repo (2026-09-11); VS0 (card mode) build started 2026-09-18 (S503) — see `docs/VS0_SCOPING.md`. **Platform correction (S513, 2026-09-21, founder real-time): VS0 started Android-first, but that's no longer the plan — desktop (Windows/Linux) is now the sole real priority, for the Itch.io launch and the Steam launch after (signed up, pending tax paperwork). The Android app is shelved; its current card-art visuals are being retired, not carried forward. See `docs/BRAND_STYLE_GUIDE.md` for the real, current (desktop) visual identity.** Home for **Dark Sector: Hold Battles**,
+New repo (2026-09-11); VS0 (card mode) build started 2026-09-18 (S503) — see `docs/VS0_SCOPING.md`. **Platform correction (S513, 2026-09-21, founder real-time): VS0 started Android-first, but that's no longer the plan — desktop (Windows/Linux) is now the sole real priority, for the Itch.io launch and the Steam launch after (signed up, pending tax paperwork). The Android app is shelved; its current card-art visuals are being retired, not carried forward. Reversed (S555, 2026-09-25): Android is back in scope, being brought to parity with the desktop in the desktop's own brutalist style — see `docs/ANDROID_PARITY_NORTHSTAR.md`. See `docs/BRAND_STYLE_GUIDE.md` for the real, current (desktop) visual identity.** Home for **Dark Sector: Hold Battles**,
 a 1v1 real-time PvP spatial-knapsack auto-battler: players pack polyomino cargo items (some
 splittable, at a real fragmentation-tax cost) into a 6x6 grid under a Black-Market draft phase,
 then the same grid becomes their ship's combat layout — item shape/orientation routes energy from

@@ -11,11 +11,19 @@ public final class MatchModel {
         public final int round, cardYou, cardOpp, dmgYou, dmgOpp, hullYou, hullOpp;
         /** effYou/effOpp: the card that actually resolved (Dark Pool result, copied card; -1 = pass or cancelled). */
         public final int effYou, effOpp, healYou, healOpp, rollYou, rollOpp, flagsYou, flagsOpp;
-        RoundLog(Msg m) {
+        /** Meters before (the last ROUND_START's values) and after this round -- the before/after pair
+         *  {@link FxTimeline} needs, same as web/src/main.ts's beforeArmor/beforeVault snapshot. Opponent
+         *  values may carry the Merkle Blindness sentinels (Protocol.HIDDEN_U8 / HIDDEN_I8). */
+        public final int armorBeforeYou, armorBeforeOpp, vaultBeforeYou, vaultBeforeOpp;
+        public final int armorAfterYou, armorAfterOpp, vaultAfterYou, vaultAfterOpp;
+        RoundLog(Msg m, int armorBeforeYou, int armorBeforeOpp, int vaultBeforeYou, int vaultBeforeOpp) {
             round = m.round; cardYou = m.cardYou; cardOpp = m.cardOpp; dmgYou = m.dmgYou; dmgOpp = m.dmgOpp;
             hullYou = m.hullYou; hullOpp = m.hullOpp;
             effYou = m.effYou; effOpp = m.effOpp; healYou = m.healYou; healOpp = m.healOpp;
             rollYou = m.rollYou; rollOpp = m.rollOpp; flagsYou = m.flagsYou; flagsOpp = m.flagsOpp;
+            armorAfterYou = m.armorYou; armorAfterOpp = m.armorOpp; vaultAfterYou = m.vaultYou; vaultAfterOpp = m.vaultOpp;
+            this.armorBeforeYou = armorBeforeYou; this.armorBeforeOpp = armorBeforeOpp;
+            this.vaultBeforeYou = vaultBeforeYou; this.vaultBeforeOpp = vaultBeforeOpp;
         }
     }
 
@@ -46,8 +54,9 @@ public final class MatchModel {
     }
 
     void onRoundResult(Msg m) {
+        RoundLog r = new RoundLog(m, armorYou, armorOpp, vaultYou, vaultOpp);
         hullYou = m.hullYou; hullOpp = m.hullOpp; armorYou = m.armorYou; armorOpp = m.armorOpp; vaultYou = m.vaultYou; vaultOpp = m.vaultOpp;
-        log.add(new RoundLog(m));
+        log.add(r);
     }
 
     void onEnd(Msg m) { result = m.result; endReason = m.reason; }

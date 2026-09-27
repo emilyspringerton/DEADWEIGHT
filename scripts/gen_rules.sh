@@ -10,6 +10,7 @@ FX_PRN="${PARENA_FX_PRN:-/home/fatbaby/PARENA/stdlib/deadweight/fx_rules.prn}"
 JAVA_OUT=android/src/main/java/industrial/einhorn/deadweight/generated/CardRules.java
 TS_OUT=web/src/generated/CardRules.ts
 FX_TS_OUT=web/src/generated/FxRules.ts
+FX_JAVA_OUT=android/src/main/java/industrial/einhorn/deadweight/generated/FxRules.java
 "$PARENA_BIN" build "$PRN" -o core/card_rules.c
 "$PARENA_BIN" build "$PRN" -o "$JAVA_OUT"
 # Browser client (web/): same one-source-two-targets discipline as the Java build above, using
@@ -33,11 +34,21 @@ mkdir -p "$(dirname "$TS_OUT")"
 # from CardRules.ts (the one canonical import site for those); FxRules.ts's own duplicated copies
 # of them are only ever called from inside FxRules.ts itself.
 "$PARENA_BIN" build "$PRN" "$FX_PRN" -o "$FX_TS_OUT"
+# Android (S555 phase 2, docs/ANDROID_PARITY_NORTHSTAR.md): the SAME fx decision layer, third
+# target. Combined build for the same reason as the TS one above -- fx_rules.prn calls cardKind/
+# kindBeats/cardPower/... unqualified, and one self-contained class needs no post-processed static
+# import. FxRules.java's own copies of the card lookups are only ever called from inside FxRules;
+# app code keeps calling CardRules for those. tests/fx_parity_vectors.txt (below) pins it to C.
+"$PARENA_BIN" build "$PRN" "$FX_PRN" -o "$FX_JAVA_OUT"
 # Java emitter derives the package from the output path; verify rather than assume.
-grep -q '^package industrial.einhorn.deadweight.generated;' "$JAVA_OUT" || {
-  sed -i '1a\\npackage industrial.einhorn.deadweight.generated;' "$JAVA_OUT"; }
+for J in "$JAVA_OUT" "$FX_JAVA_OUT"; do
+  grep -q '^package industrial.einhorn.deadweight.generated;' "$J" || {
+    sed -i '1a\\npackage industrial.einhorn.deadweight.generated;' "$J"; }
+done
 gcc -std=c99 -Wall -Wextra -Icore -Icore/runtime -DPARENA_NO_GRAPHICS tests/gen_vectors.c core/card_rules.c -o /tmp/dw_gen_vectors
 /tmp/dw_gen_vectors > tests/parity_vectors.txt
+gcc -std=c99 -Wall -Wextra -Werror -Icore -Icore/runtime -DPARENA_NO_GRAPHICS -include core/card_rules.h tests/gen_fx_vectors.c core/card_rules.c core/fx_rules.c -o /tmp/dw_gen_fx_vectors
+/tmp/dw_gen_fx_vectors > tests/fx_parity_vectors.txt
 # Java client card text: generated from the same C table (names, rules text, kind/keyword names).
 gcc -std=c99 -Wall -Wextra -Werror -Icore -Icore/runtime -DPARENA_NO_GRAPHICS apps/tools/cards_java.c core/card_rules.c core/card_text.c -o /tmp/dw_cards_java
 /tmp/dw_cards_java > android/src/main/java/industrial/einhorn/deadweight/CardText.java
@@ -57,4 +68,4 @@ if [ -f "$BRAIN_PRN" ]; then "$PARENA_BIN" build "$BRAIN_PRN" -o core/bot_brain.
 ACCOUNT_PRN="${PARENA_ACCOUNT_PRN:-/home/fatbaby/PARENA/stdlib/deadweight/account_rules.prn}"
 STRING_PRN="${PARENA_STRING_PRN:-/home/fatbaby/PARENA/stdlib/string.prn}"
 if [ -f "$ACCOUNT_PRN" ]; then "$PARENA_BIN" build "$STRING_PRN" "$ACCOUNT_PRN" -o core/account_rules.c; fi
-echo "regenerated core/card_rules.c, core/fx_rules.c, core/account_rules.c, $JAVA_OUT, $TS_OUT, $FX_TS_OUT, tests/parity_vectors.txt"
+echo "regenerated core/card_rules.c, core/fx_rules.c, core/account_rules.c, $JAVA_OUT, $FX_JAVA_OUT, $TS_OUT, $FX_TS_OUT, tests/parity_vectors.txt, tests/fx_parity_vectors.txt"

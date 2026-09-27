@@ -227,6 +227,8 @@ jobs:
             android/BUILD.bazel
       - name: Cross-target parity test (plain JVM)
         run: bazel run //android:core_test -- "$PWD/tests/parity_vectors.txt"
+      - name: fx decision-layer parity + FxTimeline tests (plain JVM)
+        run: bazel run //android:fx_parity_test -- "$PWD/tests/fx_parity_vectors.txt"
       - name: Session/protocol tests (plain JVM)
         run: bazel run //android:session_test
       - name: Build APK

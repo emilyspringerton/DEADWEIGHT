@@ -9,10 +9,11 @@ what doesn't exist yet is called out honestly below.
 **Platform (S513, 2026-09-21): desktop-first now, not Android-first.** The project started
 Android-first; that's no longer the plan. DEADWEIGHT is going all-in on the Windows/Linux desktop
 client for the Itch.io launch, and Steam after (signed up, live once the store's tax paperwork
-clears). The Android app is shelved for now — its current gradient/tier-rim card art is being
-retired, not carried forward; if/when Android comes back it gets its own visual rewrite rather
-than reviving the paused one. See `docs/BRAND_STYLE_GUIDE.md` for the real, current visual
-identity (the desktop GUI's brutalist terminal look).
+clears). **Update (S555, 2026-09-25): Android is back in scope** — no longer shelved, now being
+brought to full parity with the desktop client in the desktop's own visual language (the old
+gradient/tier-rim card art is retired, not revived). See `docs/ANDROID_PARITY_NORTHSTAR.md` for the
+phased plan and `docs/BRAND_STYLE_GUIDE.md` for the visual identity (the desktop GUI's brutalist
+terminal look).
 
 ## The pitch
 
@@ -76,14 +77,17 @@ whether you won the last round.
 ## Honest status
 
 Card mode (random queue, live server, bots) is real and playable today on the desktop client. A
-few things are further along than others, and it's worth being precise about which — the Android
-mentions below describe real, existing code, not current priority (see the Platform note above:
-Android is paused, desktop is the real focus for Itch.io and Steam):
+few things are further along than others, and it's worth being precise about which (desktop is
+the launch target for Itch.io and Steam; Android is catching up per the S555 note above):
 
 - **Rounds resolve with full animation and synthesized audio** in the Windows client — clash
   scenes per triangle outcome and keyword, criticals, resource/status effects, the works (see
-  `docs/ANIMATION_AND_AUDIO.md`). The Android client doesn't have this yet, and the audio has been
-  verified numerically, not by ear.
+  `docs/ANIMATION_AND_AUDIO.md`). The audio has been verified numerically, not by ear. The
+  **Android client** now makes the exact same round-resolution decisions (scenario, winner,
+  critical, stage timing) from the same PARENA source (`fx_rules.prn` → `FxRules.java`, pinned to
+  the C build by 9,941 parity vectors in CI) and plays a simpler brutalist reveal (`FxView`) — no
+  audio, particles or ships yet, and it has only been compile-checked against the Android API,
+  never run on a device or emulator.
 - **Draft mode** is implemented end-to-end — server, bots, Windows GUI, Android client — and
   covered by unit and end-to-end tests. It is **not deployed to the live server yet**, and the
   Android draft screens have only been type-checked against the SDK, never run on a real device.
@@ -207,9 +211,9 @@ Android is paused, desktop is the real focus for Itch.io and Steam):
 ```bash
 scripts/build.sh              # C: ASan+UBSan rules tests, dw_server, dw_client
 scripts/build.sh --windows    # + mingw cross-build of dw_client.exe / dw_server.exe
-scripts/build.sh --android    # + plain-JVM parity test + APK (Bazel + rules_android)
+scripts/build.sh --android    # + plain-JVM card + fx parity tests + APK (Bazel + rules_android)
 scripts/build.sh --all
-scripts/gen_rules.sh          # regenerate checked-in C/Java rules + parity vectors from PARENA's card_rules.prn
+scripts/gen_rules.sh          # regenerate checked-in C/Java/TS rules + parity vectors from PARENA's card_rules.prn + fx_rules.prn
 ```
 
 Android prerequisites: `ANDROID_HOME` with `platforms;android-34` + `build-tools;35.0.0` (see KARAMBIT's README for
