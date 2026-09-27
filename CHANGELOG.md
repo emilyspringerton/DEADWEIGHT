@@ -1,6 +1,7 @@
 # CHANGELOG
 
 ## 2026-09-27
+- Android (S555 phase 1B): brutalist menu/title-screen parity with the Windows client + zero-friction IDUNA auth (fixed Config.DEFAULT_IDUNA_URL, was empty -- Android had no account/tickets by default). New PixelLabel.java/BrutButton.java; GuestAuth gained tickets/isGuest/redeem()/upgrade()/emailLogin(). Compile-checked against real android.* stubs, CoreTest's live guestAuth() test (228 checks) passes. (sess-20260923-1030-4a526255)
 - Android (S555 phase 2): PARENA-driven round-reveal parity. `scripts/gen_rules.sh` now emits
   `android/.../generated/FxRules.java` (third target of `fx_rules.prn`, combined with
   `card_rules.prn` like the TS build); new plain-JVM `core/FxTimeline.java` (port of
