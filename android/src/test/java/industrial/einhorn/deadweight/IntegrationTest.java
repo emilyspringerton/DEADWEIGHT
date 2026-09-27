@@ -30,7 +30,8 @@ public final class IntegrationTest {
             bot = new ProcessBuilder(a[1], "--archetype", "ripper", "--name", "itbot", "--port", String.valueOf(port), "--matches", "1")
                 .redirectErrorStream(true).redirectOutput(ProcessBuilder.Redirect.DISCARD).start();
             CountDownLatch ended = new CountDownLatch(1);
-            AtomicInteger rounds = new AtomicInteger(), result = new AtomicInteger(-1);
+            AtomicInteger rounds = new AtomicInteger(), result = new AtomicInteger(-1), fxRounds = new AtomicInteger();
+            java.util.Set<String> scenarios = java.util.Collections.synchronizedSet(new java.util.TreeSet<>());
             final Session[] h = new Session[1];
             String[] err = {null};
             Session s = new Session(new SocketTransport("127.0.0.1", port, 3000), new Session.Listener() {
@@ -45,7 +46,18 @@ public final class IntegrationTest {
                 }
                 public void onPlayAck(MatchModel m) { }
                 public void onPlayReject(MatchModel m, int r) { err[0] = "reject " + r; }
-                public void onRoundResult(MatchModel m, MatchModel.RoundLog r) { }
+                public void onRoundResult(MatchModel m, MatchModel.RoundLog r) {
+                    // S555 phase 2: every real ROUND_RESULT must yield a sane PARENA-decided reveal timeline
+                    // (scenario id in range, ordered stages, <= 9 s -- docs/ANIMATION_AND_AUDIO.md's own budget).
+                    FxTimeline t = FxTimeline.of(r);
+                    int[] seq = {t.clash0, t.clash1, t.hull0, t.hull1, t.armor0, t.armor1, t.econ0, t.econ1, t.stat0, t.stat1, t.settle0, t.totalMs};
+                    boolean ordered = true;
+                    for (int i = 1; i < seq.length; i++) if (seq[i] < seq[i - 1]) ordered = false;
+                    if (t.scenario < 0 || t.scenario > 10 || !ordered || t.totalMs <= 0 || t.totalMs > 9000)
+                        err[0] = "bad fx timeline round " + r.round + ": " + t.scenarioName() + " total=" + t.totalMs;
+                    fxRounds.incrementAndGet();
+                    scenarios.add(t.scenarioName());
+                }
                 public void onMatchEnd(MatchModel m) { result.set(m.result); ended.countDown(); }
                 public void onError(String msg) { err[0] = msg; ended.countDown(); }
             }, Protocol.MODE_CARD, Protocol.KIND_HUMAN, "itHuman", new byte[0]);
@@ -55,7 +67,10 @@ public final class IntegrationTest {
             boolean ok = ended.await(20, TimeUnit.SECONDS);
             if (!ok || err[0] != null || result.get() < 0 || rounds.get() < 1) {
                 fails++; System.out.println("FAIL ok=" + ok + " err=" + err[0] + " result=" + result.get() + " rounds=" + rounds.get());
-            } else System.out.println("IntegrationTest: match complete, " + rounds.get() + " rounds, result " + result.get());
+            } else if (fxRounds.get() < 1) {
+                fails++; System.out.println("FAIL no ROUND_RESULT produced an fx timeline");
+            } else System.out.println("IntegrationTest: match complete, " + rounds.get() + " rounds, result " + result.get()
+                + ", fx timelines " + fxRounds.get() + " " + scenarios);
             s.close();
             fails += draftLeg(a, port);
         } finally {

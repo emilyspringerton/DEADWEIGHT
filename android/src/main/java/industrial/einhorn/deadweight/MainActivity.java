@@ -4,6 +4,7 @@ import android.app.Activity;
 import android.content.SharedPreferences;
 import android.graphics.Typeface;
 import android.os.Bundle;
+import android.os.SystemClock;
 import android.text.InputType;
 import android.view.Gravity;
 import android.view.View;
@@ -14,6 +15,7 @@ import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.TextView;
 import industrial.einhorn.deadweight.core.DraftModel;
+import industrial.einhorn.deadweight.core.FxTimeline;
 import industrial.einhorn.deadweight.core.GuestAuth;
 import industrial.einhorn.deadweight.generated.CardRules;
 import industrial.einhorn.deadweight.core.MatchModel;
@@ -38,6 +40,11 @@ public final class MainActivity extends Activity implements Session.Listener {
     private boolean connecting = false;
     private int selectedSlot = -2;        // -2 nothing chosen, -1 pass, 0-3 card
     private String lastRound = "";
+    // Round-reveal animation (S555 phase 2): the last ROUND_RESULT, its PARENA-decided timeline, and when it arrived
+    // (uptime ms) so screen rebuilds mid-animation don't restart it.
+    private MatchModel.RoundLog fxRound;
+    private FxTimeline fxTimeline;
+    private long fxStartMs;
     private boolean menuMode = true;      // true = show login/menu regardless of session state
 
     @Override protected void onCreate(Bundle b) {
@@ -59,7 +66,7 @@ public final class MainActivity extends Activity implements Session.Listener {
     // ---------------- Session.Listener (reader thread -> UI thread) ----------------
     @Override public void onState(Session.State s) { ui(this::render); }
     @Override public void onQueued(int w) { ui(this::render); }
-    @Override public void onMatchFound(MatchModel m) { ui(() -> { selectedSlot = -2; lastRound = ""; menuMode = false; render(); }); }
+    @Override public void onMatchFound(MatchModel m) { ui(() -> { selectedSlot = -2; lastRound = ""; fxRound = null; fxTimeline = null; menuMode = false; render(); }); }
     @Override public void onRoundStart(MatchModel m) { ui(() -> { selectedSlot = -2; render(); }); }
     @Override public void onPlayAck(MatchModel m) { ui(this::render); }
     @Override public void onPlayReject(MatchModel m, int r) { ui(() -> { selectedSlot = -2; status = "Play rejected (" + r + "), pick again"; render(); }); }
@@ -68,10 +75,18 @@ public final class MainActivity extends Activity implements Session.Listener {
             lastRound = "Round " + r.round + ": you " + played(r.cardYou, r.effYou) + " vs " + played(r.cardOpp, r.effOpp)
                 + "\nYou took " + r.dmgYou + (r.healYou > 0 ? " (healed " + r.healYou + ")" : "")
                 + ", they took " + r.dmgOpp + (r.healOpp > 0 ? " (healed " + r.healOpp + ")" : "") + fxNotes(r);
+            fxRound = r; fxTimeline = FxTimeline.of(r); fxStartMs = SystemClock.uptimeMillis();
             render();
         });
     }
-    @Override public void onMatchEnd(MatchModel m) { ui(this::render); }
+    @Override public void onMatchEnd(MatchModel m) {
+        // Like the desktop client, the final round's reveal finishes before the result screen replaces it.
+        ui(() -> { render(); long left = fxRemainingMs(); if (left > 0) root.postDelayed(this::render, left + 50); });
+    }
+
+    private long fxRemainingMs() {
+        return fxTimeline == null ? 0 : fxStartMs + fxTimeline.totalMs - SystemClock.uptimeMillis();
+    }
     @Override public void onDraftOffer(DraftModel d) { ui(this::render); }
     @Override public void onDraftDone(int deckId, int[] deck) { ui(this::render); }
     @Override public void onError(String msg) { ui(() -> { status = "Disconnected: " + msg; connecting = false; menuMode = true; session = null; render(); }); }
@@ -116,7 +131,11 @@ public final class MainActivity extends Activity implements Session.Listener {
             case IN_MATCH: renderMatch(s, m); break;
             case DRAFTING: renderDraft(s); break;
             case QUEUED: renderQueue(s); break;
-            case READY: if (m != null && m.result >= 0) renderEnd(s, m); else renderLobby(s); break;
+            case READY:
+                if (m != null && m.result >= 0 && fxRemainingMs() > 0) renderMatch(s, m);
+                else if (m != null && m.result >= 0) renderEnd(s, m);
+                else renderLobby(s);
+                break;
             default: text("Connecting…", 22, Theme.TEXT); break;
         }
     }
@@ -284,10 +303,17 @@ public final class MainActivity extends Activity implements Session.Listener {
         // Middle: last round reveal (grows to fill)
         String hint = selectedSlot >= 0 && m.hand[selectedSlot] >= 0
             ? CardText.name(m.hand[selectedSlot]) + ": " + CardText.text(m.hand[selectedSlot]) : "";
-        TextView log = text(lastRound.isEmpty() ? "Pick a card and lock in." : lastRound, 18, Theme.TEXT);
-        log.setGravity(Gravity.CENTER);
-        ((LinearLayout.LayoutParams) log.getLayoutParams()).height = 0;
-        ((LinearLayout.LayoutParams) log.getLayoutParams()).weight = 1;
+        if (fxRound != null) {
+            FxView arena = new FxView(this);
+            arena.set(fxRound, fxTimeline, fxStartMs);
+            root.addView(arena, new LinearLayout.LayoutParams(-1, 0, 1));
+            text(lastRound, 14, Theme.DIM).setGravity(Gravity.CENTER);
+        } else {
+            TextView log = text("Pick a card and lock in.", 18, Theme.TEXT);
+            log.setGravity(Gravity.CENTER);
+            ((LinearLayout.LayoutParams) log.getLayoutParams()).height = 0;
+            ((LinearLayout.LayoutParams) log.getLayoutParams()).weight = 1;
+        }
         if (!hint.isEmpty() && !m.locked) text(hint, 16, 0xFF468CE6).setGravity(Gravity.CENTER);
         if (m.locked) text("Locked in. Waiting for opponent…", 16, 0xFFFAD246).setGravity(Gravity.CENTER);
         else if (!status.isEmpty()) text(status, 14, 0xFFFAD246).setGravity(Gravity.CENTER);
@@ -295,9 +321,10 @@ public final class MainActivity extends Activity implements Session.Listener {
         LinearLayout actions = new LinearLayout(this);
         root.addView(actions, new LinearLayout.LayoutParams(-1, -2));
         Button pass = button(selectedSlot == -1 ? "PASS (selected)" : "PASS  +1 energy", v -> { selectedSlot = -1; render(); }, actions, 1);
-        pass.setEnabled(!m.locked);
+        boolean live = s.state() == Session.State.IN_MATCH; // false while the final round's reveal finishes
+        pass.setEnabled(!m.locked && live);
         Button lock = button("LOCK IN", v -> { status = ""; if (selectedSlot != -2 && s.play(selectedSlot)) render(); }, actions, 1);
-        lock.setEnabled(!m.locked && selectedSlot != -2);
+        lock.setEnabled(!m.locked && live && selectedSlot != -2);
         LinearLayout hand = new LinearLayout(this);
         hand.setWeightSum(4);
         root.addView(hand, new LinearLayout.LayoutParams(-1, 360));

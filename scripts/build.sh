@@ -19,6 +19,10 @@ echo "== C: fx (round-resolution animation/audio decision layer) rules tests (AS
 gcc $CFLAGS_BASE -include card_rules.h -g -fsanitize=address,undefined -fno-sanitize-recover=all \
     tests/test_fx_rules.c core/card_rules.c core/fx_rules.c -o build/test_fx_rules
 ./build/test_fx_rules
+# The committed C->Java fx parity vectors (android //android:fx_parity_test) must still be what the
+# current core/fx_rules.c produces, or the Java check would be testing against a stale oracle.
+gcc $CFLAGS_BASE -include card_rules.h tests/gen_fx_vectors.c core/card_rules.c core/fx_rules.c -o build/gen_fx_vectors
+./build/gen_fx_vectors | cmp -s - tests/fx_parity_vectors.txt || { echo "tests/fx_parity_vectors.txt is stale: run scripts/gen_rules.sh"; exit 1; }
 
 echo "== C: protocol codec tests (ASan+UBSan) =="
 gcc $CFLAGS_BASE -g -fsanitize=address,undefined -fno-sanitize-recover=all \
@@ -78,6 +82,7 @@ fi
 if [[ "$ARGS" == *" --android "* || "$ARGS" == *" --all "* ]]; then
   echo "== Android: core JVM tests + APK =="
   "$BAZEL" run //android:core_test -- "$PWD/tests/parity_vectors.txt"
+  "$BAZEL" run //android:fx_parity_test -- "$PWD/tests/fx_parity_vectors.txt"
   "$BAZEL" build //android:deadweight
 fi
 if [[ "$ARGS" == *" --gui "* ]]; then

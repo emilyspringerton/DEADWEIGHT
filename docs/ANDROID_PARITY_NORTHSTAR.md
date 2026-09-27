@@ -14,7 +14,9 @@ for the actual parity work, per this repo's own "spec before implementation" con
 not in `NORTHSTAR.md`, `docs/PHASE_D5_D6_UI_AND_LAUNCH.md`, the wire protocol, or either client.
 Before implementing it, this needs a real answer from the founder: does "key unlock" mean (a) an
 Ultimates/cosmetic unlock progression system, (b) an IDUNA account/license-key entitlement gate,
-or (c) something else entirely. Flagged in `EMILY/BACKLOG.md`; not built until scoped.
+or (c) something else entirely. Flagged in `EMILY/BACKLOG.md` SECTION 555 (logged 2026-09-27 — the
+first version of this doc claimed it was flagged, but no entry had actually landed); not built
+until scoped.
 
 ## Current real state (checked directly)
 
@@ -44,6 +46,24 @@ or (c) something else entirely. Flagged in `EMILY/BACKLOG.md`; not built until s
   (`scripts/gen_rules.sh` already emits `android/.../generated/CardRules.java`; add an
   `FxRules.java` target the same way) so animation/timeline decisions are identical across
   Windows, browser, and Android, not reimplemented a third time by hand.
+
+## Status (2026-09-27)
+
+- **Phase 1 — done** (DEADWEIGHT f0ec008). Compile-checked 2026-09-27 against real `android.*` API
+  stubs (Maven Central `com.google.android:android:4.1.1.4`, `javac` over every `src/main` file):
+  clean. Still never run on a device/emulator.
+- **Phase 2 — done** (2026-09-27). `generated/FxRules.java` (third target of `fx_rules.prn`, combined
+  with `card_rules.prn` exactly like the TS build) + `core/FxTimeline.java` (port of
+  `web/src/fx.ts`'s `computeTimeline`) + `FxView.java` (brutalist reveal: flip-in, winner frame,
+  impact flash, crit shake, fx.c's own labels/colours, HULL/ARMOR/ECON/STATUS stage strip). The
+  final round's reveal finishes before the result screen. Verified by `//android:fx_parity_test`
+  (9,941 C->Java vectors + 27 hand-computed FxTimeline scenario checks, in CI), a stale-vector
+  guard in `scripts/build.sh`, and `IntegrationTest` computing a timeline for every real
+  ROUND_RESULT against a live `dw_server` + `dw_bot`. **Not done**: audio, particles/ships; energy-
+  delta and new-status stages (same wire-protocol gap as the browser, see `web/src/fx.ts`); any
+  on-device run.
+- **Phase 3 / 4 — not started** (phase 4 still blocked on the open question above). Tracked in
+  `EMILY/BACKLOG.md` SECTION 555.
 
 ## Real, phased plan
 

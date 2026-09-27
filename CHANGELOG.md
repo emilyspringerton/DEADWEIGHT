@@ -1,5 +1,21 @@
 # CHANGELOG
 
+## 2026-09-27
+- Android (S555 phase 2): PARENA-driven round-reveal parity. `scripts/gen_rules.sh` now emits
+  `android/.../generated/FxRules.java` (third target of `fx_rules.prn`, combined with
+  `card_rules.prn` like the TS build); new plain-JVM `core/FxTimeline.java` (port of
+  `web/src/fx.ts`'s `computeTimeline`, hidden-meter sentinels neutralized) and brutalist `FxView.java`
+  (flip-in, winner frame, impact flash, crit shake, fx.c's own labels/colours, stage strip) in the
+  match screen; the final round's reveal plays out before the result screen. `RoundLog` now carries
+  before/after armor + vault. Verified: new `//android:fx_parity_test` (9,941 C->Java vectors from
+  new `tests/gen_fx_vectors.c` + 27 FxTimeline scenario checks; in CI), `scripts/build.sh`
+  stale-vector guard, `IntegrationTest` checks a timeline for every real ROUND_RESULT from a live
+  `dw_server`+`dw_bot`, full `scripts/build.sh` BUILD CLEAN. Phase 1 + 2 Android sources
+  compile-checked against real `android.*` API stubs (first real verification of phase 1).
+  **Honest limits**: no audio/particles on Android; energy/status stages share the browser's
+  wire-protocol gap; never run on a device/emulator. README updated: Android is no longer
+  "shelved" (it was stale after phase 1).
+
 ## 2026-09-25
 - Android (S555 phase 1, reverses S513 shelving): re-rendered `CardView`/`BarView` in the desktop
   client's brutalist style — ported `apps/gui/main.c`'s `Col` palette (`Theme.java`) and 5x7
