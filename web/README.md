@@ -132,12 +132,14 @@ Not just "it compiles" — a real, live, end-to-end match:
   4. `true`/`false` literals weren't recognized at all (a real, latent type-tracking bug, found
      writing `fx_rules.prn`'s own `fx-is-crit`) — fixed.
 - **Round-resolution animation/audio** (2026-09-21, "use parena to unify the windows and TS
-  versions... dogfood it, eat more of the app"): `fx.computeTimeline()` calls the exact same
-  PARENA-compiled scenario/timeline logic Windows now calls too (`FxRules.ts`/`core/fx_rules.c`,
-  both from `fx_rules.prn`) — verified sane against 9 real rounds of a real live match
-  (`web/bridge/e2e_test.mjs`), and cross-verified correct via `tests/test_fx_rules.c`'s 4092-check
-  independent oracle on the C side (same compiled logic). The Canvas2D/Web Audio *rendering* of
-  those decisions has not been checked in a real browser window (Node has no DOM) — see below.
+  versions... dogfood it, eat more of the app"; rendering itself rebuilt 2026-09-28, S578, see
+  below): the decision layer is the exact same PARENA-compiled scenario/timeline logic Windows
+  calls too (`FxRules.ts`/`core/fx_rules.c`, both from `fx_rules.prn`), verified via
+  `tests/test_fx_rules.c`'s 4092-check independent oracle. The *rendering* is no longer a separate
+  hand-written reimplementation either — `apps/gui/fx.c`/`apps/gui/sfx.c` now compile unmodified to
+  wasm and run in a real browser via `web/src/fxWasm.ts`'s "SDL layer for wasm"; verified live in
+  real headless Chrome against a real match (see "Honest status / limits" below for the full
+  account and its current, named scope).
 
 ## Honest status / limits — not built yet
 
@@ -203,19 +205,43 @@ Not just "it compiles" — a real, live, end-to-end match:
   bug, also named in SECTION 544, not routed around silently). Not verified this pass, same class of
   gap as the IDUNA auth bullet above: an actual browser click-through of either the new Create
   Account box or the updated Link Email fallback (no headless Chrome in this sandbox).
-- **Animation/audio rendering not verified in a real browser.** `fx.ts`'s Canvas2D drawing and Web
-  Audio playback have never been opened in an actual browser window in this sandbox (no display) —
-  only the shared decision layer they're driven by has been checked live (see above). The visuals
-  are also a real, simplified re-interpretation of the Windows client's own scenes (ship polygons,
-  a clash effect per scenario family, hull/armor number pop-ups), not a port of its exact particle
-  system, shake, crack-glass, or status (burn/regen/EMP) effects — those are not built here yet.
-- **Energy-delta and burn/regen status visuals/audio are a named, not-yet-wired gap**, honestly,
-  not silently skipped: `docs/WIRE_PROTOCOL.md`'s `ROUND_RESULT` carries no energy-delta or
-  status-after field (status is only ever visible on the *next* `ROUND_START`), so `main.ts`
-  currently always passes `energyDeltaYou/Opp: 0` and `newStatusYou/Opp: false` into
-  `fx.computeTimeline()` — the `hasEcon`/`hasStat` stages still fire correctly for credits/armor
-  and for the disabled/swapped flags that *are* in `ROUND_RESULT`, just not for energy gain or a
-  burn/regen status literally starting this round.
+- **Animation/audio now run the real Windows engine, not a hand-written reimplementation (S578,
+  2026-09-28).** Founder real-time: "write an sdl layer for wasm for when we dont have SDL abstract
+  our shit so we can use PARENA to write the same exact logic." `apps/gui/fx.c` and
+  `apps/gui/sfx.c` — the exact same source the Windows/Linux SDL2 client links — now also compile
+  completely unmodified to a native wasm32 module (`scripts/build_wasm_fx.sh` → `dw_fx.wasm`,
+  same `clang -target wasm32-unknown-unknown -nostdlib`/no-Emscripten backend
+  `scripts/build_wasm_native.sh` already established). `apps/wasm/fx/SDL.h` is the real "SDL layer
+  for wasm": fx.c's entire SDL footprint is five draw primitives, declared there and implemented
+  as wasm imports that `web/src/fxWasm.ts` fills by drawing to a Canvas2D 2D context — Windows
+  fills the identical five calls via real SDL2. Audio needs no import at all: it pulls PCM straight
+  out of sfx.c's own pre-existing offline-render API (the same one `tests/test_sfx.c` and
+  `dw_gui --fx-demo` already use to dump WAV without a sound card) and schedules it into Web Audio.
+  `apps/wasm/fx/math_shim.c` supplies the handful of transcendental libm functions this freestanding
+  target has none of (verified to ~1e-6 against a real libm, `tests/test_wasm_math_shim.c`, run by
+  the build script itself before every wasm build). Live-verified in real headless Chrome
+  (Playwright) against the live production backend: a real match, a real `ROUND_RESULT`, the
+  `#fx-canvas` painting real non-background pixels (ships, a Lock-keyword targeting-bracket clash,
+  glow), zero console errors; a direct Node-level module test separately confirmed 130k+ real SDL
+  draw calls and real non-silent synthesized audio (peak ~82% of full scale) for a Blitz clash.
+  `web/src/fx.ts` (the prior hand-written Canvas2D/Web Audio reimplementation) is no longer used by
+  `main.ts` for rendering, but is kept: `web/bridge/e2e_test.mjs` still legitimately calls its
+  `computeTimeline()` as a live decision-layer sanity check, independent of which renderer draws.
+  **Honest, named scope for this pass**: only `fx_draw_arena` (the clash/ship/particle/card-flip
+  timeline, self-contained within `fx.c`'s own arena band) is wired in. `fx_draw_overlay` (the
+  redline border across the full virtual screen), `fx_draw_status_panel`/`fx_draw_disabled_card`
+  (burn/regen embers, EMP look — drawn at absolute HUD coordinates assuming the native app's own
+  fixed full-screen layout) are not called yet — the DOM-based hull bars here don't share that
+  layout, so wiring them needs `#fx-canvas` to grow into a full-screen overlay, a bigger layout
+  change deferred, not dropped. A few particle effects that fly toward those same absolute HUD
+  coordinates (e.g. the hull-damage burst toward the meter) will draw off this canvas's own cropped
+  viewport and simply not be visible yet, for the same reason.
+- **Energy-delta and burn/regen status are now real**, closing the gap this section used to name:
+  `main.ts` defers each round's animation (mirroring `apps/gui/main.c`'s own real
+  `fx_finish_round`/`pend_valid`/`rs_energy` pattern exactly, ported rather than re-derived) until
+  the *next* `ROUND_START` confirms the real energy delta and post-round status — `docs/
+  WIRE_PROTOCOL.md`'s `ROUND_RESULT` still carries neither field directly, but the information is
+  recoverable one message later, the same way the native client already recovers it.
 - **No reconnect/resume.** A dropped WebSocket just ends the session; no session-id-based rejoin.
 - **Not deployed anywhere.** This is a local-only dev build (`python3 -m http.server`); no public
   URL, no TLS, no production `dw_server` pointed at it.

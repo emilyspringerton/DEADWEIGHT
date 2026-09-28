@@ -7,7 +7,7 @@ import { DeadweightClient } from './client.js';
 import { initWasmProto } from './wasmProto.js';
 import type { RoundStart } from './wasmProto.js';
 import * as rules from './generated/CardRules.js';
-import * as fx from './fx.js';
+import * as fxWasm from './fxWasm.js';
 import * as account from './account.js';
 import * as social from './social.js';
 import * as sso from './sso.js';
@@ -34,13 +34,39 @@ let currentVault = 0;
 let lockMask = 0;
 let locked = false;
 let oppName = '';
-// "before" snapshot for the round about to resolve, captured at ROUND_START, consumed by the next
-// ROUND_RESULT's fx.computeTimeline() call -- see fx.ts's own header comment for the honest,
-// named gap this leaves (energy-delta and burn/regen status visuals are not wired up yet, the
-// wire protocol doesn't carry enough same-round information for either without deferring a round).
-let beforeArmorYou = 0, beforeArmorOpp = 0, beforeVaultYou = 0, beforeVaultOpp = 0;
-let fxDrawState: fx.FxDrawState | null = null;
-let fxRafHandle = 0;
+let matchSeed = 0;
+// "before" snapshot for the round about to resolve, captured at ROUND_START, consumed by the
+// ROUND_RESULT that follows it -- see fx_wasm.c's own wasm_fx_energy_estimate header comment for
+// why energy/status use a deferred, one-round-lagged scheme instead (docs/WIRE_PROTOCOL.md's
+// ROUND_RESULT carries no energy-delta or post-round-status field at all -- the real, structural
+// reason -- so this mirrors apps/gui/main.c's own real fx_finish_round/pend_valid/rs_energy
+// pattern exactly: a round's animation only actually starts once the NEXT ROUND_START confirms
+// what its energy/status outcome was, or MATCH_END confirms there is no next round).
+let beforeHullYou = 0, beforeHullOpp = 0, beforeArmorYou = 0, beforeArmorOpp = 0, beforeVaultYou = 0, beforeVaultOpp = 0;
+let rsEnergyYou = 0, rsEnergyOpp = 0;
+let lastStatusYou = 0, lastStatusOpp = 0;
+let pendRound: fxWasm.FxRoundInput | null = null;
+let fxTickHandle = 0;
+let fxLastTs = 0;
+
+function flushPendRound(energyNextYou: number | null, energyNextOpp: number | null, statusAfterYou: number, statusAfterOpp: number, lockAfter: number, lethal: boolean) {
+    if (!pendRound) return;
+    pendRound.energyNextYou = energyNextYou;
+    pendRound.energyNextOpp = energyNextOpp;
+    pendRound.statusAfterYou = statusAfterYou;
+    pendRound.statusAfterOpp = statusAfterOpp;
+    pendRound.lockAfter = lockAfter;
+    pendRound.lethal = lethal;
+    fxWasm.beginRound(pendRound);
+    pendRound = null;
+}
+
+function fxTickLoop(ts: number) {
+    fxTickHandle = requestAnimationFrame(fxTickLoop);
+    const dt = fxLastTs ? ts - fxLastTs : 16;
+    fxLastTs = ts;
+    fxWasm.tick(dt, $('fx-canvas') as HTMLCanvasElement);
+}
 // Duel Phase 2 (S537): set by playDuel() right before a duel's PLAY button, consumed (and
 // cleared) the next time the client reaches 'ready' -- either immediately, if it's already
 // connected, or once WELCOME arrives if the duel was clicked before connect() finished.
@@ -171,19 +197,6 @@ function setStatus(s: string) {
     $('status').textContent = s;
 }
 
-function runFxAnimation(timeline: fx.FxTimeline, input: fx.FxRoundInput) {
-    const canvas = $('fx-canvas') as HTMLCanvasElement;
-    const ctx2d = canvas.getContext('2d')!;
-    if (fxRafHandle) cancelAnimationFrame(fxRafHandle);
-    fxDrawState = fx.beginRound(canvas, timeline, input);
-    const step = () => {
-        if (!fxDrawState) return;
-        const stillRunning = fx.drawFrame(ctx2d, canvas.width, canvas.height, fxDrawState);
-        if (stillRunning) fxRafHandle = requestAnimationFrame(step);
-    };
-    fxRafHandle = requestAnimationFrame(step);
-}
-
 // enterGame is start()'s own real tail, extracted (2026-09-25) so createAccount() below can
 // reach the exact same "connected and playing" state without duplicating the client wiring --
 // both paths only differ in HOW currentAccount got resolved (bootstrap vs. a fresh
@@ -206,6 +219,18 @@ async function enterGame(idunaUrl: string, bridgeUrl: string, fallbackName: stri
 
     cardsData = await (await fetch('./src/generated/cards.json')).json();
     log(`loaded ${cardsData.cards.length}-card catalog (v${cardsData.version})`);
+
+    // The real round-resolution animation/audio engine (apps/gui/fx.c + apps/gui/sfx.c, compiled
+    // unmodified to wasm -- see fxWasm.ts's own header comment for scope/honest limits). Started
+    // here (inside enterGame's own click-driven call chain) so resetAudioClock()'s AudioContext
+    // creation happens on a real user gesture, satisfying browser autoplay policy.
+    await fxWasm.initFxWasm($('fx-canvas') as HTMLCanvasElement, (id) => {
+        const c = cardsData.cards[id];
+        return c ? { kind: rules.cardKind(id) } : null;
+    });
+    fxWasm.resetAudioClock();
+    fxLastTs = 0;
+    if (!fxTickHandle) fxTickHandle = requestAnimationFrame(fxTickLoop);
 
     client = new DeadweightClient(bridgeUrl, {
         onState(s) {
@@ -231,19 +256,35 @@ async function enterGame(idunaUrl: string, bridgeUrl: string, fallbackName: stri
         },
         onMatchFound(f) {
             oppName = f.oppName;
+            matchSeed = f.seed;
+            fxWasm.resetMatch();
+            pendRound = null;
             log(`MATCH_FOUND vs ${f.oppName} (${f.oppKind === 1 ? 'bot' : 'human'}), seat ${f.seat}, seed ${f.seed}`);
             ($('opp-name') as HTMLElement).textContent = `${f.oppName} (${f.oppKind === 1 ? 'bot' : 'human'})`;
             $('match').style.display = 'block';
         },
         onRoundStart(f) {
+            // This ROUND_START is the "next round start" apps/gui/main.c's own fx_finish_round
+            // waits for -- it's what actually STARTS the previous round's animation, now that its
+            // real energy delta and post-round status are knowable (see this file's own header
+            // comment above and fx_wasm.c's wasm_fx_energy_estimate comment for the full why).
+            flushPendRound(f.energyYou, f.energyOpp, f.statusYou, f.statusOpp, f.lockMask, false);
+            fxWasm.setRedline(f.hullYou, f.hullOpp);
+            fxWasm.statusChanged(f.statusYou, f.statusOpp, f.lockMask, true);
+            fxWasm.setMeters(f.hullYou, f.hullOpp, f.armorYou, f.armorOpp === 255 ? 0 : f.armorOpp,
+                f.energyYou, f.energyOpp === 255 ? 0 : f.energyOpp, f.vaultYou, f.vaultOpp === -128 ? 0 : f.vaultOpp, false);
+
             currentHand = f.hand;
             currentEnergy = f.energyYou;
             currentVault = f.vaultYou;
             lockMask = f.lockMask;
             locked = false;
             selectedSlot = null;
+            beforeHullYou = f.hullYou; beforeHullOpp = f.hullOpp;
             beforeArmorYou = f.armorYou; beforeArmorOpp = f.armorOpp;
             beforeVaultYou = f.vaultYou; beforeVaultOpp = f.vaultOpp;
+            rsEnergyYou = f.energyYou; rsEnergyOpp = f.energyOpp;
+            lastStatusYou = f.statusYou; lastStatusOpp = f.statusOpp;
             renderBars(f);
             renderHand();
             updateActionButtons();
@@ -260,26 +301,38 @@ async function enterGame(idunaUrl: string, bridgeUrl: string, fallbackName: stri
         },
         onRoundResult(f) {
             log(`round ${f.round} result: you played ${cardLabel(f.cardYou)}, opp played ${cardLabel(f.cardOpp)} — dealt ${f.dmgToOpp}, took ${f.dmgToYou}, hull now ${f.hullYou}/${f.hullOpp}`);
-            const input: fx.FxRoundInput = {
+            // Defensive flush matching apps/gui/main.c's own safety net (DW_S_ROUND_RESULT: "if
+            // (A.pend_valid) fx_finish_round(0, NULL)") -- the wire protocol's own state machine
+            // never actually lets two ROUND_RESULTs arrive without a ROUND_START between them, so
+            // this should be a no-op in practice, not the normal path.
+            if (pendRound) flushPendRound(null, null, pendRound.statusBeforeYou, pendRound.statusBeforeOpp, 0, false);
+            pendRound = {
+                round: f.round,
                 cardYou: f.cardYou, cardOpp: f.cardOpp, effYou: f.effYou, effOpp: f.effOpp,
-                cancelledYou: !!(f.flagsYou & 1), cancelledOpp: !!(f.flagsOpp & 1),
                 dmgYou: f.dmgToYou, dmgOpp: f.dmgToOpp, healYou: f.healYou, healOpp: f.healOpp,
+                hullBeforeYou: beforeHullYou, hullAfterYou: f.hullYou,
+                hullBeforeOpp: beforeHullOpp, hullAfterOpp: f.hullOpp,
                 armorBeforeYou: beforeArmorYou, armorAfterYou: f.armorYou,
                 armorBeforeOpp: beforeArmorOpp, armorAfterOpp: f.armorOpp,
                 vaultBeforeYou: beforeVaultYou, vaultAfterYou: f.vaultYou,
                 vaultBeforeOpp: beforeVaultOpp, vaultAfterOpp: f.vaultOpp,
-                energyDeltaYou: 0, energyDeltaOpp: 0, // honest gap -- see fx.ts's own header comment
-                newStatusYou: false, newStatusOpp: false, // honest gap -- see fx.ts's own header comment
-                disabledYou: !!(f.flagsOpp & 8), disabledOpp: !!(f.flagsYou & 8),
-                swapped: !!((f.flagsYou & 16) || (f.flagsOpp & 16)),
+                rsEnergyYou, rsEnergyOpp,
+                energyNextYou: null, energyNextOpp: null, // filled in by flushPendRound once known
+                flagsYou: f.flagsYou, flagsOpp: f.flagsOpp,
+                // statusBefore is this round's *incoming* status -- the status_you/status_opp its
+                // own ROUND_START carried (captured into lastStatusYou/Opp there).
+                statusBeforeYou: lastStatusYou, statusBeforeOpp: lastStatusOpp,
+                statusAfterYou: 0, statusAfterOpp: 0, // filled in by flushPendRound once known
+                lockAfter: 0, lethal: false, seed: (matchSeed ^ (f.round * 2654435761)) >>> 0,
             };
-            const timeline = fx.computeTimeline(input);
-            log(`fx: scenario=${fx.scenarioName(timeline)} win=${timeline.win} crit=${timeline.crit} total=${Math.round(timeline.totalMs)}ms`);
-            runFxAnimation(timeline, input);
         },
         onMatchEnd(f) {
             const outcome = f.result === 1 ? 'WIN' : f.result === 0 ? 'LOSS' : 'DRAW';
             log(`MATCH_END: ${outcome} (reason ${f.reason})`);
+            // No further ROUND_START is coming -- finish the last round's animation now, with an
+            // unknown energy delta and an unchanged status, matching apps/gui/main.c's own
+            // DW_S_MATCH_END handling exactly (A.pend.lethal = 1; fx_finish_round(0, NULL);).
+            if (pendRound) flushPendRound(null, null, pendRound.statusBeforeYou, pendRound.statusBeforeOpp, 0, true);
             setStatus(`match over: ${outcome}`);
             $('requeue').style.display = 'inline-block';
         },
