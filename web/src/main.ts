@@ -14,8 +14,10 @@ import * as sso from './sso.js';
 type CardEntry = { id: number; name: string; kind: string; keyword: string; cost: number; power: number; credit: number; text: string };
 type CardsData = { version: string; cards: CardEntry[] };
 
-const KIND_NAMES = ['Offense', 'Operations', 'Defense'];
-const KIND_COLORS = ['#c0392b', '#d4a017', '#2f6fb0'];
+// Exact match to apps/gui/main.c's KIND_NAME/KIND_COL (Windows/Linux desktop client) --
+// docs/BRAND_STYLE_GUIDE.md Section 2A is the single source of truth for both clients.
+const KIND_NAMES = ['OFFENSE', 'OPERATIONS', 'DEFENSE'];
+const KIND_COLORS = ['#D7463C', '#E1A028', '#468CE6'];
 
 const $ = (id: string) => document.getElementById(id)!;
 
@@ -70,7 +72,7 @@ function renderHand() {
             const c = cardsData.cards[id];
             const kind = rules.cardKind(id);
             const legal = rules.isLegalPlay(id, currentEnergy, currentVault) && !((lockMask >> slot) & 1);
-            btn.style.borderColor = KIND_COLORS[kind];
+            btn.style.borderTopColor = KIND_COLORS[kind];
             btn.innerHTML = `<b>${c ? c.name : '#' + id}</b><br><small>${KIND_NAMES[kind]}${c && c.keyword ? ' / ' + c.keyword : ''}</small><br>` +
                 `<small>cost ${c ? c.cost : '?'}${c && c.credit ? ' +' + c.credit + 'cr' : ''} · pow ${c ? c.power : '?'}</small>` +
                 (c && c.text ? `<br><small class="rules-text">${c.text}</small>` : '');

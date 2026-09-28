@@ -75,7 +75,10 @@ export function computeTimeline(i: FxRoundInput): FxTimeline {
 
 const SCENARIO_NAME = ['none', 'blitz', 'block', 'bypass', 'mirror_offense', 'mirror_operations', 'mirror_defense', 'unopposed', 'hold_shield', 'hold', 'cancelled'];
 const KW_NAME = ['', 'lock', 'sabotage', 'flank', 'scan', 'siphon'];
-const KIND_COLOR = ['#e05252', '#d4b23a', '#4a90d9'];
+// Exact match to apps/gui/fx.c's KIND3 C3 constants (the FX-specific palette, brighter/more
+// saturated than the static-UI KIND_COL -- fx.c deliberately uses a separate C3 RED/YEL/BLU set
+// for animation flashes/impacts, see fx.c lines 25-28).
+const KIND_COLOR = ['#E15042', '#F5BE37', '#5096F5'];
 
 export function scenarioName(t: FxTimeline): string {
     return SCENARIO_NAME[t.scenario] + (t.scenario === 3 ? '_' + KW_NAME[t.kw] : '') + (t.crit ? '_crit' : '');
@@ -179,7 +182,7 @@ export function drawFrame(ctx2d: CanvasRenderingContext2D, w: number, h: number,
     const t = performance.now() - state.startedAt;
     const tl = state.timeline;
     ctx2d.clearRect(0, 0, w, h);
-    ctx2d.fillStyle = '#0c0e12'; ctx2d.fillRect(0, 0, w, h);
+    ctx2d.fillStyle = '#12141C'; ctx2d.fillRect(0, 0, w, h); // Terminal Black (C_BG)
 
     const cx = w / 2, cy = h / 2;
     const kindColorYou = KIND_COLOR[tl.kindYou >= 0 ? tl.kindYou : 1];
@@ -206,7 +209,7 @@ function drawShip(c: CanvasRenderingContext2D, x: number, y: number, dir: number
     c.moveTo(34, 0); c.lineTo(6, -10); c.lineTo(-6, -22); c.lineTo(-24, -22); c.lineTo(-14, -6);
     c.lineTo(-30, -6); c.lineTo(-30, 6); c.lineTo(-14, 6); c.lineTo(-24, 22); c.lineTo(-6, 22); c.lineTo(6, 10);
     c.closePath();
-    c.fillStyle = '#20232c'; c.fill();
+    c.fillStyle = '#202432'; c.fill(); // Corporate Grey (C_PANEL)
     c.strokeStyle = color; c.lineWidth = 2; c.stroke();
     c.restore();
 }
@@ -219,17 +222,17 @@ function drawClash(c: CanvasRenderingContext2D, cx: number, cy: number, tl: FxTi
         for (let i = 0; i < 5; i++) {
             const mk = Math.min(Math.max(k * 1.6 - i * 0.08, 0), 1);
             const mx = fromX + (toX - fromX) * mk, my = cy + (i - 2) * 8;
-            c.fillStyle = tl.crit ? '#ff6a3a' : '#e05252';
+            c.fillStyle = tl.crit ? '#FF8C28' : '#E15042'; // ORG (crit) / RED (fx.c impact_spark)
             c.beginPath(); c.arc(mx, my, 3 + (tl.crit ? 1 : 0), 0, 7); c.fill();
         }
-        if (k > 0.7) { c.fillStyle = `rgba(255,150,60,${0.5 * (1 - (k - 0.7) / 0.3)})`; c.beginPath(); c.arc(toX, cy, 40 * (k - 0.7) / 0.3, 0, 7); c.fill(); }
+        if (k > 0.7) { c.fillStyle = `rgba(255,140,40,${0.5 * (1 - (k - 0.7) / 0.3)})`; c.beginPath(); c.arc(toX, cy, 40 * (k - 0.7) / 0.3, 0, 7); c.fill(); } // ORG
     } else if (tl.scenario === 2) { // BLOCK: shield hex expands
         const shieldX = tl.win === 0 ? cx - SHIP_DX : cx + SHIP_DX;
-        c.strokeStyle = `rgba(74,144,217,${0.8 - 0.3 * k})`; c.lineWidth = 3;
+        c.strokeStyle = `rgba(130,225,255,${0.8 - 0.3 * k})`; c.lineWidth = 3; // CYAN (fx.c's own BLOCK shield color)
         c.beginPath(); c.arc(shieldX, cy, 30 + 20 * Math.min(k * 2, 1), 0, 7); c.stroke();
     } else if (tl.scenario === 3) { // BYPASS: rising arpeggio dots toward the loser's shield
         const shieldX = tl.lose === 0 ? cx - SHIP_DX : cx + SHIP_DX;
-        c.fillStyle = '#d4b23a';
+        c.fillStyle = '#F5BE37'; // YEL (fx.c's own BYPASS spark color)
         for (let i = 0; i < 6; i++) {
             const dk = Math.min(Math.max(k * 1.4 - i * 0.1, 0), 1);
             c.globalAlpha = dk;
@@ -246,24 +249,29 @@ function drawResultLabel(c: CanvasRenderingContext2D, cx: number, cy: number, tl
     };
     const label = labels[tl.scenario];
     if (!label) return;
-    c.font = 'bold 20px monospace';
-    c.fillStyle = tl.scenario === 1 ? '#e05252' : tl.scenario === 2 ? '#4a90d9' : tl.scenario === 3 ? '#d4b23a' : '#aaa';
+    c.font = "bold 20px ui-monospace, 'JetBrains Mono', 'Courier New', monospace";
+    // fx.c's own per-scenario burst colors: BLITZ=RED, BLOCK=CYAN, BYPASS=YEL, MIRROR_OFF=ORG,
+    // MIRROR_OPS=YEL, MIRROR_DEF=CYAN; everything else falls back to Dim Grey (C_DIM).
+    c.fillStyle = tl.scenario === 1 ? '#E15042' : tl.scenario === 2 ? '#82E1FF' : tl.scenario === 3 ? '#F5BE37'
+        : tl.scenario === 4 ? '#FF8C28' : tl.scenario === 5 ? '#F5BE37' : tl.scenario === 6 ? '#82E1FF' : '#82879B';
     c.textAlign = 'center';
     c.fillText(label, cx, cy - 60);
 }
 
 function drawStageLabels(c: CanvasRenderingContext2D, cx: number, cy: number, tl: FxTimeline, t: number, i: FxRoundInput) {
-    c.font = '14px monospace'; c.textAlign = 'center';
+    c.font = "14px ui-monospace, 'JetBrains Mono', 'Courier New', monospace"; c.textAlign = 'center';
     if (t >= tl.hull0 && t < tl.hull1 + 300) {
-        if (i.dmgYou > 0) popText(c, cx - SHIP_DX, cy + 40, `-${i.dmgYou}`, '#e05252', t - tl.hull0);
-        if (i.dmgOpp > 0) popText(c, cx + SHIP_DX, cy + 40, `-${i.dmgOpp}`, '#e05252', t - tl.hull0);
-        if (i.healYou > 0) popText(c, cx - SHIP_DX, cy + 40, `+${i.healYou}`, '#4ad97a', t - tl.hull0);
-        if (i.healOpp > 0) popText(c, cx + SHIP_DX, cy + 40, `+${i.healOpp}`, '#4ad97a', t - tl.hull0);
+        // RED (fx.c damage) / GRN (fx.c heal) -- apps/gui/fx.c's own C3 constants.
+        if (i.dmgYou > 0) popText(c, cx - SHIP_DX, cy + 40, `-${i.dmgYou}`, '#E15042', t - tl.hull0);
+        if (i.dmgOpp > 0) popText(c, cx + SHIP_DX, cy + 40, `-${i.dmgOpp}`, '#E15042', t - tl.hull0);
+        if (i.healYou > 0) popText(c, cx - SHIP_DX, cy + 40, `+${i.healYou}`, '#5AD782', t - tl.hull0);
+        if (i.healOpp > 0) popText(c, cx + SHIP_DX, cy + 40, `+${i.healOpp}`, '#5AD782', t - tl.hull0);
     }
     if (t >= tl.armor0 && t < tl.armor1 + 300) {
+        // SIL (fx.c's own "+D ARMOR" label color) for gains; GRY (dim/muted) for losses.
         const dYou = i.armorAfterYou - i.armorBeforeYou, dOpp = i.armorAfterOpp - i.armorBeforeOpp;
-        if (dYou !== 0) popText(c, cx - SHIP_DX, cy + 60, `${dYou > 0 ? '+' : ''}${dYou} ARMOR`, dYou > 0 ? '#c0c0c0' : '#7a9c4a', t - tl.armor0);
-        if (dOpp !== 0) popText(c, cx + SHIP_DX, cy + 60, `${dOpp > 0 ? '+' : ''}${dOpp} ARMOR`, dOpp > 0 ? '#c0c0c0' : '#7a9c4a', t - tl.armor0);
+        if (dYou !== 0) popText(c, cx - SHIP_DX, cy + 60, `${dYou > 0 ? '+' : ''}${dYou} ARMOR`, dYou > 0 ? '#BEC6D2' : '#6E7280', t - tl.armor0);
+        if (dOpp !== 0) popText(c, cx + SHIP_DX, cy + 60, `${dOpp > 0 ? '+' : ''}${dOpp} ARMOR`, dOpp > 0 ? '#BEC6D2' : '#6E7280', t - tl.armor0);
     }
 }
 
