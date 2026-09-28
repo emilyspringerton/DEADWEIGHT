@@ -4,6 +4,7 @@ build/
 *.jar
 local.properties
 dist/
+web-wasm/generated/
 *.o
 __pycache__/
 node_modules/

@@ -8,9 +8,16 @@ deploy from github for the wasm version set it up on kubernetes we have a kubern
 GCLOUD so the web server for the frontend for DEADSPACE needs to be our first kubernetes pod - git
 ops so it needs to be terraform or helm or whatever the fuck infrastructure as code (not for the
 cluster that exists for the deployments)". "DEADSPACE" is a slip for DEADWEIGHT — the whole
-surrounding session is about DEADWEIGHT's new WASM client (a real Emscripten build of the desktop
-SDL2 client, in progress in parallel to this doc, separate from the existing hand-written TS
-browser client already in `web/`).
+surrounding session is about DEADWEIGHT's new WASM client, in progress in parallel to this doc,
+separate from the existing hand-written TS browser client already in `web/`. **Correction, same
+session, right after this fork was launched**: the founder rejected the initial Emscripten-based
+approach ("do not use emscripten it doesnt work it needs to be native wasm like mixforge") —
+the real client is a native wasm32-unknown-unknown build (plain `clang -target wasm32-unknown-
+unknown -nostdlib` + `wasm-ld`, zero Emscripten SDK/JS runtime, mirroring `MIXFORGE/web/room.wasm`/
+`dsp.wasm`'s own pipeline). See `docs/NATIVE_WASM_CLIENT_NORTHSTAR.md` for that work. This doc's
+mentions of "the Emscripten build" below are now stale in that one respect; the deploy pipeline
+itself (CI → container → Kubernetes) is unaffected — it just needs to serve whatever static
+output directory the native build lands in (`web-wasm/generated/` today, HTML/JS host TBD).
 
 This was worked as a background fork alongside that parallel WASM-client-build work — this doc
 covers only the deploy pipeline (CI → container → Kubernetes), not the client itself.

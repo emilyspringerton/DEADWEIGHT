@@ -38,6 +38,13 @@ why, before any of it gets built.
   and `web/src/generated/FxRules.ts` (browser, called from `web/src/fx.ts`) — Windows renders with SDL2, the browser
   with Canvas2D/Web Audio, but both make the identical scenario/winner/critical/timeline decisions. See
   `web/README.md` and `docs/ANIMATION_AND_AUDIO.md` for honest status/limits.
+- **Native WASM client (new, in progress)**: `apps/wasm/` — real `wasm32-unknown-unknown` builds
+  via plain `clang -target wasm32-unknown-unknown -nostdlib` + `wasm-ld` (no Emscripten SDK, no
+  generated JS runtime — same backend `MIXFORGE/web/room.wasm`/`dsp.wasm` use one step later in
+  their own pipeline, since those compile from PARENA source and this compiles hand-written C
+  directly). **Founder-mandated approach**: an initial Emscripten-based attempt was rejected
+  ("do not use emscripten it doesnt work it needs to be native wasm like mixforge"). Build via
+  `scripts/build_wasm_native.sh`; see `docs/NATIVE_WASM_CLIENT_NORTHSTAR.md` for full status.
 - **IDUNA**: `game='deadweight'` scope, `DEADWEIGHT-BOTS`/`DEADWEIGHT-RL` M2M agents, guest accounts
   (`provider="guest"`), game-scoped checkpoint registry — multi-tenant by default. Art via NOCK, not PARENA FFI.
 - **Build**: `scripts/build.sh [--windows|--android|--all]`; CI in `.github/workflows/ci.yml`, auto minor-version

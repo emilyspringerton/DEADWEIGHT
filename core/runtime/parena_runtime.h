@@ -1704,7 +1704,7 @@ static inline int tls_close_impl(int handle) {
  * shows as "(terminal not spawned...)", not a silent lie or a crash)
  * rather than breaking the whole cross-platform editor build over one
  * genuinely POSIX-only backend. */
-#ifndef _WIN32
+#if !defined(_WIN32) && !defined(__EMSCRIPTEN__)
 
 /* ---- stdlib/pty.prn real host glue (2026-08-26) ------------------------
  * The concrete "PARENA eats PITVIPER" dogfooding step NORTHSTAR.md's own
@@ -1838,14 +1838,22 @@ static inline int pty_close_impl(int fd) {
     return close(fd) == 0 ? 0 : -1;
 }
 
-#else /* _WIN32 -- real Windows ConPTY backend genuinely not written
-       * yet (see this block's own opening comment above). These
-       * stubs exist purely so a cross-platform target that includes
-       * pty.prn compiles and links on Windows; every real caller goes
-       * through pty-open first (stdlib/pty.prn), which turns this -1
-       * into a real Err(SpawnFailed) the editor's own terminal-toggle
-       * feature already handles and reports honestly -- these never
-       * silently claim success. */
+#else /* _WIN32 or __EMSCRIPTEN__ -- real Windows ConPTY backend genuinely
+       * not written yet (see this block's own opening comment above), and
+       * a browser/WASM sandbox has no process/pty model at all (no fork,
+       * no forkpty, ever -- not a "not written yet" gap like Windows',
+       * a real platform ceiling). Found live (2026-09-28) trying to
+       * Emscripten-compile DEADWEIGHT's desktop client: this vendored
+       * runtime copy's own `#ifndef _WIN32` split predates any
+       * non-POSIX-non-Windows target existing in this monorepo, so
+       * Emscripten fell into the POSIX branch and failed on undeclared
+       * `forkpty`. Same fix shape as the Windows half: stub cleanly so a
+       * cross-platform target that includes pty.prn compiles and links
+       * under Emscripten too; every real caller goes through pty-open
+       * first (stdlib/pty.prn), which turns this -1 into a real
+       * Err(SpawnFailed) the editor's own terminal-toggle feature already
+       * handles and reports honestly -- these never silently claim
+       * success. */
 static inline int pty_open_impl(const char *shell, int cols, int rows) {
     (void)shell; (void)cols; (void)rows;
     return -1;
@@ -1879,7 +1887,7 @@ static inline int pty_close_impl(int fd) {
     (void)fd;
     return -1;
 }
-#endif /* _WIN32 -- end of pty.prn real host glue / Windows stub */
+#endif /* _WIN32 or __EMSCRIPTEN__ -- end of pty.prn real host glue / stub */
 
 /* ---- stdlib/hw/serial.prn real host glue (2026-09-09) ------------------
  * Real answer to `docs/UART_SERIAL_NORTHSTAR.md` (kanban cards HW-001/
