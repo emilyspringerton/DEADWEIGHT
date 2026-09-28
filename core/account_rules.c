@@ -31,6 +31,8 @@ char * concat(char *, char *, Arena *);
 Vec split(char *, char *, Arena *);
 int max_display_name_len();
 int is_control_byte(int);
+int min_password_len();
+int is_valid_password_length(int);
 int is_valid_display_name(char *);
 
 static inline int *int_box(Arena *dest, int v) {
@@ -174,6 +176,14 @@ int max_display_name_len(void) {
 
 int is_control_byte(int b __attribute__((unused))) {
     return ((b < 32) || (b == 127));
+}
+
+int min_password_len(void) {
+    return 8;
+}
+
+int is_valid_password_length(int len __attribute__((unused))) {
+    return (len >= min_password_len());
 }
 
 int is_valid_display_name(char * s __attribute__((unused))) {

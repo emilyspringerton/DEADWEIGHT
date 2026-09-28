@@ -167,3 +167,59 @@ Full parity (all four phases) is not landing in one commit — matches this repo
 half-finished implementations" and "spec before implementation" conventions. Phase 1 is the
 critical path everything else depends on (there is no Android screen to unlock or paste into
 yet). See `EMILY/BACKLOG.md` for the tracked, sequenced items.
+
+## "Eat more with PARENA" audit (2026-09-28, founder real-time)
+
+Founder real-time, continuing the same platform-parity thread: "the android app eat more with
+parena." Real audit of `android/src/main/java/industrial/einhorn/deadweight/` against what's
+already PARENA-sourced (`card_rules.prn` → `generated/CardRules.java`, `fx_rules.prn` →
+`generated/FxRules.java`) vs. hand-written, before doing anything:
+
+- **Checked `PARENA/src/emit_java.c` directly rather than trusting the old capability note**: 399
+  lines (was 391), still v0/scalar-defn-only ("emit_java: unsupported top-level form (v0 only
+  understands defn, module, export, import)") — the NORTHSTAR.md capability ceiling from S511 is
+  still accurate, no new structs/loops-as-top-level/collections/FFI capability has landed.
+- **Real, found-live gap**: `PARENA/stdlib/deadweight/account_rules.prn` (added 2026-09-25 for the
+  web client's Create Account page) was never tried against the Java emitter at all — its own
+  header comment said "no Java target -- DEADWEIGHT's Android client is shelved," a stale note
+  from the S513 platform correction that S555 (this doc) already reversed. Tried it directly:
+  fails with "emit_java: defn: unsupported parameter shape (v0 only understands plain (name :
+  I32|F64|Bool|String) params -- no Arena/region annotations)" on `is-valid-display-name`'s own
+  `s : String @ Region` parameter — the same real compiler gap `web/src/account.ts`'s own
+  `isValidDisplayName` doc comment already named for the TS emitter, now confirmed to hit Java
+  identically. A real PARENA compiler limitation, not fixed here (out of scope for this repo).
+- **Real, found-live duplication, fixed**: the sub-rule "password needs 8+ characters" was
+  hand-copied, identically, into THREE places with zero shared source: `apps/gui/main.c`
+  (`strlen(A.link_pass) < 8`), `MainActivity.java` (`pass.length() < 8`), and `web/src/account.ts`'s
+  own claim-flow check. This IS a clean, real, zero-region scalar rule (`I32 -> Bool`, no
+  string/@Region dependency at all) — split `max-display-name-len`/`is-control-byte` (which also
+  never needed the region annotation) plus a new `min-password-len`/`is-valid-password-length`
+  pair into a new sibling module, `PARENA/stdlib/deadweight/account_rules_scalar.prn`, verified
+  compiling clean to C, Java, AND TypeScript. Wired into `apps/gui/main.c` (now calls
+  `is_valid_password_length()`/`min_password_len()` instead of the hardcoded literal — the error
+  message itself now derives from the same source of truth) and `MainActivity.java`'s `doClaim()`
+  (same swap). `core/account_rules.c` — generated back on 2026-09-25 but never actually linked
+  into `dw_gui`'s build until now — is added to `GUI_SRC` in `scripts/build.sh` for the first real
+  time. **Not touched this pass** (a concurrent, separate workstream owned `web/` at the time):
+  `web/src/account.ts`'s own hand-rolled check — the generated `web/src/generated/
+  AccountRulesScalar.ts` now exists and compiles clean, ready for whoever next touches
+  `account.ts` to make the same swap.
+- **Checked `PixelFont.java`/`Theme.java`/`BrutButton.java`/`PixelLabel.java`**: these are raw
+  pixel/color lookup TABLES (glyph bitmaps, hex palette constants), not decision logic — PARENA's
+  real value-add is decisions, not data tables (the same distinction `apps/gui/main.c`'s own `Col`/
+  `FONT` arrays and `fx.c`'s `C3` palette draw, and neither of those is PARENA-sourced either).
+  Correctly left as hand-written data, not forced through PARENA for its own sake.
+- **Checked `DraftModel.java`/`MatchModel.java`/`GuestAuth.java`/`Session.java`**: no further
+  hand-duplicated scalar decision logic found that has a clean, real PARENA-Java fit right now —
+  `DraftModel.canPick()` is a simple bounds check over client-only UI state (which bucket has
+  room), not a rule PARENA needs to own; the rest is I/O orchestration (HTTP calls, socket
+  transport, list mutation), not decision logic at all.
+
+Verified: `javac --release 8` against the real `com.google.android:android:4.1.1.4` stub jar,
+clean, every `src/main` file. Full plain-JVM suite re-run on a real JDK
+(`EINHORN_SURVIVAL/jdk25`, Phase 1C's own found-working toolchain): `ParityTest` 24,097/0,
+`FxParityTest` 9,941 vectors / 9,968 checks / 0, `CoreTest` 228/0, plus a new
+`AccountRulesScalarTest` (254 checks, brute-force over the real input range, 0 failures) added to
+`BUILD.bazel` as `//android:account_scalar_test`. Bazel itself confirmed still unavailable in this
+sandbox (same finding as every prior phase). `scripts/build.sh --gui`'s full suite (24k+9.9k+806k+
+checks, e2e, GUI selftest) stays green with `core/account_rules.c` now actually linked in.

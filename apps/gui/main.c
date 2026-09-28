@@ -8,6 +8,7 @@
  * remote host (known limitation, VS0.5). */
 #include "client.h"          /* pulls net.h first (must precede other system headers) */
 #include "card_rules.h"
+#include "account_rules.h"
 #include "card_text.h"
 #include "draft.h"
 #include "iduna.h"
@@ -351,7 +352,7 @@ static void do_resume_uplink(void) {
 static void do_link_email(void) {
     if (!A.link_email[0] || !A.link_pass[0]) return;
     if (!A.auth_ready) { snprintf(A.link_msg, sizeof A.link_msg, "No account (IDUNA offline)"); return; }
-    if (strlen(A.link_pass) < 8) { snprintf(A.link_msg, sizeof A.link_msg, "Password needs 8+ characters"); return; }
+    if (!is_valid_password_length((int)strlen(A.link_pass))) { snprintf(A.link_msg, sizeof A.link_msg, "Password needs %d+ characters", min_password_len()); return; }
     char tok[DW_MAX_AUTH_TOKEN + 1];
     int status = 0;
     int rc = dwi_guest_upgrade(&A.idu, A.token, A.link_email, A.link_pass, tok, sizeof tok, &status);

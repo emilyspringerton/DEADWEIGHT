@@ -8,6 +8,7 @@ java_library(
     srcs = glob(["src/main/java/industrial/einhorn/deadweight/core/**/*.java"]) + [
         "src/main/java/industrial/einhorn/deadweight/generated/CardRules.java",
         "src/main/java/industrial/einhorn/deadweight/generated/FxRules.java",
+        "src/main/java/industrial/einhorn/deadweight/generated/AccountRulesScalar.java",
     ],
     visibility = ["//visibility:public"],
 )
@@ -26,6 +27,16 @@ java_binary(
     name = "fx_parity_test",
     srcs = ["src/test/java/industrial/einhorn/deadweight/core/FxParityTest.java"],
     main_class = "industrial.einhorn.deadweight.core.FxParityTest",
+    deps = [":core_lib"],
+)
+
+# account_scalar_test: brute-force cross-target check for AccountRulesScalar.java (the pure-scalar
+# half of account_rules.prn/account_rules_scalar.prn, split out 2026-09-28 so it can target Java
+# too). Run: bazel run //android:account_scalar_test
+java_binary(
+    name = "account_scalar_test",
+    srcs = ["src/test/java/industrial/einhorn/deadweight/generated/AccountRulesScalarTest.java"],
+    main_class = "industrial.einhorn.deadweight.generated.AccountRulesScalarTest",
     deps = [":core_lib"],
 )
 

@@ -58,14 +58,33 @@ BRAIN_PRN="${PARENA_BRAIN_PRN:-/home/fatbaby/PARENA/stdlib/deadweight/bot_brain.
 if [ -f "$BRAIN_PRN" ]; then "$PARENA_BIN" build "$BRAIN_PRN" -o core/bot_brain.c; fi
 # Display-name validation (2026-09-25, founder real-time: "have a new page for [creating a
 # deadweight account]... port it right into TS with PARENA (abstract into parena if not
-# already)"). C target only for now -- string.prn's own length/char-at are declared with @
-# Region (needed for the C target's real region-safety verification), which PARENA's TS emitter
-# v0 hard-rejects on ANY function that transitively depends on them (confirmed: even string.prn
-# alone fails `parena build ... -o *.ts`), a real, previously-undiscovered compiler gap named in
-# EMILY/BACKLOG.md, not routed around here. Combined with string.prn (not card_rules.prn's own
-# scalar-only file) since it needs string/length + string/char-at -- these are real runtime deps,
-# not something account_rules.prn redeclares itself.
+# already)"). is-valid-display-name itself needs `String @ Region` (needed for the C target's
+# real region-safety verification), which PARENA's TS AND Java emitters both hard-reject on any
+# region-annotated parameter shape (confirmed directly against both, 2026-09-28) -- a real,
+# previously-undiscovered compiler gap named in EMILY/BACKLOG.md, not routed around here. C target
+# combines string.prn + the scalar module + account_rules.prn itself (three files, not two --
+# account_rules.prn's own `(import deadweight/account-rules-scalar)` declares the dependency,
+# this command line is what actually makes it resolvable in one compilation unit, same
+# in-file-import-plus-command-line-file-list belt-and-suspenders account_rules.prn already used
+# for `(import string)`).
 ACCOUNT_PRN="${PARENA_ACCOUNT_PRN:-/home/fatbaby/PARENA/stdlib/deadweight/account_rules.prn}"
 STRING_PRN="${PARENA_STRING_PRN:-/home/fatbaby/PARENA/stdlib/string.prn}"
-if [ -f "$ACCOUNT_PRN" ]; then "$PARENA_BIN" build "$STRING_PRN" "$ACCOUNT_PRN" -o core/account_rules.c; fi
-echo "regenerated core/card_rules.c, core/fx_rules.c, core/account_rules.c, $JAVA_OUT, $FX_JAVA_OUT, $TS_OUT, $FX_TS_OUT, tests/parity_vectors.txt, tests/fx_parity_vectors.txt"
+ACCOUNT_SCALAR_PRN="${PARENA_ACCOUNT_SCALAR_PRN:-/home/fatbaby/PARENA/stdlib/deadweight/account_rules_scalar.prn}"
+ACCOUNT_SCALAR_JAVA_OUT=android/src/main/java/industrial/einhorn/deadweight/generated/AccountRulesScalar.java
+if [ -f "$ACCOUNT_PRN" ]; then "$PARENA_BIN" build "$STRING_PRN" "$ACCOUNT_SCALAR_PRN" "$ACCOUNT_PRN" -o core/account_rules.c; fi
+# Java + TS targets for the pure-scalar half only (real, live-found duplication this session:
+# "password needs 8+ characters" was hand-copied, identically, into apps/gui/main.c,
+# MainActivity.java, and web/src/account.ts, zero shared source -- see account_rules_scalar.prn's
+# own header comment). Java wired into MainActivity.java's doClaim() this pass; the TS target is
+# generated here too (same zero-region-dependency scalar module, verified compiling clean to TS
+# the same way) but NOT wired into web/src/account.ts in this pass -- that file is owned by a
+# concurrent, separate pixel-parity workstream this same session; left for whoever next touches
+# web/ to swap account.ts's own hand-rolled 8-character check for a real
+# `import { isValidPasswordLength } from './generated/AccountRulesScalar.js'` call.
+if [ -f "$ACCOUNT_SCALAR_PRN" ]; then
+  "$PARENA_BIN" build "$ACCOUNT_SCALAR_PRN" -o "$ACCOUNT_SCALAR_JAVA_OUT"
+  "$PARENA_BIN" build "$ACCOUNT_SCALAR_PRN" -o web/src/generated/AccountRulesScalar.ts
+  grep -q '^package industrial.einhorn.deadweight.generated;' "$ACCOUNT_SCALAR_JAVA_OUT" || {
+    sed -i '1a\\npackage industrial.einhorn.deadweight.generated;' "$ACCOUNT_SCALAR_JAVA_OUT"; }
+fi
+echo "regenerated core/card_rules.c, core/fx_rules.c, core/account_rules.c, $JAVA_OUT, $FX_JAVA_OUT, $ACCOUNT_SCALAR_JAVA_OUT, $TS_OUT, $FX_TS_OUT, tests/parity_vectors.txt, tests/fx_parity_vectors.txt"

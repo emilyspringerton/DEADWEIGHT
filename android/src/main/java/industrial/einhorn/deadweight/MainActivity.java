@@ -19,6 +19,7 @@ import android.widget.TextView;
 import industrial.einhorn.deadweight.core.DraftModel;
 import industrial.einhorn.deadweight.core.FxTimeline;
 import industrial.einhorn.deadweight.core.GuestAuth;
+import industrial.einhorn.deadweight.generated.AccountRulesScalar;
 import industrial.einhorn.deadweight.generated.CardRules;
 import industrial.einhorn.deadweight.core.MatchModel;
 import industrial.einhorn.deadweight.core.Protocol;
@@ -276,7 +277,9 @@ public final class MainActivity extends Activity implements Session.Listener {
     private void doClaim(String email, String pass) {
         if (email.isEmpty() || pass.isEmpty()) return;
         if (!authReady) { redeemMsg = "No account (IDUNA offline)"; render(); return; }
-        if (pass.length() < 8) { redeemMsg = "Password needs 8+ characters"; render(); return; }
+        if (!AccountRulesScalar.isValidPasswordLength(pass.length())) {
+            redeemMsg = "Password needs " + AccountRulesScalar.minPasswordLen() + "+ characters"; render(); return;
+        }
         new Thread(() -> {
             String newTok = null, err = null; boolean loggedInInstead = false;
             try { newTok = iduna.upgrade(authToken, email, pass); }
