@@ -1,5 +1,10 @@
 # CHANGELOG
 
+## 2026-09-28
+
+- deploy: GitOps pipeline scoped for the web client -- GitHub Actions + Terraform + Dockerfile targeting the existing prrject-fatbaby GKE cluster (data-source only, never creates the cluster); see docs/WASM_DEPLOY_NORTHSTAR.md for real status/blockers (cluster node health unverified, no live gcloud creds this pass) (sess-20260923-1030-4a526255)
+
+
 ## 2026-09-27
 - Android (S555 phase 1B): brutalist menu/title-screen parity with the Windows client + zero-friction IDUNA auth (fixed Config.DEFAULT_IDUNA_URL, was empty -- Android had no account/tickets by default). New PixelLabel.java/BrutButton.java; GuestAuth gained tickets/isGuest/redeem()/upgrade()/emailLogin(). Compile-checked against real android.* stubs, CoreTest's live guestAuth() test (228 checks) passes. (sess-20260923-1030-4a526255)
 - Android (S555 phase 2): PARENA-driven round-reveal parity. `scripts/gen_rules.sh` now emits
