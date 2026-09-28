@@ -16,16 +16,26 @@ compiled. Founder real-time (2026-09-21): "build out DEADWEIGHT in the browser, 
 - `src/generated/cards.json` — the full 105-card catalog (name/kind/keyword/cost/power/text),
   from the existing `scripts/export_cards.sh` generator (the same one the WOTAN deck browser
   already reads).
-- `src/proto.ts` — a hand-written TypeScript port of `docs/WIRE_PROTOCOL.md`'s byte layout (that
-  doc is the source of truth; this is not generated).
-- `src/client.ts` — the game state machine (WebSocket → decoded frames → typed events).
+- `src/proto.ts` — the original hand-written TypeScript port of `docs/WIRE_PROTOCOL.md`'s byte
+  layout. **No longer the live codec** (see `src/wasmProto.ts` below) — kept as-is for reference
+  and as the independent oracle `test_wasm_proto_parity.mjs` checks the wasm codec against.
+- **`src/wasmProto.ts` (2026-09-28) — the real, live wire codec, now wired into `client.ts`.** A
+  drop-in replacement for `proto.ts` (identical exported functions/types) backed by a real,
+  native (non-Emscripten) `wasm32-unknown-unknown` build of DEADWEIGHT's actual `core/protocol.c`
+  (`apps/wasm/`, `scripts/build_wasm_native.sh`) — plain `clang -target wasm32-unknown-unknown
+  -nostdlib` + `wasm-ld`, the same backend `MIXFORGE/web/room.wasm`/`dsp.wasm` use one step later
+  in their own pipeline. This replaced an initial Emscripten-based attempt the founder rejected
+  ("do not use emscripten it doesnt work it needs to be native wasm like mixforge"). See
+  `docs/NATIVE_WASM_CLIENT_NORTHSTAR.md` for the full account.
+- `src/client.ts` — the game state machine (WebSocket → decoded frames → typed events), now
+  importing `wasmProto.ts` instead of `proto.ts`.
 - `src/main.ts` + `index.html` — the UI: connect, queue (random mode only), see your hand rendered
-  from the real card data, lock in a play or pass, watch round results.
+  from the real card data, lock in a play or pass, watch round results. `start()` now awaits
+  `wasmProto.initWasmProto()` (fetches + instantiates `dist/generated/dw_protocol.wasm`) before
+  ever calling `client.connect()`.
 - `bridge/ws-tcp-bridge.js` — a **dumb, protocol-agnostic** WebSocket↔TCP relay. Browsers can't
   open raw TCP sockets; `dw_server` only speaks raw TCP (and stays that way — this bridge doesn't
-  know or care about the wire protocol, it just copies bytes). The real protocol is implemented
-  exactly twice in this whole system: once in `core/` (C, authoritative) and once in `src/proto.ts`
-  (browser) — the bridge is not a third copy.
+  know or care about the wire protocol, it just copies bytes).
 - `src/generated/FxRules.ts` + `src/fx.ts` — round-resolution animation/audio. `FxRules.ts` is
   `PARENA/stdlib/deadweight/fx_rules.prn` compiled to TypeScript — the exact same scenario/winner/
   critical/timeline/audio-cue decision logic `apps/gui/fx.c` (Windows, canonical) now calls too,
@@ -40,21 +50,39 @@ compiled. Founder real-time (2026-09-21): "build out DEADWEIGHT in the browser, 
 # 1. rules + catalog (only needed after a card_rules.prn or card table change)
 cd /home/fatbaby/DEADWEIGHT && scripts/gen_rules.sh && scripts/export_cards.sh web/src/generated/cards.json
 
-# 2. compile TypeScript
+# 2. the native wasm wire codec (only needed after a core/protocol.c or apps/wasm/ change)
+scripts/build_wasm_native.sh   # -> web/dist/generated/dw_protocol.wasm
+
+# 3. compile TypeScript
 cd web && npm install --save-dev typescript && ./node_modules/.bin/tsc -p tsconfig.json
 cp src/generated/cards.json dist/generated/cards.json   # tsc doesn't copy non-.ts assets
 
-# 3. a no-auth dw_server to play against (use a DIFFERENT port from any already-running instance)
+# 4. a no-auth dw_server to play against (use a DIFFERENT port from any already-running instance)
 cd .. && ./build/dw_server --port 7900 --no-auth --fast-forward &
 ./build/dw_bot --archetype wall --host 127.0.0.1 --port 7900 --name bot-test --matches 5 &
 
-# 4. the WS<->TCP bridge
+# 5. the WS<->TCP bridge
 cd web/bridge && npm install && node ws-tcp-bridge.js --ws-port 8765 --tcp-port 7900 &
 
-# 5. serve the static page and open it
+# 6. serve the static page and open it
 cd .. && python3 -m http.server 8080
 # open http://localhost:8080/ , bridge URL defaults to ws://localhost:8765
 ```
+
+## Verified (2026-09-28) — native wasm wire codec swap
+
+`client.ts` now imports `wasmProto.ts` (the real, native wasm32 codec) instead of `proto.ts` (the
+original hand-written TypeScript port, kept only as a reference oracle). Two real checks, not just
+"it compiles":
+- `bridge/test_wasm_proto_parity.mjs` — `wasmProto.ts` produces byte-identical wire output to
+  `proto.ts` for every client→server message type, and decodes the same bytes back to identical
+  objects for a representative set of server→client types (14 checks, 0 failures).
+- `bridge/e2e_test.mjs` (the same real end-to-end harness described below, now exercising the
+  wasm codec instead of the old TS one) — a complete, real match against a live `dw_bot` over a
+  live `dw_server` and the real WS↔TCP bridge, 7 rounds played, 7 fx timelines computed, 0
+  failures, using the exact compiled `dist/client.js`/`dist/wasmProto.js` the browser would load.
+
+See `docs/NATIVE_WASM_CLIENT_NORTHSTAR.md` for the full account.
 
 ## Verified (2026-09-21)
 

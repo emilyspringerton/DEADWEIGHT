@@ -29,7 +29,7 @@ if [ -z "$CLANG" ] || [ -z "$WASM_LD" ]; then
   exit 1
 fi
 
-OUT_DIR="web-wasm/generated"
+OUT_DIR="web/dist/generated"
 mkdir -p "$OUT_DIR"
 tmp="$(mktemp -d)"
 trap 'rm -rf "$tmp"' EXIT

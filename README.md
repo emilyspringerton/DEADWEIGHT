@@ -261,18 +261,23 @@ locally. Several real, load-bearing bugs in PARENA's TypeScript emitter were fou
 division truncation, a 511-character buffer overflow, a missing `(not x)`, unrecognized `true`/`false` literals) —
 see `PARENA/STDLIB.md`'s own TypeScript emitter section.
 
-## Native WASM client (new, in progress, 2026-09-28)
+## Native WASM client (2026-09-28)
 
 `apps/wasm/` is a real, native `wasm32-unknown-unknown` build of DEADWEIGHT's actual wire-protocol
 codec (`core/protocol.c`, compiled in unmodified) — no Emscripten SDK, no generated JS runtime, no
 libc emulation, following the exact same `clang`/`wasm-ld` backend `MIXFORGE/web/room.wasm`/
 `dsp.wasm` already use, one step earlier in the pipeline since this source is hand-written C, not
 PARENA. `scripts/build_wasm_native.sh` builds and verifies it (`tests/test_wasm_protocol.mjs`, 9
-checks); output is `web-wasm/generated/dw_protocol.wasm` (15.9KB — the whole point of "native").
-Real, honest status: only the wire codec is wasm-ified so far; rendering, WebSocket networking,
-and IDUNA SSO are real, scoped, not-yet-built next steps. See
-`docs/NATIVE_WASM_CLIENT_NORTHSTAR.md` for the full account, including an earlier Emscripten
-attempt that worked technically but was rejected by the founder in favor of this approach.
+checks); output is `web/dist/generated/dw_protocol.wasm` (15.9KB — the whole point of "native").
+**Wired in and live-verified**: the browser client (`web/`) now runs on this codec for real —
+`web/src/client.ts` imports `web/src/wasmProto.ts` (a drop-in replacement for the original
+hand-written `proto.ts`) instead of the old TS port. A real end-to-end match (7 rounds, against a
+live `dw_bot`/`dw_server` over the real WS↔TCP bridge) was played through the exact compiled
+browser code with 0 failures — see `web/README.md`'s "Verified (2026-09-28)" section. Real, honest
+status: IDUNA SSO and public hosting (`wotan.okemily.com/DEADWEIGHT`) are real, scoped, not-yet-
+built next steps. See `docs/NATIVE_WASM_CLIENT_NORTHSTAR.md` for the full account, including an
+earlier Emscripten attempt that worked technically but was rejected by the founder in favor of
+this approach.
 
 ## CI / releases
 

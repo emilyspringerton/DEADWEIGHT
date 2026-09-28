@@ -17,7 +17,8 @@ unknown -nostdlib` + `wasm-ld`, zero Emscripten SDK/JS runtime, mirroring `MIXFO
 `dsp.wasm`'s own pipeline). See `docs/NATIVE_WASM_CLIENT_NORTHSTAR.md` for that work. This doc's
 mentions of "the Emscripten build" below are now stale in that one respect; the deploy pipeline
 itself (CI → container → Kubernetes) is unaffected — it just needs to serve whatever static
-output directory the native build lands in (`web-wasm/generated/` today, HTML/JS host TBD).
+output directory the native build lands in (`web/dist/generated/` today — a build output,
+gitignored, part of the existing `web/` static site — not a standalone HTML/JS host).
 
 This was worked as a background fork alongside that parallel WASM-client-build work — this doc
 covers only the deploy pipeline (CI → container → Kubernetes), not the client itself.

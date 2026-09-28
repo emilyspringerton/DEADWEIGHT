@@ -4,6 +4,7 @@
 // every other DEADWEIGHT client already follows (Android Java shell, Windows SDL2 GUI).
 
 import { DeadweightClient } from './client.js';
+import { initWasmProto } from './wasmProto.js';
 import * as rules from './generated/CardRules.js';
 import * as fx from './fx.js';
 import * as account from './account.js';
@@ -202,6 +203,7 @@ async function enterGame(idunaUrl: string, bridgeUrl: string, fallbackName: stri
 }
 
 async function start() {
+    await initWasmProto(); // must resolve before client.connect() ever calls into the wasm codec
     const name = ($('name') as HTMLInputElement).value.trim() || 'BrowserPlayer';
     const idunaUrl = ($('iduna-url') as HTMLInputElement).value.trim();
     const bridgeUrl = ($('bridge-url') as HTMLInputElement).value.trim();

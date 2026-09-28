@@ -4,8 +4,12 @@
 // own header comment). Card rules/catalog come from generated/CardRules.ts + generated/cards.json
 // (both PARENA-compiled or PARENA-table-derived, never hand-duplicated here).
 
-import * as proto from './proto.js';
-import type { ServerFrame } from './proto.js';
+// Real, native (non-Emscripten) wasm32 wire codec (docs/NATIVE_WASM_CLIENT_NORTHSTAR.md) --
+// a drop-in for ./proto.js (identical exports/types), calling into apps/wasm/protocol_wasm.c +
+// core/protocol.c instead of this file's own former hand-written TS port. main.ts must await
+// wasmProto.initWasmProto() before this class's connect() is ever called.
+import * as proto from './wasmProto.js';
+import type { ServerFrame } from './wasmProto.js';
 
 export type ClientState = 'connecting' | 'ready' | 'queued' | 'in_match' | 'error' | 'closed';
 

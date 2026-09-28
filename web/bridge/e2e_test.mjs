@@ -1,15 +1,34 @@
 // Headless end-to-end smoke test: drives the REAL compiled browser client (dist/client.js,
-// dist/proto.js -- the exact same code the browser loads) through a full match against a live
-// dw_bot, over the real ws-tcp-bridge, against a real dw_server. Not a mock of anything.
+// dist/wasmProto.js -- the exact same code the browser loads) through a full match against a
+// live dw_bot, over the real ws-tcp-bridge, against a real dw_server. Not a mock of anything.
+//
+// dist/client.js now runs on the native (non-Emscripten) wasm32 wire codec (wasmProto.js) instead
+// of the old hand-written proto.js -- see docs/NATIVE_WASM_CLIENT_NORTHSTAR.md. This test proves
+// that swap didn't regress the one thing that actually matters: a complete, real match, start to
+// finish, over the real wire, against a real server.
 import { DeadweightClient } from '../dist/client.js';
+import { initWasmProto } from '../dist/wasmProto.js';
 import * as rules from '../dist/generated/CardRules.js';
 import * as fx from '../dist/fx.js';
 import { WebSocket } from 'ws';
+import { readFile } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+import path from 'node:path';
 
 // Node has no global WebSocket in this version; supply the 'ws' package's implementation,
 // matching the browser's own global exactly enough for client.ts's usage (readyState/OPEN/send/
 // onopen/onmessage/onclose/onerror, binaryType).
 globalThis.WebSocket = WebSocket;
+
+// wasmProto.js calls the browser's global fetch() to load dw_protocol.wasm by a relative URL
+// (resolved against the page's own location in a real browser); Node's fetch has no page to
+// resolve a bare relative path against, so shim it to read the same file straight off disk --
+// same spirit as the WebSocket shim above, not a change to the module under test.
+const wasmPath = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'dist', 'generated', 'dw_protocol.wasm');
+globalThis.fetch = async () => ({
+    arrayBuffer: () => new Promise((resolve, reject) => readFile(wasmPath, (err, data) => err ? reject(err) : resolve(data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength)))),
+});
+await initWasmProto();
 
 let matchEnded = false;
 let roundsPlayed = 0;

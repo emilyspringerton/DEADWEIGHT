@@ -101,7 +101,7 @@ class structurally impossible from the JS side.
 
 **`scripts/build_wasm_native.sh`** — mirrors `MIXFORGE/scripts/build_dsp_wasm.sh`'s own shape
 (finds `clang`/`wasm-ld` under `LLVM_TOOLCHAIN_ROOT` or PATH, builds, runs a real test, fails
-loudly if either binary or the build itself is missing). Output: `web-wasm/generated/dw_protocol.wasm`
+loudly if either binary or the build itself is missing). Output: `web/dist/generated/dw_protocol.wasm`
 (**15.9KB** — compare to the abandoned Emscripten attempt's 774KB `.wasm` + 193KB `.js`; this is
 what "native" actually buys, not just an ideological preference).
 
@@ -123,21 +123,32 @@ all passing —
 Run: `scripts/build_wasm_native.sh` (needs `node` on PATH and the LLVM-18 toolchain — see script
 header for exact requirements).
 
+## Update (2026-09-28, same session): rendering + networking now wired in and live-verified
+
+The "extend the existing renderer" plan below was carried out, not just proposed: `web/src/
+client.ts` now imports `web/src/wasmProto.ts` (a real, drop-in, wasm-backed replacement for
+`proto.ts` — identical exported functions/types, so this was a two-line import swap plus one
+`await initWasmProto()` call in `main.ts`'s `start()`) instead of the old hand-written TS codec.
+`proto.ts` itself is kept as-is, now serving only as the independent oracle
+`web/bridge/test_wasm_proto_parity.mjs` checks the wasm codec's output against (14 checks, byte-
+and object-identical for every case checked). The existing real end-to-end harness
+(`web/bridge/e2e_test.mjs`, already proven against the old codec on 2026-09-21) was re-run against
+the new one, unmodified except for the wasm-fetch/WebSocket environment shims a Node harness
+needs: a complete, real match against a live `dw_bot` over a live `dw_server` and the real WS↔TCP
+bridge, 7 rounds played, 7 fx timelines computed, 0 failures — using the exact compiled
+`dist/client.js`/`dist/wasmProto.js` a real browser would load. See `web/README.md`'s own
+"Verified (2026-09-28)" section for the full account. Rendering and networking (items 1-2 below)
+are therefore done; IDUNA SSO and hosting (items 3-4) are not.
+
 ## What's NOT built yet — real, phased, not glossed over
 
-1. **Rendering.** No wasm module in this plan ever draws pixels — matching MIXFORGE's own real
-   split (its wasm is pure compute/DSP; Canvas2D/Web Audio rendering is hand-written JS in
-   `engine.mjs`/`multiplayer.html`). The natural next step is extending the *existing*
-   `web/src/fx.ts`/`main.ts` brutalist Canvas2D renderer (already built, already styled, per
-   `docs/ANIMATION_AND_AUDIO.md`) to call this wasm module's protocol codec instead of
-   `web/src/proto.ts`'s hand-port — replacing one specific duplicated layer, not rewriting the
-   whole browser client. `card_rules.prn`/`fx_rules.prn` already reach the browser via PARENA's
-   own TypeScript emitter (`web/src/generated/CardRules.ts`/`FxRules.ts`) — that path is untouched
-   and already real; native wasm is additive for the parts that had no shared-logic story at all
-   (the protocol codec, and potentially `core/draft.c`/`core/policy.c` next).
-2. **Networking.** `web/bridge/ws-tcp-bridge.js` (real, live, already used by the existing TS
-   client) is the reusable relay for wasm too — the wasm module never touches sockets itself, it
-   only encodes/decodes bytes that JS sends/receives over a plain `WebSocket`. Not wired yet.
+1. ~~**Rendering.**~~ Done above — `web/src/fx.ts`/`main.ts`'s existing brutalist Canvas2D
+   renderer now runs on the wasm-backed codec via `client.ts`'s import swap; no renderer code
+   itself needed to change, since `wasmProto.ts` exports the identical `ServerFrame` shapes
+   `fx.ts`/`main.ts` already consumed. `card_rules.prn`/`fx_rules.prn` still reach the browser via
+   PARENA's own TypeScript emitter (`web/src/generated/CardRules.ts`/`FxRules.ts`), untouched.
+2. ~~**Networking.**~~ Done above — `web/bridge/ws-tcp-bridge.js` (unmodified) relays the wasm
+   module's encoded bytes exactly as it always relayed `proto.ts`'s.
 3. **IDUNA SSO.** WOTAN already has a real, live, end-to-end-verified pattern for exactly this
    (`WOTAN/friends.html`/`store.html`): redirect to `https://iam.okemily.com/?redirect_uri=<page>`,
    receive a token via URL fragment, then `POST /api/v1/games/deadweight/sso-exchange` (real,
