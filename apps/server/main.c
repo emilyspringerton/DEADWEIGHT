@@ -581,7 +581,14 @@ static void accept_conns(dw_sock ls) {
 static void expire_timers(void) {
     uint64_t now = dw_now_ms();
     for (int i = 0; i < MAX_CONNS; i++)
-        if ((conns[i].state == S_CONNECTED || conns[i].state == S_NEEDAUTH || conns[i].state == S_VERIFYING) && now - conns[i].connect_ms > HELLO_TIMEOUT_MS) conn_close(i);
+        /* Real bug, found live (2026-09-28, founder repro: queue-btn correctly stays greyed out,
+         * then "connection closed" ~10s later with no ERROR line at all): this used to call
+         * conn_close(i) directly -- a silent close with zero signal to ANY client (web/GUI/
+         * Android) that it ever timed out waiting for AUTH, indistinguishable from a network
+         * failure. send_error already marks close_after_flush, so the existing close_after_flush
+         * loop (just above this function's own call site) closes the socket one poll tick later
+         * exactly as conn_close did -- this only adds the ERROR frame the client was missing. */
+        if ((conns[i].state == S_CONNECTED || conns[i].state == S_NEEDAUTH || conns[i].state == S_VERIFYING) && now - conns[i].connect_ms > HELLO_TIMEOUT_MS) send_error(i, DW_ERR_AUTH);
     if (opt_ff) return;
     for (int i = 0; i < MAX_MATCHES; i++) {
         Match *mt = &matches[i];

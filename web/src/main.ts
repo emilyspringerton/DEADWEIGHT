@@ -305,7 +305,16 @@ async function start() {
             'Playing as ' + currentAccount.displayName + (currentAccount.emailLinked ? ' (linked account)' : ' (guest)');
         ($('link-email-box') as HTMLElement).style.display = currentAccount.emailLinked ? 'none' : 'block';
     } catch (e) {
-        acctStatus.textContent = 'IDUNA account error: ' + (e as Error).message + ' — connecting unauthenticated (only works against a --no-auth server).';
+        const msg = (e as Error).message;
+        acctStatus.textContent = 'IDUNA account error: ' + msg + ' — connecting unauthenticated (only works against a --no-auth server).';
+        // Real bug, found live (2026-09-28): this error only ever showed up in #account-status,
+        // which the founder's own bug report never included -- so a failed bootstrap (e.g. the
+        // real IDUNA guest-signup cap: 3 new accounts/IP/24h) looked identical to "the game is
+        // just broken": queue-btn correctly stayed greyed out, then the connection silently died
+        // ~10s later (server-side fix: expire_timers() in apps/server/main.c now sends
+        // DW_ERR_AUTH instead of closing silently). Logging it here too puts the real reason in
+        // the one panel that actually gets pasted into a bug report.
+        log('account: ' + msg);
         currentAccount = null;
     }
     startBtn.disabled = false;
