@@ -236,6 +236,29 @@ Not just "it compiles" — a real, live, end-to-end match:
   change deferred, not dropped. A few particle effects that fly toward those same absolute HUD
   coordinates (e.g. the hull-damage burst toward the meter) will draw off this canvas's own cropped
   viewport and simply not be visible yet, for the same reason.
+- **Card text on the reveal, and the hull bar on death, are now both real (2026-09-28, founder
+  real-time bug report: "it doesnt show the card text on the cards when you reveal it also doesnt
+  work right like i can get killt and it doesnt show my health go to the bottom").** Two real,
+  distinct bugs, both fixed at the shared source rather than in this file: (1) `fx_draw_arena`'s
+  card-flip drawing used to call back into a deliberate JS stub (`js_draw_card`, colour box + id
+  only) — `apps/gui/fx.c` now has a real `fx_draw_card_box()` (name/cost-power/kind-keyword/wrapped
+  rules text, from `core/card_text.h`) that both hosts call directly, no callback needed; the same
+  function also now powers a previously-Windows-only "LAST ROUND" idle reveal panel (`fx_draw_arena`
+  itself draws it when idle, closing a second gap: this client had no idle-reveal state at all
+  before, the canvas just went blank between rounds). (2) the DOM hull/armor/vault bars only ever
+  refreshed on `ROUND_START` — but the round that ends a match is never followed by one, so a
+  lethal hit's own hull change never reached the screen; `onMatchEnd` now pushes the final round's
+  real post-round values immediately, mirroring `apps/gui/main.c`'s own `fx_targets(0)` call at
+  `DW_S_MATCH_END`. A third, real bug was *found* fixing the first one, not introduced by this
+  paragraph's claim: the freestanding wasm build's own hand-written `snprintf` (only ever needed
+  `%d`/`%s`/literals before) silently mis-parsed `%.*s` and printed the literal text `.*s` instead
+  of the substring — invisible on the native SDL2 client (real glibc snprintf) but corrupted every
+  card's name/text on the wasm client. Fixed by replacing both `%.*s` call sites with a manual
+  bounded-copy helper rather than teaching the shim a new format feature only two call sites need.
+  Verified: a direct Node-level `dw_fx.wasm` module test confirms real card name/keyword/rules-text
+  strings reach the draw calls verbatim (no `.*s`); a live match played to a real finish against
+  the production bot pool (`wotan.okemily.com`) showed the real reveal text and ended with the DOM
+  hull bar correctly reading `YOU 0/20` at match end, not the stale pre-final-round value.
 - **Energy-delta and burn/regen status are now real**, closing the gap this section used to name:
   `main.ts` defers each round's animation (mirroring `apps/gui/main.c`'s own real
   `fx_finish_round`/`pend_valid`/`rs_energy` pattern exactly, ported rather than re-derived) until

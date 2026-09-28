@@ -2,6 +2,7 @@
 #include "sfx.h"
 #include "card_rules.h"
 #include "fx_rules.h"
+#include "card_text.h"
 #include <math.h>
 #include <stdio.h>
 #include <string.h>
@@ -26,6 +27,15 @@ static const C3 RED = {225, 80, 66}, YEL = {245, 190, 55}, BLU = {80, 150, 245},
                 SIL = {190, 198, 210}, GRN = {90, 215, 130}, GOLD = {255, 215, 80}, ORG = {255, 140, 40}, GRY = {110, 114, 128}, DGR = {60, 64, 78},
                 SICK = {130, 220, 90};
 static const C3 KIND3[3] = {{225, 80, 66}, {245, 190, 55}, {80, 150, 245}};
+
+/* -------------------------------------------------------------------------------------- card box (apps/gui/main.c's own
+ * card_box(), moved here verbatim -- see fx.h's own fx_draw_card_box comment for why). Colours match main.c's Col
+ * constants exactly (C_PANEL/C_TEXT/C_DIM/C_LOCK/C_GOOD/C_SEL/KIND_COL), not fx.c's own animation palette above, since
+ * this reproduces main.c's real, existing pixel output, not a new design. */
+static const C3 CB_PANEL = {32, 36, 50}, CB_TEXT = {235, 235, 240}, CB_DIM = {130, 135, 150}, CB_LOCK = {90, 90, 105},
+                CB_GOOD = {80, 200, 120}, CB_BAD = {225, 80, 70}, CB_SEL = {255, 255, 255};
+static const C3 CB_KIND_COL[3] = {{215, 70, 60}, {225, 160, 40}, {70, 140, 230}};
+static const char *const CB_KIND_NAME[3] = {"OFFENSE", "OPERATIONS", "DEFENSE"};
 
 static FxHost H;
 static SDL_Renderer *R;
@@ -101,6 +111,74 @@ static void txt(float x, float y, int scale, C3 c, float a, const char *s) {
     }
 }
 static void txt_c(float cx, float y, int scale, C3 c, float a, const char *s) { int w = H.text_w ? H.text_w(scale, s) : (int)strlen(s) * 6 * scale; txt(cx - w * 0.5f, y, scale, c, a, s); }
+static void cb_frame(float x, float y, float w, float h, float t, C3 c) {
+    frect(x, y, w, t, c, 1); frect(x, y + h - t, w, t, c, 1); frect(x, y, t, h, c, 1); frect(x + w - t, y, t, h, c, 1);
+}
+static int cb_wrap_next(const char *t, int per) {
+    int n = (int)strlen(t);
+    if (n > per) { n = per; while (n > 0 && t[n] != ' ') n--; if (n == 0) n = per; }
+    return n;
+}
+static int cb_wrap_lines(const char *t, int per) {
+    int c = 0; while (*t) { t += cb_wrap_next(t, per); while (*t == ' ') t++; c++; }
+    return c;
+}
+/* apps/wasm/fx/math_shim.c's own freestanding snprintf() only covers the "%d"/"%s"/literal subset
+ * fx.c otherwise ever needs (its own header comment says so) -- "%.*s" (a precision given as an
+ * argument) silently falls through its unrecognised-specifier path and prints the literal
+ * characters ".*s" instead of the substring (found live, 2026-09-28, via a real production match:
+ * every card's name/rules text rendered as garbled ".*s"-shaped text on the wasm client only --
+ * the native SDL2 client never showed this, since it links real glibc snprintf). A manual bounded
+ * copy needs no snprintf feature support at all, so it works identically on both hosts. */
+static void cb_copyn(char *dst, int dstsize, const char *src, int n) {
+    if (n < 0) n = 0;
+    if (n > dstsize - 1) n = dstsize - 1;
+    for (int i = 0; i < n; i++) dst[i] = src[i];
+    dst[n] = 0;
+}
+void fx_draw_card_box(int x, int y, int w, int h, int id, int num, int state) {
+    frect((float)x, (float)y, (float)w, (float)h, CB_PANEL, 1);
+    if (id < 0) {
+        cb_frame((float)x, (float)y, (float)w, (float)h, 2, CB_LOCK);
+        txt_c(x + w * 0.5f, y + h * 0.5f - 7, 2, CB_DIM, 1, "PASS");
+        return;
+    }
+    C3 kc = CB_KIND_COL[card_kind(id)];
+    if (state == 2) { kc.r /= 3; kc.g /= 3; kc.b /= 3; }
+    C3 tc = state == 2 ? CB_DIM : CB_TEXT;
+    int big = w >= 200;
+    const char *nm = dw_card_name(id);
+    frect((float)x, (float)y, (float)w, 30, kc, 1);
+    char buf[64];
+    if (big && (int)strlen(nm) * 12 <= w - 8) txt_c(x + w * 0.5f, (float)(y + 8), 2, CB_TEXT, 1, nm);
+    else { int mc = (w - 4) / 6; cb_copyn(buf, sizeof buf, nm, mc); txt_c(x + w * 0.5f, (float)(y + 12), 1, CB_TEXT, 1, buf); }
+    int ty;
+    if (big) {
+        snprintf(buf, sizeof buf, "COST %d  PWR %d", card_cost(id), card_power(id));
+        txt_c(x + w * 0.5f, (float)(y + 36), 2, tc, 1, buf);
+        snprintf(buf, sizeof buf, "%s%s%s%s", CB_KIND_NAME[card_kind(id)], card_keyword(id) ? " / " : "", dw_keyword_name(card_keyword(id)), card_credit(id) ? " $" : "");
+        txt_c(x + w * 0.5f, (float)(y + 54), 1, CB_DIM, 1, buf);
+        ty = y + 68;
+    } else {
+        snprintf(buf, sizeof buf, "COST %d  PWR %d", card_cost(id), card_power(id));
+        txt_c(x + w * 0.5f, (float)(y + 36), 1, tc, 1, buf);
+        snprintf(buf, sizeof buf, "%s%s", card_keyword(id) ? dw_keyword_name(card_keyword(id)) : CB_KIND_NAME[card_kind(id)], card_credit(id) ? " $" : "");
+        txt_c(x + w * 0.5f, (float)(y + 48), 1, CB_DIM, 1, buf);
+        ty = y + 64;
+    }
+    const char *t = dw_card_text(id);
+    int avail = y + h - 14 - ty, sc = big ? 2 : 1;
+    if (sc == 2 && cb_wrap_lines(t, (w - 8) / 12) * 18 > avail) sc = 1;
+    int per = (w - 8) / (6 * sc), lh = sc == 2 ? 18 : 10;
+    for (int ly = ty; *t && ly + 8 * sc <= y + h - 2; ly += lh) {
+        int n = cb_wrap_next(t, per); char ln[48]; cb_copyn(ln, sizeof ln, t, n);
+        txt((float)(x + 4), (float)ly, sc, tc, 1, ln);
+        t += n; while (*t == ' ') t++;
+    }
+    if (num > 0) { snprintf(buf, sizeof buf, "(%d)", num); txt((float)(x + 4), (float)(y + h - 14), 1, CB_DIM, 1, buf); }
+    if (state == 1) cb_frame((float)(x - 3), (float)(y - 3), (float)(w + 6), (float)(h + 6), 3, CB_SEL);
+    if (state == 3) cb_frame((float)x, (float)y, (float)w, (float)h, 2, CB_GOOD);
+}
 
 /* --------------------------------------------------------------------------------------------------------- particles */
 enum { K_SPARK, K_SHARD, K_EMBER, K_SMOKE, K_LINE, K_RING, K_COIN };
@@ -588,8 +666,8 @@ static void draw_cards(void) {
             float ww = fmaxf(4, fw * sc);
             if (fl < 0.5f) { frect(fx0 + (fw - ww) * 0.5f, fy0, ww, fh, mix3(DGR, GRY, 0.4f), 1); fline(fx0 + fw * 0.5f - ww * 0.3f, fy0 + fh * 0.5f, fx0 + fw * 0.5f + ww * 0.3f, fy0 + fh * 0.5f, 2, YEL, 0.5f); }
             else if (ww < fw * 0.55f) frect(fx0 + (fw - ww) * 0.5f, fy0, ww, fh, S.r.card[s] >= 0 ? KIND3[card_kind(S.r.card[s])] : GRY, 0.9f);   /* mid-flip: a coloured edge, text would just smear */
-            else H.card((int)(fx0 + (fw - ww) * 0.5f), (int)fy0, (int)ww, (int)fh, S.r.card[s], 0);
-        } else H.card((int)fx0, (int)fy0, (int)fw, (int)fh, S.r.card[s], 0);
+            else fx_draw_card_box((int)(fx0 + (fw - ww) * 0.5f), (int)fy0, (int)ww, (int)fh, S.r.card[s], 0, 0);
+        } else fx_draw_card_box((int)fx0, (int)fy0, (int)fw, (int)fh, S.r.card[s], 0, 0);
         if (vignette[s] > 0) frect(fx0, fy0, fw, fh, RED, 0.35f * vignette[s] * (0.6f + 0.4f * sinf(S.t * 0.03f)));
         /* strike-through when cancelled */
         if (S.r.flags[s] & 1) { float k = ease_out(sub(S.clash0 + 200, 250)); fline(fx0 + 4, fy0 + 4, fx0 + 4 + (fw - 8) * k, fy0 + 4 + (fh - 8) * k, 4, RED, 0.9f); fline(fx0 + fw - 4, fy0 + 4, fx0 + fw - 4 - (fw - 8) * k, fy0 + 4 + (fh - 8) * k, 4, RED, 0.9f); }
@@ -717,9 +795,23 @@ static void draw_arena_scene(void) {
     (void)tc;
 }
 
-void fx_draw_arena(int reveal_you, int reveal_opp, int have_reveal) {
-    (void)reveal_you; (void)reveal_opp; (void)have_reveal;
-    if (!S.active) return;
+void fx_draw_arena(int reveal_you, int reveal_opp, int have_reveal, int reveal_round, int reveal_dmg_you, int reveal_dmg_opp) {
+    if (!S.active) {
+        /* Idle fallback (main.c's own draw_match() used to hand-duplicate this outside of fx.c
+         * entirely -- moved here so both the SDL2 client and the wasm/Canvas2D client draw the
+         * exact same "LAST ROUND" reveal from the exact same code, not two separately maintained
+         * copies). All these coordinates are within this function's own y=170..420 arena band. */
+        if (!have_reveal) { txt_c(240, 260, 2, CB_DIM, 1, "PICK A CARD OR PASS"); return; }
+        char buf[24];
+        snprintf(buf, sizeof buf, "LAST ROUND (%d)", reveal_round);
+        txt_c(240, 176, 2, CB_DIM, 1, buf);
+        txt_c(120, 200, 2, CB_DIM, 1, "YOU"); txt_c(360, 200, 2, CB_DIM, 1, "OPP");
+        fx_draw_card_box(20, 222, 200, 170, reveal_you, 0, 0);
+        fx_draw_card_box(260, 222, 200, 170, reveal_opp, 0, 0);
+        snprintf(buf, sizeof buf, "TOOK %d", reveal_dmg_you); txt_c(120, 398, 2, reveal_dmg_you ? CB_BAD : CB_DIM, 1, buf);
+        snprintf(buf, sizeof buf, "TOOK %d", reveal_dmg_opp); txt_c(360, 398, 2, reveal_dmg_opp ? CB_GOOD : CB_DIM, 1, buf);
+        return;
+    }
     /* arena backdrop */
     frect(0, AY, 480, AH, (C3){12, 14, 20}, 0.55f);
     fline(0, AY, 480, AY, 1, GRY, 0.4f); fline(0, AY + AH, 480, AY + AH, 1, GRY, 0.4f);

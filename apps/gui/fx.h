@@ -22,8 +22,6 @@ typedef struct {
     SDL_Renderer *R;
     void (*text)(int x, int y, int scale, uint8_t r, uint8_t g, uint8_t b, uint8_t a, const char *s);
     int  (*text_w)(int scale, const char *s);
-    /* draw one card (host's card_box): state 0 normal, 1 selected, 2 disabled, 3 locked */
-    void (*card)(int x, int y, int w, int h, int id, int state);
 } FxHost;
 
 typedef struct {
@@ -55,10 +53,19 @@ void fx_update(unsigned dt_ms);
 int  fx_active(void);
 int  fx_elapsed_ms(void);
 void fx_finish(void);                                  /* jump to the end (settles meters) */
-void fx_draw_arena(int reveal_you, int reveal_opp, int have_reveal);   /* the arena band y=170..420; falls back to the static reveal when idle */
+void fx_draw_arena(int reveal_you, int reveal_opp, int have_reveal, int reveal_round, int reveal_dmg_you, int reveal_dmg_opp);
+    /* the arena band y=170..420; draws the static "LAST ROUND" reveal (or "PICK A CARD OR PASS")
+     * itself when idle -- reveal_round/reveal_dmg_you/reveal_dmg_opp only matter when have_reveal */
 void fx_draw_overlay(void);                            /* redline frame, vignettes; call last */
 void fx_draw_status_panel(int seat, int x, int y, int w, int h);       /* embers / regen sparkles over a hull panel */
 void fx_draw_disabled_card(int x, int y, int w, int h);                /* EMP look for a disabled hand slot */
+/* Single source of truth for drawing one card (name/cost-power/kind-keyword/wrapped rules text,
+ * from core/card_text.h + core/card_rules.h): used by fx.c's own clash-flip animation AND by the
+ * host for hand cards / draft-offer cards / the idle reveal panel above -- one real function
+ * instead of a duplicated per-platform reimplementation (the actual cause of the web client never
+ * showing card text -- its own separate host-side card-box draw was a stub). state: 0 normal,
+ * 1 selected, 2 disabled, 3 locked. num > 0 draws a small slot number bottom-left. */
+void fx_draw_card_box(int x, int y, int w, int h, int id, int num, int state);
 void fx_get_shake(int *dx, int *dy);
 FxShown fx_shown(void);                                /* meter values to DRAW (they lag the server until the resource stage) */
 float fx_pulse(int seat, int meter);                   /* 0..1 scale-pulse strength for a meter (0 hull, 1 armor, 2 energy, 3 credits) */

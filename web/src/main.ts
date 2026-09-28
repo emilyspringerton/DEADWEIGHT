@@ -48,6 +48,12 @@ let lastStatusYou = 0, lastStatusOpp = 0;
 let pendRound: fxWasm.FxRoundInput | null = null;
 let fxTickHandle = 0;
 let fxLastTs = 0;
+// Mirrors apps/gui/main.c's own persistent A.rv_you/A.rv_opp/A.have_reveal/A.rv_round/A.rv_dy/
+// A.rv_do -- fed to fxWasm.tick() every frame so fx_draw_arena can draw its own "LAST ROUND" idle
+// reveal (or "PICK A CARD OR PASS" before the first one) exactly like the Windows client, instead
+// of leaving the canvas blank between rounds (part of the founder's real-time bug report,
+// 2026-09-28: "it doesnt show the card text on the cards when you reveal it").
+let haveReveal = false, rvYou = -1, rvOpp = -1, rvRound = 0, rvDmgYou = 0, rvDmgOpp = 0;
 
 function flushPendRound(energyNextYou: number | null, energyNextOpp: number | null, statusAfterYou: number, statusAfterOpp: number, lockAfter: number, lethal: boolean) {
     if (!pendRound) return;
@@ -65,7 +71,7 @@ function fxTickLoop(ts: number) {
     fxTickHandle = requestAnimationFrame(fxTickLoop);
     const dt = fxLastTs ? ts - fxLastTs : 16;
     fxLastTs = ts;
-    fxWasm.tick(dt, $('fx-canvas') as HTMLCanvasElement);
+    fxWasm.tick(dt, $('fx-canvas') as HTMLCanvasElement, { you: rvYou, opp: rvOpp, have: haveReveal, round: rvRound, dmgYou: rvDmgYou, dmgOpp: rvDmgOpp });
 }
 // Duel Phase 2 (S537): set by playDuel() right before a duel's PLAY button, consumed (and
 // cleared) the next time the client reaches 'ready' -- either immediately, if it's already
@@ -193,6 +199,27 @@ function renderBars(f: RoundStart) {
     ($('epips-you') as HTMLElement).innerHTML = pipsHtml(f.energyYou, false);
 }
 
+// Founder real-time bug report, 2026-09-28: "i can get killt and it doesnt show my health go to
+// the bottom." Root cause: the hull/armor/vault bars above only ever refresh from renderBars(),
+// called on ROUND_START -- but the round that ends a match is never followed by another
+// ROUND_START, so a lethal hit's own hull change never reached the DOM at all. apps/gui/main.c's
+// own DW_S_MATCH_END handler doesn't have this gap: it calls fx_targets(0) to push the meters to
+// the final round's real post-round values immediately, before that round's own animation plays
+// (main.c:541-546). This is the same push, for the DOM bars this client draws instead of SDL2 ones.
+function applyFinalMeters(hullYou: number, hullOpp: number, armorYou: number, armorOpp: number, vaultYou: number, vaultOpp: number) {
+    const startHull = rules.startHull();
+    const oppFrac = Math.max(0, hullOpp) / startHull;
+    ($('hbar-opp-fill') as HTMLElement).style.width = `${Math.min(1, oppFrac) * 100}%`;
+    ($('hbar-opp-fill') as HTMLElement).classList.toggle('low', hullOpp * 3 <= startHull);
+    ($('hbar-opp-text') as HTMLElement).textContent = `${oppName || 'OPP'} ${Math.max(0, hullOpp)}/${startHull}`;
+    ($('hbar-opp-side') as HTMLElement).textContent = sideText(armorOpp, vaultOpp);
+    const youFrac = Math.max(0, hullYou) / startHull;
+    ($('hbar-you-fill') as HTMLElement).style.width = `${Math.min(1, youFrac) * 100}%`;
+    ($('hbar-you-fill') as HTMLElement).classList.toggle('low', hullYou * 3 <= startHull);
+    ($('hbar-you-text') as HTMLElement).textContent = `YOU ${Math.max(0, hullYou)}/${startHull}`;
+    ($('hbar-you-side') as HTMLElement).textContent = sideText(armorYou, vaultYou);
+}
+
 function setStatus(s: string) {
     $('status').textContent = s;
 }
@@ -224,10 +251,7 @@ async function enterGame(idunaUrl: string, bridgeUrl: string, fallbackName: stri
     // unmodified to wasm -- see fxWasm.ts's own header comment for scope/honest limits). Started
     // here (inside enterGame's own click-driven call chain) so resetAudioClock()'s AudioContext
     // creation happens on a real user gesture, satisfying browser autoplay policy.
-    await fxWasm.initFxWasm($('fx-canvas') as HTMLCanvasElement, (id) => {
-        const c = cardsData.cards[id];
-        return c ? { kind: rules.cardKind(id) } : null;
-    });
+    await fxWasm.initFxWasm($('fx-canvas') as HTMLCanvasElement);
     fxWasm.resetAudioClock();
     fxLastTs = 0;
     if (!fxTickHandle) fxTickHandle = requestAnimationFrame(fxTickLoop);
@@ -259,6 +283,7 @@ async function enterGame(idunaUrl: string, bridgeUrl: string, fallbackName: stri
             matchSeed = f.seed;
             fxWasm.resetMatch();
             pendRound = null;
+            haveReveal = false; rvYou = -1; rvOpp = -1; rvRound = 0; rvDmgYou = 0; rvDmgOpp = 0;
             log(`MATCH_FOUND vs ${f.oppName} (${f.oppKind === 1 ? 'bot' : 'human'}), seat ${f.seat}, seed ${f.seed}`);
             ($('opp-name') as HTMLElement).textContent = `${f.oppName} (${f.oppKind === 1 ? 'bot' : 'human'})`;
             $('match').style.display = 'block';
@@ -301,6 +326,14 @@ async function enterGame(idunaUrl: string, bridgeUrl: string, fallbackName: stri
         },
         onRoundResult(f) {
             log(`round ${f.round} result: you played ${cardLabel(f.cardYou)}, opp played ${cardLabel(f.cardOpp)} — dealt ${f.dmgToOpp}, took ${f.dmgToYou}, hull now ${f.hullYou}/${f.hullOpp}`);
+            // Mirrors apps/gui/main.c's own DW_S_ROUND_RESULT handling exactly: A.rv_you/A.rv_opp/
+            // A.rv_dy/A.rv_do/A.rv_round/A.have_reveal update immediately here, not deferred with
+            // the rest of pendRound -- fx_draw_arena's idle "LAST ROUND" panel needs to show this
+            // round's real result right away, even before the animation that plays it starts.
+            haveReveal = true;
+            rvYou = f.effYou >= 0 ? f.effYou : f.cardYou;
+            rvOpp = f.effOpp >= 0 ? f.effOpp : f.cardOpp;
+            rvDmgYou = f.dmgToYou; rvDmgOpp = f.dmgToOpp; rvRound = f.round;
             // Defensive flush matching apps/gui/main.c's own safety net (DW_S_ROUND_RESULT: "if
             // (A.pend_valid) fx_finish_round(0, NULL)") -- the wire protocol's own state machine
             // never actually lets two ROUND_RESULTs arrive without a ROUND_START between them, so
@@ -329,6 +362,17 @@ async function enterGame(idunaUrl: string, bridgeUrl: string, fallbackName: stri
         onMatchEnd(f) {
             const outcome = f.result === 1 ? 'WIN' : f.result === 0 ? 'LOSS' : 'DRAW';
             log(`MATCH_END: ${outcome} (reason ${f.reason})`);
+            if (pendRound) {
+                // The literal "I got killed and it didn't show my health" bug -- see
+                // applyFinalMeters's own header comment for the full why.
+                applyFinalMeters(pendRound.hullAfterYou, pendRound.hullAfterOpp, pendRound.armorAfterYou, pendRound.armorAfterOpp,
+                    pendRound.vaultAfterYou, pendRound.vaultAfterOpp);
+                fxWasm.setMeters(pendRound.hullAfterYou, pendRound.hullAfterOpp,
+                    pendRound.armorAfterYou, pendRound.armorAfterOpp === 255 ? 0 : pendRound.armorAfterOpp,
+                    rsEnergyYou, rsEnergyOpp === 255 ? 0 : rsEnergyOpp,
+                    pendRound.vaultAfterYou, pendRound.vaultAfterOpp === -128 ? 0 : pendRound.vaultAfterOpp, false);
+                fxWasm.setRedline(pendRound.hullAfterYou, pendRound.hullAfterOpp);
+            }
             // No further ROUND_START is coming -- finish the last round's animation now, with an
             // unknown energy delta and an unchanged status, matching apps/gui/main.c's own
             // DW_S_MATCH_END handling exactly (A.pend.lethal = 1; fx_finish_round(0, NULL);).

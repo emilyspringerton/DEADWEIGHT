@@ -29,8 +29,6 @@
 typedef struct { uint8_t r, g, b; } Col;
 static const Col C_BG = {18, 20, 28}, C_PANEL = {32, 36, 50}, C_TEXT = {235, 235, 240}, C_DIM = {130, 135, 150},
     C_GOOD = {80, 200, 120}, C_BAD = {225, 80, 70}, C_SEL = {255, 255, 255}, C_LOCK = {90, 90, 105};
-static const Col KIND_COL[3] = {{215, 70, 60}, {225, 160, 40}, {70, 140, 230}};   /* Offense (red), Operations (yellow), Defense (blue) */
-static const char *KIND_NAME[3] = {"OFFENSE", "OPERATIONS", "DEFENSE"};
 
 /* ---------- 5x7 bitmap font (classic column-major glyphs; lowercase renders as uppercase) ---------- */
 typedef struct { char c; uint8_t col[5]; } Glyph;
@@ -593,49 +591,12 @@ static void pips(int y, float energy, const char *label, int hidden, int seat) {
         rect(112 + i * 34 - grow, y - grow, 28 + 2 * grow, 16 + 2 * grow, c);
     }
 }
-static int wrap_next(const char *t, int per) {
-    int n = (int)strlen(t);
-    if (n > per) { n = per; while (n > 0 && t[n] != ' ') n--; if (n == 0) n = per; }
-    return n;
-}
-static int wrap_lines(const char *t, int per) {
-    int c = 0; while (*t) { t += wrap_next(t, per); while (*t == ' ') t++; c++; }
-    return c;
-}
-static void card_box(int x, int y, int w, int h, int id, int num, int state /*0 normal 1 sel 2 disabled 3 locked*/) {
-    rect(x, y, w, h, C_PANEL);
-    if (id < 0) { frame(x, y, w, h, C_LOCK, 2); text_c(x + w / 2, y + h / 2 - 7, 2, C_DIM, "PASS"); return; }
-    Col kc = KIND_COL[card_kind(id)];
-    if (state == 2) { kc.r /= 3; kc.g /= 3; kc.b /= 3; }
-    Col tc = state == 2 ? C_DIM : C_TEXT;
-    int big = w >= 200;
-    const char *nm = dw_card_name(id);
-    rect(x, y, w, 30, kc);
-    if (big && (int)strlen(nm) * 12 <= w - 8) text_c(x + w / 2, y + 8, 2, C_TEXT, "%s", nm);
-    else { int mc = (w - 4) / 6; text_c(x + w / 2, y + 12, 1, C_TEXT, "%.*s", mc, nm); }   /* long names are cut to the card width */
-    int ty;
-    if (big) {
-        text_c(x + w / 2, y + 36, 2, tc, "COST %d  PWR %d", card_cost(id), card_power(id));
-        text_c(x + w / 2, y + 54, 1, C_DIM, "%s%s%s%s", KIND_NAME[card_kind(id)], card_keyword(id) ? " / " : "", dw_keyword_name(card_keyword(id)), card_credit(id) ? " $" : "");
-        ty = y + 68;
-    } else {
-        text_c(x + w / 2, y + 36, 1, tc, "COST %d  PWR %d", card_cost(id), card_power(id));
-        text_c(x + w / 2, y + 48, 1, C_DIM, "%s%s", card_keyword(id) ? dw_keyword_name(card_keyword(id)) : KIND_NAME[card_kind(id)], card_credit(id) ? " $" : "");   /* small cards: keyword (Operations) or kind */
-        ty = y + 64;
-    }
-    const char *t = dw_card_text(id);
-    int avail = y + h - 14 - ty, sc = big ? 2 : 1;
-    if (sc == 2 && wrap_lines(t, (w - 8) / 12) * 18 > avail) sc = 1;
-    int per = (w - 8) / (6 * sc), lh = sc == 2 ? 18 : 10;
-    for (int ly = ty; *t && ly + 8 * sc <= y + h - 2; ly += lh) {
-        int n = wrap_next(t, per); char ln[48]; snprintf(ln, sizeof ln, "%.*s", n, t);
-        text(x + 4, ly, sc, tc, "%s", ln);
-        t += n; while (*t == ' ') t++;
-    }
-    if (num > 0) text(x + 4, y + h - 14, 1, C_DIM, "(%d)", num);
-    if (state == 1) frame(x - 3, y - 3, w + 6, h + 6, C_SEL, 3);
-    if (state == 3) frame(x, y, w, h, C_GOOD, 2);
-}
+/* card_box() used to be a hand-written duplicate of fx.c's own clash-flip card drawing -- the two
+ * had already drifted (the web client's own separate reimplementation of this never got real card
+ * text at all, founder-reported live 2026-09-28). Both now call the single shared
+ * fx_draw_card_box() (apps/gui/fx.c, compiled into both this SDL2 client and the wasm/Canvas2D
+ * client) instead of maintaining this logic twice. */
+static void card_box(int x, int y, int w, int h, int id, int num, int state) { fx_draw_card_box(x, y, w, h, id, num, state); }
 static void draw_boot(void) {
     text_c(W / 2, 90, 5, C_TEXT, "DEADWEIGHT");
     text_c(W / 2, 420, 2, C_DIM, "ESTABLISHING CONNECTION...");
@@ -825,14 +786,10 @@ static void draw_match(int mx, int my) {
     pips(80, sh.energy[1], "ENERGY", A.energy_opp == DW_HIDDEN_U8, 1); text(350, 82, 2, C_DIM, "HAND %d", A.opp_hand);
     text_c(W / 2, 118, 3, C_TEXT, "ROUND %d/%d", A.round, max_rounds());
     if (A.deadline_at) { int left = (int)(A.deadline_at - SDL_GetTicks()); if (left < 0) left = 0; text_c(W / 2, 148, 2, left < 5000 ? C_BAD : C_DIM, "%d S", left / 1000); }
-    if (fx_active()) {
-        fx_draw_arena(A.rv_you, A.rv_opp, A.have_reveal);
-    } else if (A.have_reveal) {
-        text_c(W / 2, 176, 2, C_DIM, "LAST ROUND (%d)", A.rv_round);
-        text_c(120, 200, 2, C_DIM, "YOU"); text_c(360, 200, 2, C_DIM, "OPP");
-        card_box(20, 222, 200, 170, A.rv_you, 0, 0); card_box(260, 222, 200, 170, A.rv_opp, 0, 0);
-        text_c(120, 398, 2, A.rv_dy ? C_BAD : C_DIM, "TOOK %d", A.rv_dy); text_c(360, 398, 2, A.rv_do ? C_GOOD : C_DIM, "TOOK %d", A.rv_do);
-    } else text_c(W / 2, 260, 2, C_DIM, "PICK A CARD OR PASS");
+    /* fx_draw_arena now owns its own idle fallback ("LAST ROUND (N)" reveal, or "PICK A CARD OR
+     * PASS") -- this used to be a second, separately hand-maintained copy of that drawing right
+     * here, which the wasm/Canvas2D client had no equivalent of at all. */
+    fx_draw_arena(A.rv_you, A.rv_opp, A.have_reveal, A.rv_round, A.rv_dy, A.rv_do);
     for (int i = 0; i < A.nlog; i++) text(20, 424 + i * 20, 2, C_DIM, "%s", A.log[i]);
     hull_bar(552, sh.hull[0], "YOU", sh.armor[0], sh.vault[0], 0, 0); pips(588, sh.energy[0], "ENERGY", 0, 0);
     for (int i = 0; i < 4; i++) {
@@ -1071,8 +1028,7 @@ static void selftest_tick(void) {
 /* ---------- fx host callbacks + the offline animation/audio demo (dw_gui --fx-demo DIR) ---------- */
 static void fx_text_cb(int x, int y, int scale, uint8_t r, uint8_t g, uint8_t b, uint8_t a, const char *str) { Col c = {r, g, b}; text_a(x, y, scale, c, a, str); }
 static int fx_text_w_cb(int scale, const char *str) { return text_w(scale, str); }
-static void fx_card_cb(int x, int y, int w, int h, int id, int state) { card_box(x, y, w, h, id, 0, state); }
-static void fx_host_init(void) { FxHost h = {R, fx_text_cb, fx_text_w_cb, fx_card_cb}; fx_init(&h); }
+static void fx_host_init(void) { FxHost h = {R, fx_text_cb, fx_text_w_cb}; fx_init(&h); }
 
 typedef struct {
     const char *name; int c0, c1, dmg0, dmg1, heal0, heal1, h0b, h1b, h0a, h1a, a0b, a1b, a0a, a1a, v0b, v1b, v0a, v1a, ed0, ed1, cap0, cap1, fl0, fl1, sb0, sb1, sa0, sa1, lock;
@@ -1128,6 +1084,7 @@ static int demo_setup(const DemoRound *d, const FxRound *r) {
     A.hand[0] = 1; A.hand[1] = 25; A.hand[2] = 7; A.hand[3] = 40; A.energy_you = 4; A.energy_opp = 4; A.opp_hand = 4;
     A.hull_you = r->hull_after[0]; A.hull_opp = r->hull_after[1]; A.armor_you = r->armor_after[0]; A.armor_opp = r->armor_after[1];
     A.vault_you = r->vault_after[0]; A.vault_opp = r->vault_after[1]; A.lock_mask = d->lock; A.status[0] = r->status_after[0]; A.status[1] = r->status_after[1];
+    A.rv_you = r->eff[0] >= 0 ? r->eff[0] : r->card[0]; A.rv_opp = r->eff[1] >= 0 ? r->eff[1] : r->card[1]; A.rv_dy = d->dmg0; A.rv_do = d->dmg1; A.rv_round = r->round;
     fx_reset();
     float hb[2] = {(float)r->hull_before[0], (float)r->hull_before[1]}, ab[2] = {(float)r->armor_before[0], (float)r->armor_before[1]}, eb[2] = {4, 4}, vb[2] = {(float)r->vault_before[0], (float)r->vault_before[1]};
     fx_set_meters(hb, ab, eb, vb, 1);

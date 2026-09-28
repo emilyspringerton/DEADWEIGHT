@@ -7,10 +7,14 @@
  * protocol_wasm.c (which needs zero imports): fx.c/sfx.c need a real host to draw pixels and play
  * audio, so this module DOES import a small set of JS-provided functions -- SDL_SetRenderDrawColor
  * etc. (declared in apps/wasm/fx/SDL.h, the "SDL layer for wasm" itself) plus js_draw_text/
- * js_text_width/js_draw_card (FxHost's own existing host-callback seam, already an abstraction
- * point in fx.h before this module ever existed). web/src/fxWasm.ts implements all of them by
- * drawing to a Canvas2D 2d context; apps/gui/main.c implements the identical calls via real SDL2
- * and its own bitmap font/card-box renderer. Same C source, two hosts.
+ * js_text_width (FxHost's own existing host-callback seam, already an abstraction point in fx.h
+ * before this module ever existed). web/src/fxWasm.ts implements both by drawing to a Canvas2D 2d
+ * context; apps/gui/main.c implements the identical calls via real SDL2 and its own bitmap font.
+ * Card drawing itself needs no host callback at all: fx_draw_card_box() (apps/gui/fx.c) draws a
+ * whole card -- name, cost/power, kind/keyword, wrapped rules text -- from only the primitives
+ * above plus core/card_text.h's card data, so it runs identically on both hosts with zero
+ * per-platform code (closing a real bug: this module used to import a js_draw_card that only ever
+ * drew a plain colour box, never the card's actual text). Same C source, two hosts.
  *
  * Audio does not need an import at all: sfx.c already has a real, existing offline-render API
  * (sfx_offline_begin/sfx_render/sfx_offline_end, used today by tests/test_sfx.c and
@@ -30,13 +34,11 @@
 
 extern void js_draw_text(int x, int y, int scale, int r, int g, int b, int a, const char *s);
 extern int js_text_width(int scale, const char *s);
-extern void js_draw_card(int x, int y, int w, int h, int id, int state);
 
 static void host_text(int x, int y, int scale, uint8_t r, uint8_t g, uint8_t b, uint8_t a, const char *s) {
     js_draw_text(x, y, scale, r, g, b, a, s);
 }
 static int host_text_w(int scale, const char *s) { return js_text_width(scale, s); }
-static void host_card(int x, int y, int w, int h, int id, int state) { js_draw_card(x, y, w, h, id, state); }
 
 int wasm_fx_unknown(void) { return FX_UNKNOWN; }
 
@@ -45,7 +47,6 @@ void wasm_fx_init(void) {
     h.R = (SDL_Renderer *)0; /* opaque to fx.c; the browser host has exactly one implicit canvas context */
     h.text = host_text;
     h.text_w = host_text_w;
-    h.card = host_card;
     fx_init(&h);
     sfx_offline_begin(); /* put sfx.c into pull-render mode for good -- see header comment above */
 }
@@ -138,7 +139,9 @@ float wasm_fx_shown_energy(int seat) { return shown_field(2, seat); }
 float wasm_fx_shown_vault(int seat) { return shown_field(3, seat); }
 
 /* ================= drawing ================= */
-void wasm_fx_draw_arena(int reveal_you, int reveal_opp, int have_reveal) { fx_draw_arena(reveal_you, reveal_opp, have_reveal); }
+void wasm_fx_draw_arena(int reveal_you, int reveal_opp, int have_reveal, int reveal_round, int reveal_dmg_you, int reveal_dmg_opp) {
+    fx_draw_arena(reveal_you, reveal_opp, have_reveal, reveal_round, reveal_dmg_you, reveal_dmg_opp);
+}
 void wasm_fx_draw_overlay(void) { fx_draw_overlay(); }
 void wasm_fx_draw_status_panel(int seat, int x, int y, int w, int h) { fx_draw_status_panel(seat, x, y, w, h); }
 void wasm_fx_draw_disabled_card(int x, int y, int w, int h) { fx_draw_disabled_card(x, y, w, h); }

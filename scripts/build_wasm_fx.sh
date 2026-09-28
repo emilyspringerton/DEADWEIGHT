@@ -57,7 +57,7 @@ INCLUDES="-Iapps/wasm/fx -Iapps/wasm -Icore -Iapps/gui"
 # ("(scenario == 10)"), which clang (not gcc -- the native build's own compiler) flags; cosmetic,
 # and this is generated code ("do not edit by hand") so it's silenced, not hand-fixed.
 CFLAGS="-target wasm32-unknown-unknown -nostdlib -O2 -Wall -Wextra -Werror -Wno-parentheses-equality $INCLUDES"
-SRCS="apps/wasm/libc_shim.c apps/wasm/fx/math_shim.c apps/wasm/fx/fx_wasm.c core/card_rules.c apps/gui/fx.c"
+SRCS="apps/wasm/libc_shim.c apps/wasm/fx/math_shim.c apps/wasm/fx/fx_wasm.c core/card_rules.c core/card_text.c apps/gui/fx.c"
 OBJS=""
 for src in $SRCS; do
   base="$(basename "$src" .c)"

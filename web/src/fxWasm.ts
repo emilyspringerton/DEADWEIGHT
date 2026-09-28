@@ -3,7 +3,7 @@
 // use PARENA to write the same exact logic"). dw_fx.wasm (scripts/build_wasm_fx.sh) is
 // apps/gui/fx.c + apps/gui/sfx.c compiled completely unmodified for wasm32-unknown-unknown --
 // this file is the JS-side implementation of the small set of functions that module imports
-// (apps/wasm/fx/SDL.h's own five draw primitives, plus FxHost's pre-existing text/text_w/card
+// (apps/wasm/fx/SDL.h's own five draw primitives, plus FxHost's pre-existing text/text_w
 // callback seam), translating them to Canvas2D drawing and real audio playback. Windows
 // implements the identical calls via real SDL2 (apps/gui/main.c). Same round-resolution animation
 // and sound-design C source, two hosts -- not a second hand-written reimplementation of fx.c's own
@@ -23,12 +23,22 @@
 // scopes. Some particle effects that fly toward those same absolute HUD coordinates (e.g. the
 // hull-damage burst flying toward HULL_Y) will therefore draw off this canvas's own cropped
 // viewport and simply not be visible -- same honest boundary.
+//
+// Founder real-time, 2026-09-28 (bug report): "it doesnt show the card text on the cards when you
+// reveal it also doesnt work right like i can get killt and it doesnt show my health go to the
+// bottom." Root cause: fx_draw_arena's own card-flip/reveal drawing used to call back into this
+// file's own js_draw_card, which was a deliberate stub (colour box + centred id only, "no card art
+// assets wired through the wasm boundary yet"). Fixed at the SOURCE, not here: apps/gui/fx.c now
+// has a real fx_draw_card_box() (name/cost-power/kind-keyword/wrapped rules text, from
+// core/card_text.h + core/card_rules.h) that both the clash-flip animation and a newly-real idle
+// "LAST ROUND" reveal panel (previously only ever drawn by a separate, hand-duplicated copy in
+// apps/gui/main.c that this wasm client had no equivalent of at all) call directly -- no host
+// callback needed for cards any more, so js_draw_card/CardMeta/the cardLookup argument this file
+// used to take are gone entirely, not left as unused scaffolding.
 
 const AY = 170; // apps/gui/fx.c's own #define AY -- the arena band's top in fx.c's world coordinates
 const AH = 250; // apps/gui/fx.c's own #define AH -- matches web/index.html's #fx-canvas height exactly (1:1 pixel mapping, no scale)
 const SFX_RATE = 44100; // apps/gui/sfx.h's own #define SFX_RATE
-
-export interface CardMeta { kind: number } // fx.c's own H.card callback only ever needs kind (for a colour) + name/cost/power for the label -- see cardLookup below
 
 interface FxWasmExports {
     memory: WebAssembly.Memory;
@@ -75,7 +85,7 @@ interface FxWasmExports {
     wasm_fx_shown_armor(seat: number): number;
     wasm_fx_shown_energy(seat: number): number;
     wasm_fx_shown_vault(seat: number): number;
-    wasm_fx_draw_arena(revealYou: number, revealOpp: number, haveReveal: number): void;
+    wasm_fx_draw_arena(revealYou: number, revealOpp: number, haveReveal: number, revealRound: number, revealDmgYou: number, revealDmgOpp: number): void;
     wasm_fx_draw_overlay(): void;
     wasm_fx_draw_status_panel(seat: number, x: number, y: number, w: number, h: number): void;
     wasm_fx_draw_disabled_card(x: number, y: number, w: number, h: number): void;
@@ -90,7 +100,6 @@ interface FxWasmExports {
 
 let wasm: FxWasmExports | null = null;
 let ctx2d: CanvasRenderingContext2D | null = null;
-let getCardMeta: (id: number) => CardMeta | null = () => null;
 
 // SDL2's real draw-color API is stateful (SetDrawColor sets "current colour"; Fill/DrawLine/
 // DrawPoint all use it) -- fx.c's own setc() calls both every single draw, so this is simple:
@@ -164,19 +173,6 @@ const imports = {
             ctx2d.font = fontFor(scale);
             return Math.round(ctx2d.measureText(s).width);
         },
-        js_draw_card(x: number, y: number, w: number, h: number, id: number, _state: number) {
-            // A simplified card box (colour-by-kind + centred id label) -- draw_cards()'s own
-            // flip/settle geometry math still runs for real in fx.c; only the box's own contents
-            // are this simple on purpose (no card art assets wired through the wasm boundary yet).
-            if (!ctx2d) return;
-            const meta = getCardMeta(id);
-            const kindColor = meta ? ['#D7463C', '#E1A028', '#468CE6'][meta.kind] ?? '#82879B' : '#82879B';
-            ctx2d.fillStyle = '#1A1D26';
-            ctx2d.fillRect(x, wy(y), w, h);
-            ctx2d.strokeStyle = kindColor;
-            ctx2d.lineWidth = 2;
-            ctx2d.strokeRect(x + 1, wy(y) + 1, w - 2, h - 2);
-        },
         // apps/gui/sfx.c's own sfx_write_wav (dead code on this pull-based-audio path -- this host
         // only ever calls wasm_sfx_render, never that function) still declares fopen/fwrite/fclose
         // (apps/wasm/fx/stdio.h), and WebAssembly.instantiate requires every declared import to be
@@ -189,10 +185,8 @@ const imports = {
 
 export async function initFxWasm(
     canvas: HTMLCanvasElement,
-    cardLookup: (id: number) => CardMeta | null,
     wasmUrl = 'dist/generated/dw_fx.wasm',
 ): Promise<void> {
-    getCardMeta = cardLookup;
     ctx2d = canvas.getContext('2d')!;
     const bytes = await (await fetch(wasmUrl)).arrayBuffer();
     const { instance } = await WebAssembly.instantiate(bytes, imports);
@@ -327,12 +321,18 @@ function pumpAudio(dtMs: number) {
     }
 }
 
-export function tick(dtMs: number, canvas: HTMLCanvasElement) {
+/** reveal: the last-resolved round's data, kept live for the whole match (mirrors apps/gui/main.c's
+ * own persistent A.rv_you/A.rv_opp/A.have_reveal/A.rv_round/A.rv_dy/A.rv_do) -- fx_draw_arena reads
+ * it whenever the clash animation itself isn't active, to draw the "LAST ROUND" reveal panel (or
+ * "PICK A CARD OR PASS" before the first one) instead of leaving the canvas blank. */
+export interface RevealState { you: number; opp: number; have: boolean; round: number; dmgYou: number; dmgOpp: number }
+
+export function tick(dtMs: number, canvas: HTMLCanvasElement, reveal: RevealState) {
     const w = requireWasm();
     w.wasm_fx_update(Math.max(0, Math.round(dtMs)));
     pumpAudio(dtMs);
     if (ctx2d) { ctx2d.clearRect(0, 0, canvas.width, canvas.height); ctx2d.fillStyle = '#12141C'; ctx2d.fillRect(0, 0, canvas.width, canvas.height); }
-    w.wasm_fx_draw_arena(0, 0, 0);
+    w.wasm_fx_draw_arena(reveal.you, reveal.opp, reveal.have ? 1 : 0, reveal.round, reveal.dmgYou, reveal.dmgOpp);
 }
 
 export function setMuted(m: boolean) { requireWasm().wasm_sfx_set_muted(m ? 1 : 0); }
