@@ -167,10 +167,42 @@ https://wotan.okemily.com/DEADWEIGHT/` → `200`, same for `dist/main.js` and
 `dist/generated/dw_protocol.wasm`. **The static client is genuinely live at
 `wotan.okemily.com/DEADWEIGHT` right now.**
 
-**Remaining, real, honest gap**: it can't actually play yet. `curl .../DEADWEIGHT/ws` → `404` —
-`sudo-queue/94-deadweight-wotan-ws-bridge.sh` (installs `dw-ws-bridge.service` + the nginx
-location block) genuinely needs sudo and hasn't been run. Until it is, the page loads, the wasm
-module loads, but clicking Connect/Sign in with IDUNA fails to reach a server.
+**Update (2026-09-28, `sudo-queue/94` run for real, found a real bug in it)** — the founder ran
+`sudo-queue/94-deadweight-wotan-ws-bridge.sh`: `dw-ws-bridge.service` installed and confirmed
+running (`systemctl --user status dw-ws-bridge` → active, listening on `127.0.0.1:8765`,
+verified proxying live to the real `dw_server` on `:6980`). But `curl .../DEADWEIGHT/ws` still
+returned `404` afterward — investigated rather than assumed-fine. Root cause: `94`'s nginx-edit
+step inserted the new `location /DEADWEIGHT/ws` block using
+`content.rstrip().rfind('}')` — the last closing brace in the *whole file*. certbot's own standard
+layout for this vhost appends a **second** `server { listen 80; ... return 301
+https://$host$request_uri; }` block after the real HTTPS-serving one, so the location landed
+inside that redirect-only block instead. A bare server-level `return 301` fires for every request
+before any location inside that same block is ever evaluated, so the block was syntactically valid
+(`nginx -t` passed, reload succeeded) but structurally unreachable — explaining exactly the
+observed symptom (plain `http://.../DEADWEIGHT/ws` still 301-redirects to https as always; `https`
+falls through to `location /`'s `try_files` and 404s, since no location matched it there).
+Diagnosed without being able to read the live (root:root, mode 640) nginx file directly, purely
+from behavioral evidence (`http` vs `https` response codes, `dw-ws-bridge.service`'s own
+independent health, `systemctl` reload/journal timestamps) plus reasoning about certbot's known
+nginx-plugin output shape.
+
+**Fix**: `sudo-queue/95-fix-deadweight-ws-nginx-location.sh` (new) — idempotent, anchor-based
+instead of rfind-based: removes any existing `/DEADWEIGHT/ws` location block via real
+brace-counting (wherever it landed), then re-inserts it immediately after the known-good
+`location /api/ { ... }` block's own matching closing brace (that block has been live and
+correctly routing since 2026-09-04, so it's a provably-correct anchor for "the real
+HTTPS-serving server block"). The removal/insertion logic was unit-tested against a synthetic
+fixture reproducing the exact suspected live layout (main HTTPS block + certbot's redirect block,
+with the misplaced location inserted into the redirect block exactly as `94`'s logic would have
+done) — confirmed it correctly relocates the block and is idempotent (a second run is a no-op
+diff). **Not yet run against the real live file** — needs the same sudo this sandbox doesn't
+have; queued for the founder/an operator with real sudo, same as `94` was.
+
+**Remaining, real, honest gap**: it still can't actually play yet, for this one specific,
+now-understood reason. Until `95` is run for real, the page loads, the wasm module loads, but
+clicking Connect/Sign in with IDUNA fails to reach a server. Everything else about the bridge
+itself (the systemd unit, the loopback proxy target, `dw_server` on the other end) is confirmed
+working — this is purely an nginx routing placement bug, not a bridge or client bug.
 
 ## What's NOT built yet — real, phased, not glossed over
 
@@ -184,13 +216,14 @@ module loads, but clicking Connect/Sign in with IDUNA fails to reach a server.
 3. ~~**IDUNA SSO.**~~ Done above — `sso.ts` + `account.ts`'s `loginWithSso` reuse WOTAN's exact
    flow (in the JS host, not in wasm — auth/HTTP has no business inside the compute module).
 4. ~~**`wotan.okemily.com/DEADWEIGHT` hosting.**~~ **Live** — the static page is genuinely reachable
-   at `https://wotan.okemily.com/DEADWEIGHT/` (curl-verified, 200s for the page/JS/wasm). Only
-   remaining gap: it can't play a match yet — `/DEADWEIGHT/ws` still 404s, since
-   `sudo-queue/94-deadweight-wotan-ws-bridge.sh` (nginx location + `dw-ws-bridge.service`) needs
-   real sudo this sandbox doesn't have. The separate, parallel `docs/WASM_DEPLOY_NORTHSTAR.md`
-   GKE/Terraform pipeline (a different, k8s-based hosting target for the same eventual artifact) is
-   real but currently blocked on a non-functional GKE cluster — `wotan.okemily.com` is the simpler,
-   already-live path
+   at `https://wotan.okemily.com/DEADWEIGHT/` (curl-verified, 200s for the page/JS/wasm).
+   `dw-ws-bridge.service` is installed and running (`94` was run for real). Only remaining gap:
+   it can't play a match yet — `/DEADWEIGHT/ws` still 404s, a real, now-diagnosed nginx location
+   placement bug in `94` (see "Update (2026-09-28...)" above), fixed by
+   `sudo-queue/95-fix-deadweight-ws-nginx-location.sh`, which still needs real sudo this sandbox
+   doesn't have. The separate, parallel `docs/WASM_DEPLOY_NORTHSTAR.md` GKE/Terraform pipeline (a
+   different, k8s-based hosting target for the same eventual artifact) is real but currently
+   blocked on a non-functional GKE cluster — `wotan.okemily.com` is the simpler, already-live path
    and should ship first.
 5. **Android parity (Phase 1C/3/4).** Tracked separately, `docs/ANDROID_PARITY_NORTHSTAR.md` —
    unrelated to the wasm work beyond sharing the same founder ask's framing ("parity... all
@@ -203,6 +236,7 @@ This pass proves the *hardest structurally uncertain part* — that a real, nati
 wasm32 build of DEADWEIGHT's actual hand-written C is possible at all — and then carries it all the
 way through: wire codec, rendering, networking, IDUNA SSO, and a real, live page at
 `https://wotan.okemily.com/DEADWEIGHT/` (curl-verified 200s), linked from WOTAN's own nav, same
-session. What's left is narrow and named, not glossed over: it can't play a match yet, since one
-ops script (`sudo-queue/94`) genuinely needs sudo this sandbox doesn't have (item 4 above), and
+session. What's left is narrow and named, not glossed over: it can't play a match yet, since a
+real nginx routing bug found in `sudo-queue/94` (item 4 above) needs its fix
+(`sudo-queue/95-fix-deadweight-ws-nginx-location.sh`) run with sudo this sandbox doesn't have, and
 Android parity (item 5) is real, separate, tracked work, not part of this doc's scope.

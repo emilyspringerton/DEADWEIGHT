@@ -280,13 +280,17 @@ browser code with 0 failures — see `web/README.md`'s "Verified (2026-09-28)" s
 returned a real 401, not a mock). **The client is genuinely live**: `https://wotan.okemily.com/
 DEADWEIGHT/` serves the real page (curl-verified 200 for the HTML, the compiled JS, and the wasm
 module itself), deployed via WOTAN's own `~/wotan-deploy.sh` and linked from every WOTAN page's
-nav ("Play"). **Real, honest remaining gap**: it can't play a match yet — `ops/systemd/
-dw-ws-bridge.service` + `WOTAN/ops/nginx-wotan.conf`'s new `/DEADWEIGHT/ws` location are written
-(the bridge itself was live-verified standalone against the real production `dw_server`) but
-`sudo-queue/94-deadweight-wotan-ws-bridge.sh` needs real sudo this sandbox doesn't have, so the WS
-path still 404s on the live site until someone runs it. See `docs/NATIVE_WASM_CLIENT_NORTHSTAR.md`
-for the full account, including an earlier Emscripten attempt that worked technically but was
-rejected by the founder in favor of this approach.
+nav ("Play"). **Real, honest remaining gap**: it can't play a match yet. `dw-ws-bridge.service` is
+installed and running (`~/sudo-queue/94-deadweight-wotan-ws-bridge.sh` was run for real) and was
+live-verified standalone against the real production `dw_server`, but `/DEADWEIGHT/ws` still 404s
+on the live site — a real, now-diagnosed nginx location-placement bug in `94` (certbot's own
+appended port-80-redirect server block ate the insertion via a naive "last brace in the file"
+anchor). Fixed by `~/sudo-queue/95-fix-deadweight-ws-nginx-location.sh` (idempotent, anchored to
+the known-good `/api/` location instead), unit-tested against a synthetic fixture reproducing the
+exact bug — still needs the same real sudo this sandbox doesn't have to actually run against the
+live file. See `docs/NATIVE_WASM_CLIENT_NORTHSTAR.md` for the full account, including an earlier
+Emscripten attempt that worked technically but was rejected by the founder in favor of this
+approach.
 
 ## CI / releases
 
