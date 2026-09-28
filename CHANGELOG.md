@@ -1,6 +1,7 @@
 # CHANGELOG
 
 ## 2026-09-28
+- IDUNA SSO wired (src/sso.ts + account.ts loginWithSso, reusing WOTAN's live iam.okemily.com pattern) and the native wasm client deployed to WOTAN/DEADWEIGHT/ (bridge systemd unit + nginx WS path + the real built bundle) -- only the live-box sudo-queue/deploy run remains. See docs/NATIVE_WASM_CLIENT_NORTHSTAR.md. (sess-20260923-1030-4a526255)
 - feat(android): Phase 1C -- queue/lobby/draft/match-end screens brutalist parity (PixelLabel/BrutButton), matching apps/gui/main.c's draw_queue/draw_draft/draw_end; verified via javac stub-jar compile + all 4 plain-JVM test suites run live (CoreTest/ParityTest/FxParityTest/IntegrationTest, 0 failures) (sess-20260923-1030-4a526255)
 - Native (non-Emscripten) wasm32 client: apps/wasm/ wraps core/protocol.c with named setters/getters for every wire-protocol message type, real clang -target wasm32-unknown-unknown + wasm-ld pipeline (no Emscripten SDK/JS runtime, matching MIXFORGE's own backend). Founder rejected an initial Emscripten attempt that had already compiled the full desktop client to wasm. 9/9 checks pass in tests/test_wasm_protocol.mjs. See docs/NATIVE_WASM_CLIENT_NORTHSTAR.md. (sess-20260923-1030-4a526255)
 
