@@ -245,7 +245,7 @@ of every card's effect amounts) is verified by `tests/test_rules.c`, `android/..
 a hand-typed oracle from the rules doc so the generated code can't grade itself. Retuning or adding a card = edit the
 table + `scripts/gen_rules.sh`.
 
-## Browser client (dev, VS0.5-web)
+## Browser client (VS0.5-web, live in production)
 
 `web/` is a real, working browser client, dogfooding PARENA's TypeScript emitter against this repo's own
 `card_rules.prn` — connects over a WebSocket↔TCP bridge to the real `dw_server`, plays the real wire protocol, and
@@ -253,13 +253,13 @@ calls the PARENA-compiled `isLegalPlay`/`cardKind`/`cardKeyword` directly rather
 written JS. Round-resolution animation and audio are unified too: `PARENA/stdlib/deadweight/fx_rules.prn` compiles to
 both `core/fx_rules.c` (Windows, canonical) and `web/src/generated/FxRules.ts` (browser), so the SAME scenario/winner/
 critical/timeline decisions drive both clients — the browser then renders them with its own Canvas2D/Web Audio, the
-same "PARENA decides, host renders" split every DEADWEIGHT client already follows. Verified end-to-end: a real match
-played start to finish against a live bot through the compiled client (`web/bridge/e2e_test.mjs`), including real fx
-timelines computed against real match data. Random queue only, no auth, not deployed anywhere — see `web/README.md`
-for the full honest status (including what the fx animation/audio port does and doesn't cover yet) and how to run it
-locally. Several real, load-bearing bugs in PARENA's TypeScript emitter were found and fixed getting this far (I32
-division truncation, a 511-character buffer overflow, a missing `(not x)`, unrecognized `true`/`false` literals) —
-see `PARENA/STDLIB.md`'s own TypeScript emitter section.
+same "PARENA decides, host renders" split every DEADWEIGHT client already follows. Live at
+`https://wotan.okemily.com/DEADWEIGHT/` — real guest accounts (auto-registered against IDUNA, no email required) or
+IDUNA SSO, real random-queue matchmaking against the live production bot pool and other real players, single hardcoded
+production server (no per-session server config UI). See `web/README.md` for full status and how to run it locally.
+Several real, load-bearing bugs in PARENA's TypeScript emitter were found and fixed getting this far (I32 division
+truncation, a 511-character buffer overflow, a missing `(not x)`, unrecognized `true`/`false` literals) — see
+`PARENA/STDLIB.md`'s own TypeScript emitter section.
 
 ## Native WASM client (2026-09-28)
 
@@ -276,33 +276,33 @@ live `dw_bot`/`dw_server` over the real WS↔TCP bridge) was played through the 
 browser code with 0 failures — see `web/README.md`'s "Verified (2026-09-28)" section.
 
 **IDUNA SSO is wired**: `web/src/sso.ts` + `account.ts`'s `loginWithSso` reuse WOTAN's already-live
-`iam.okemily.com` redirect pattern (verified against the real local IDUNA instance — a bad token
-returned a real 401, not a mock). **The client is genuinely live**: `https://wotan.okemily.com/
-DEADWEIGHT/` serves the real page (curl-verified 200 for the HTML, the compiled JS, and the wasm
-module itself), deployed via WOTAN's own `~/wotan-deploy.sh` and linked from every WOTAN page's
-nav ("Play"). **Real, honest remaining gap**: it can't play a match yet. `dw-ws-bridge.service` is
-installed and running (`~/sudo-queue/94-deadweight-wotan-ws-bridge.sh` was run for real) and was
-live-verified standalone against the real production `dw_server`, but `/DEADWEIGHT/ws` still 404s
-on the live site — a real, now-diagnosed nginx location-placement bug in `94` (certbot's own
-appended port-80-redirect server block ate the insertion via a naive "last brace in the file"
-anchor). Fixed by `~/sudo-queue/95-fix-deadweight-ws-nginx-location.sh` (idempotent, anchored to
-the known-good `/api/` location instead), unit-tested against a synthetic fixture reproducing the
-exact bug — still needs the same real sudo this sandbox doesn't have to actually run against the
-live file. See `docs/NATIVE_WASM_CLIENT_NORTHSTAR.md` for the full account, including an earlier
-Emscripten attempt that worked technically but was rejected by the founder in favor of this
-approach.
+`iam.okemily.com` redirect pattern. **The client is genuinely live and playable**:
+`https://wotan.okemily.com/DEADWEIGHT/` serves the real page, deployed via WOTAN's own
+`~/wotan-deploy.sh` and linked from every WOTAN page's nav ("Play") — `/DEADWEIGHT/ws` (the
+WebSocket bridge to the real production `dw_server`) is live (a real `101 Switching Protocols`,
+not a 404 — the nginx location-placement bug tracked in earlier revisions of this doc is fixed),
+and a real, separate, since-fixed bug in the client itself (HELLO's 200-byte inline token field
+was silently truncating every real ~400-500 byte IDUNA JWT, so any connection requiring real auth
+failed before a match could ever start) is also fixed — `encodeAuth()`/the wire protocol's AUTH
+message now carries the real token. Connect → Queue (random) now genuinely pairs a real browser
+session against the live bot pool (or another human), verified end to end against production, not
+just a throwaway test server. See `docs/NATIVE_WASM_CLIENT_NORTHSTAR.md` for the full account,
+including an earlier Emscripten attempt that worked technically but was rejected by the founder in
+favor of this approach.
 
 **Pixel parity with the desktop client (2026-09-28)**: the browser client's actual look had never
 been brought into line with `docs/BRAND_STYLE_GUIDE.md` — generic sans-serif font, rounded
-corners on every input/button, invented colors. Fixed for real: exact hex colors from
-`apps/gui/main.c`'s `Col`/`fx.c`'s `C3` constants, `border-radius: 0` everywhere, borderless flat
-buttons + framed inputs (matching the real reference screenshots), a genuine pixel webfont
-(Google Fonts "Silkscreen"), and all-caps UI chrome. Verified against the real live page with a
-real headless Chrome screenshot + ImageMagick pixel sampling — exact hex matches, not just visual
-similarity. Real, honest remaining gap: this covers the setup/menu screen; the in-match HUD/card
-layout, the oversized title treatment, and per-kind ship shapes are not yet reproduced. See
-`docs/NATIVE_WASM_CLIENT_NORTHSTAR.md`'s own "2026-09-28, real brutalist pixel-parity pass" for
-the full account.
+corners on every input/button, invented colors. Fixed for real, across both the setup/menu screen
+AND the in-match HUD: exact hex colors from `apps/gui/main.c`'s `Col`/`fx.c`'s `C3` constants,
+`border-radius: 0` everywhere, borderless flat buttons + framed inputs, a genuine pixel webfont
+(Google Fonts "Silkscreen"), all-caps UI chrome, the oversized left-aligned title treatment, real
+proportional hull/energy bars, `card_box()`-style colored-header cards, and a real
+select-then-lock-in interaction model matching `apps/gui/main.c`'s `click()` exactly (a card click
+only selects; LOCK IN is the only path that submits). Verified against the real live page/a real
+live match with a real headless Chrome screenshot + ImageMagick pixel sampling — exact hex
+matches, not just visual similarity. Per-kind ship shapes were checked directly and found to
+already match (color-only differentiation was correct all along; an earlier pass's note claiming
+otherwise was wrong). See `docs/NATIVE_WASM_CLIENT_NORTHSTAR.md` for the full account.
 
 ## CI / releases
 

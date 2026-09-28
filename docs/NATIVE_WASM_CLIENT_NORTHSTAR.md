@@ -313,6 +313,52 @@ on private ports, driven end to end with Playwright/headless Chrome — the actu
   log is strictly more informative, not a downgrade) rather than an oversight. Draft mode still has
   no browser UI at all (`web/README.md`'s own long-standing honest gap, unrelated to this pass).
 
+## Update (2026-09-28, real production matchmaking bugfix)
+
+Founder real-time: "we dont need IDUNA base URL or WebSocket bridge URL - we arent setting up for
+multi server right this second its just the one server - also i dunno if its the wrong url or what
+but the actual game still doesnt work - hitting connect then random should get me into a game" +
+"dont make it a dev build this is production" + `/design` "make DEADWEIGHT affordances nice
+keeping the art direction... elite... hacker aesthetic".
+
+**Production hardening**: removed the `iduna-url`/`bridge-url` text inputs from `index.html`
+entirely — this is a single production server, not a multi-server setup, so both endpoints are now
+hardcoded in `main.ts` (`resolveIdunaUrl`/`resolveBridgeUrl`: same-origin `/api/` + `/DEADWEIGHT/ws`
+in production, `localhost:8080`/`:8765` only as a local-dev fallback). Removed the dev-build
+subtitle and the "VS0.5-web, not a shipped client" disclaimer banner, replaced with the real brand
+tagline "Dark Sector: Hold Battles". Added the brand guide's own Section 2A motifs that were named
+but never actually built: a full-screen scanline/CRT post-process, dashed borders for pending
+friend/duel state, a blinking terminal caret — deliberately no drop shadows, glows, or gradients on
+chrome, which that same doc's Do-Not-Do list rules out.
+
+**The real bug**: testing the live matchmaking flow against the actual production stack (not a
+`--no-auth` throwaway server, which is what every prior verification pass in this repo's history —
+including this session's own — had used) surfaced the real cause of "connect then random doesnt
+get me into a game": `HELLO`'s inline token field is capped at 200 bytes (`DW_MAX_TOKEN`,
+`core/protocol.h`), but a real IDUNA ES256 player JWT is ~400-500 bytes. `client.ts` stuffed the
+full token into `encodeHello()` regardless, silently truncating it to garbage; the real, auth-
+required production `dw_server` correctly rejected the mangled token with `ERROR 2` (auth) and
+closed the connection before ever sending `WELCOME`. The wire protocol already names the right fix
+(`docs/WIRE_PROTOCOL.md`'s AUTH row: "with auth required the client sends HELLO with token_len = 0
+and then AUTH", `DW_MAX_AUTH_TOKEN = 900`) and the C/wasm side already exported the hooks for it
+(`set_auth`/`set_auth_token_byte` in `apps/wasm/protocol_wasm.c`), but neither TypeScript codec —
+not `proto.ts` (the original hand-written port) and not its wasm-backed drop-in `wasmProto.ts` —
+ever called it. This bug predates the wasm rewrite; it is a real, long-standing gap in the entire
+browser client's auth handling, only now surfaced by finally testing against real auth.
+
+**Fix**: added `encodeAuth(token)` to both `proto.ts` and `wasmProto.ts` (u16 length, up to 900
+bytes); `client.ts`'s `connect()` now sends `HELLO` with an empty inline token and, whenever a real
+token exists, immediately follows with a separate `AUTH` frame. Added a byte-parity check between
+the two codecs using a realistic 557-byte JWT fixture (`test_wasm_proto_parity.mjs`, now 15/15).
+
+**Verified against real production, not a throwaway**: minted a real guest JWT via the live
+`https://wotan.okemily.com/api/v1/games/deadweight/guest-register` endpoint, connected
+`DeadweightClient` directly to `wss://wotan.okemily.com/DEADWEIGHT/ws` — got a real
+`WELCOME(authRequired=true)` → `AUTH` → `QUEUED` → real `MATCH_FOUND` against a live `bot-ripper`
+from the actual production bot pool. Also independently confirmed (already fixed live between
+checks, not by this session's own work) that the `/DEADWEIGHT/ws` nginx 404 tracked above is
+resolved: `curl` now returns a real `101 Switching Protocols`.
+
 ## What's NOT built yet — real, phased, not glossed over
 
 1. ~~**Rendering.**~~ Done above — `web/src/fx.ts`/`main.ts`'s existing brutalist Canvas2D
@@ -324,16 +370,18 @@ on private ports, driven end to end with Playwright/headless Chrome — the actu
    module's encoded bytes exactly as it always relayed `proto.ts`'s.
 3. ~~**IDUNA SSO.**~~ Done above — `sso.ts` + `account.ts`'s `loginWithSso` reuse WOTAN's exact
    flow (in the JS host, not in wasm — auth/HTTP has no business inside the compute module).
-4. ~~**`wotan.okemily.com/DEADWEIGHT` hosting.**~~ **Live** — the static page is genuinely reachable
-   at `https://wotan.okemily.com/DEADWEIGHT/` (curl-verified, 200s for the page/JS/wasm).
-   `dw-ws-bridge.service` is installed and running (`94` was run for real). Only remaining gap:
-   it can't play a match yet — `/DEADWEIGHT/ws` still 404s, a real, now-diagnosed nginx location
-   placement bug in `94` (see "Update (2026-09-28...)" above), fixed by
-   `sudo-queue/95-fix-deadweight-ws-nginx-location.sh`, which still needs real sudo this sandbox
-   doesn't have. The separate, parallel `docs/WASM_DEPLOY_NORTHSTAR.md` GKE/Terraform pipeline (a
-   different, k8s-based hosting target for the same eventual artifact) is real but currently
-   blocked on a non-functional GKE cluster — `wotan.okemily.com` is the simpler, already-live path
-   and should ship first.
+4. ~~**`wotan.okemily.com/DEADWEIGHT` hosting.**~~ **Live and playable.** The static page is
+   genuinely reachable at `https://wotan.okemily.com/DEADWEIGHT/`. `/DEADWEIGHT/ws` is live (a real
+   `101 Switching Protocols`, not `404` — the nginx location bug `95` targeted is fixed). A
+   separate, real client-side bug (found 2026-09-28 testing against production for the first
+   time: HELLO's 200-byte inline token field was silently truncating every real ~400-500 byte
+   IDUNA JWT, so the auth-required production `dw_server` rejected every real-auth connection with
+   `ERROR 2` before `WELCOME` — see "Update (2026-09-28, real production matchmaking bugfix)"
+   below) is also fixed. Connect → Queue (random) now genuinely pairs a real session against the
+   live bot pool/other players, verified end to end against production. The separate, parallel
+   `docs/WASM_DEPLOY_NORTHSTAR.md` GKE/Terraform pipeline (a different, k8s-based hosting target
+   for the same eventual artifact) is real but currently blocked on a non-functional GKE cluster —
+   `wotan.okemily.com` is the simpler, already-live path and already shipped first.
 5. **Android parity (Phase 1C/3/4).** Tracked separately, `docs/ANDROID_PARITY_NORTHSTAR.md` —
    unrelated to the wasm work beyond sharing the same founder ask's framing ("parity... all
    platforms").
