@@ -153,6 +153,30 @@ export async function loginWithEmail(idunaBase: string, email: string, password:
     return a;
 }
 
+// loginWithSso exchanges a generic IDUNA SSO session token (sso.ts's IdunaSession.token, obtained
+// via the iam.okemily.com redirect) for a real DEADWEIGHT player token. Same real, live endpoint
+// and rationale as WOTAN/friends.html's own exchangeSsoToken -- see IDUNA/internal/http/handlers/
+// game_online.go's ssoExchange doc comment: no new player is ever created here, only an IDUNA
+// identity already linked to a DEADWEIGHT account (game='deadweight') can succeed. A guest-only
+// player who has never linked an email gets a real 404 here -- the caller should fall back to the
+// guest-bootstrap flow (bootstrapAccount) in that case, same framing friends.html already uses.
+export async function loginWithSso(idunaBase: string, ssoToken: string): Promise<Account> {
+    const body = await api(idunaBase, '/sso-exchange', {
+        method: 'POST',
+        headers: { Authorization: 'Bearer ' + ssoToken },
+    });
+    const a: Account = {
+        playerID: body.player_id,
+        guestSecret: '',
+        displayName: body.display_name,
+        token: body.token,
+        expiresAt: body.expires_at,
+        emailLinked: true,
+    };
+    persist(a);
+    return a;
+}
+
 // linkEmail upgrades the CURRENT guest account in place (same player_id, same match/ticket
 // history) -- the browser-client equivalent of dw_gui's real, shipped "Claim Account" flow.
 export async function linkEmail(idunaBase: string, current: Account, email: string, password: string): Promise<Account> {

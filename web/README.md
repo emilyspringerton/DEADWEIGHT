@@ -84,6 +84,29 @@ original hand-written TypeScript port, kept only as a reference oracle). Two rea
 
 See `docs/NATIVE_WASM_CLIENT_NORTHSTAR.md` for the full account.
 
+## Verified (2026-09-28, continued) — IDUNA SSO sign-in
+
+`src/sso.ts` (new) + `account.ts`'s new `loginWithSso` wire up
+`docs/NATIVE_WASM_CLIENT_NORTHSTAR.md` item 3: a "Sign in with IDUNA" button redirects to
+`https://iam.okemily.com/?redirect_uri=<this page>` (WOTAN/friends.html's own already-live-verified
+pattern, ported to TS rather than shared as a literal file since this is a TS-module site and that
+one is plain `<script>` globals), reads the token back off the URL fragment, and exchanges it for a
+real DEADWEIGHT player token via `POST /api/v1/games/deadweight/sso-exchange` — the same real,
+live endpoint `IDUNA/internal/http/handlers/game_online.go`'s `ssoExchange` already serves for
+WOTAN. A sticky session (an earlier sign-in still in `localStorage`) relabels the button
+("Continue as ‹name›") on a plain page load without auto-entering a match; a *fresh* redirect
+return completes the exchange and enters the game immediately, since clicking the button already
+expressed that intent — see `main.ts`'s `signInWithIduna`/`checkStickyIdunaSession` doc comments.
+
+Verified for real, not just type-checked: `tsc` clean; `loginWithSso('http://127.0.0.1:8080',
+'bogus-token')` against the actual live local IDUNA instance returned a real `401 invalid token`
+(`ApiError`), matching a raw `curl` to the identical endpoint byte-for-byte — proves the request
+reaches the real endpoint with the right method/header shape, not a mocked response. **Not
+verified this pass**: an actual click-through in a real browser (no headless Chrome in this
+sandbox, same honest limit WOTAN's own `friends.html` names) and a real account that has an IDUNA
+identity linked to a DEADWEIGHT account (this session's own local IDUNA had none set up to test
+the success path against, only the auth-rejection path above).
+
 ## Verified (2026-09-21)
 
 Not just "it compiles" — a real, live, end-to-end match:

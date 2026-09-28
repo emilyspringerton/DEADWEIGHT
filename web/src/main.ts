@@ -9,6 +9,7 @@ import * as rules from './generated/CardRules.js';
 import * as fx from './fx.js';
 import * as account from './account.js';
 import * as social from './social.js';
+import * as sso from './sso.js';
 
 type CardEntry = { id: number; name: string; kind: string; keyword: string; cost: number; power: number; credit: number; text: string };
 type CardsData = { version: string; cards: CardEntry[] };
@@ -224,6 +225,73 @@ async function start() {
     await enterGame(idunaUrl, bridgeUrl, name);
 }
 
+// signInWithIduna is the SSO half of docs/NATIVE_WASM_CLIENT_NORTHSTAR.md item 3 -- reuses
+// WOTAN/friends.html's already-live-verified pattern (see sso.ts's own header comment). Clicking
+// "Sign in with IDUNA" either sends the browser to iam.okemily.com (no session yet) or, once
+// IDUNA's own redirect lands back here with a token in the URL fragment, completes the exchange
+// and goes straight into the game -- the click already expressed the player's intent, so there's
+// no second "now click Connect" step after the redirect returns, unlike the guest flow above.
+async function signInWithIduna() {
+    const session = sso.handleIdunaSsoReturn() || sso.getIdunaSession();
+    if (!session) {
+        location.href = sso.buildSsoURL();
+        return;
+    }
+    const idunaUrl = ($('iduna-url') as HTMLInputElement).value.trim();
+    const bridgeUrl = ($('bridge-url') as HTMLInputElement).value.trim();
+    const acctStatus = $('account-status');
+    const ssoBtn = $('sso-btn') as HTMLButtonElement;
+    ssoBtn.disabled = true;
+    acctStatus.textContent = 'Exchanging IDUNA session for a DEADWEIGHT account…';
+    try {
+        currentAccount = await account.loginWithSso(idunaUrl, session.token);
+        acctStatus.textContent = 'Signed in as ' + currentAccount.displayName + ' (IDUNA account)';
+        ($('link-email-box') as HTMLElement).style.display = 'none';
+        await enterGame(idunaUrl, bridgeUrl, session.displayName || currentAccount.displayName);
+    } catch (e) {
+        sso.clearIdunaSession();
+        acctStatus.textContent = 'IDUNA sign-in error: ' + (e as Error).message +
+            ' — no DEADWEIGHT account is linked to this IDUNA identity yet. Play as a guest below, ' +
+            'then use "Link an email" with the same email/password to connect it.';
+        ssoBtn.disabled = false;
+    }
+}
+
+// applyProductionDefaults fills in the iduna-url/bridge-url inputs for a real deployed copy of
+// this SAME index.html (e.g. wotan.okemily.com/DEADWEIGHT — no separate "prod" index.html forked
+// off this one, single source of truth like every other page in this repo) -- only when they're
+// still sitting at the checked-in localhost dev defaults AND the page isn't actually running on
+// localhost, so a real local dev server is never touched. Same-origin ('' base) reaches IDUNA
+// through the deploy's own nginx /api/ proxy (WOTAN/ops/nginx-wotan.conf), matching account.ts's
+// own documented same-origin/CORS-free convention; the bridge URL matches ops/systemd/
+// dw-ws-bridge.service + nginx's own /DEADWEIGHT/ws location exactly.
+function applyProductionDefaults() {
+    if (location.hostname === 'localhost' || location.hostname === '127.0.0.1') return;
+    const idunaInput = $('iduna-url') as HTMLInputElement;
+    const bridgeInput = $('bridge-url') as HTMLInputElement;
+    if (idunaInput.value === 'http://localhost:8080') idunaInput.value = '';
+    if (bridgeInput.value === 'ws://localhost:8765') {
+        const scheme = location.protocol === 'https:' ? 'wss:' : 'ws:';
+        bridgeInput.value = scheme + '//' + location.host + '/DEADWEIGHT/ws';
+    }
+}
+
+// A fresh SSO redirect return lands here as soon as the page (re)loads, fragment intact --
+// complete the sign-in immediately rather than waiting for a click that was already made before
+// leaving the page. A plain visit with only a STICKY session (no fresh fragment) does NOT
+// auto-enter the game -- it just relabels the button, matching the guest flow's own "Connect"
+// click requirement (see signInWithIduna's own doc comment for why fresh-return is different).
+function checkStickyIdunaSession() {
+    if (location.hash.includes('sso_token=')) {
+        signInWithIduna();
+        return;
+    }
+    const session = sso.getIdunaSession();
+    if (session) {
+        ($('sso-btn') as HTMLButtonElement).textContent = 'Continue as ' + (session.displayName || 'IDUNA account');
+    }
+}
+
 // createAccount is the real "Create Account" flow (2026-09-25, founder real-time: "it should let
 // me create a deadweight account right there with a button"): one button, real, live client-side
 // name feedback (account.isValidDisplayName, mirroring IDUNA's own server-side check -- see its
@@ -263,7 +331,10 @@ async function createAccount() {
 }
 
 $('start-btn').addEventListener('click', start);
+$('sso-btn').addEventListener('click', signInWithIduna);
 $('create-account-btn').addEventListener('click', createAccount);
+applyProductionDefaults();
+checkStickyIdunaSession();
 $('link-btn').addEventListener('click', async () => {
     const idunaUrl = ($('iduna-url') as HTMLInputElement).value.trim();
     const email = ($('link-email') as HTMLInputElement).value.trim();

@@ -138,7 +138,25 @@ needs: a complete, real match against a live `dw_bot` over a live `dw_server` an
 bridge, 7 rounds played, 7 fx timelines computed, 0 failures — using the exact compiled
 `dist/client.js`/`dist/wasmProto.js` a real browser would load. See `web/README.md`'s own
 "Verified (2026-09-28)" section for the full account. Rendering and networking (items 1-2 below)
-are therefore done; IDUNA SSO and hosting (items 3-4) are not.
+are therefore done.
+
+## Update (2026-09-28, same session, continued): IDUNA SSO wired; hosting infra started
+
+Item 3 (IDUNA SSO) is now wired: `web/src/sso.ts` (new) + `account.ts`'s new `loginWithSso` reuse
+WOTAN/friends.html's already-live pattern (`iam.okemily.com` redirect → fragment token →
+`POST /api/v1/games/deadweight/sso-exchange`). Verified against the real local IDUNA instance
+(a deliberately bad token returned a real `401`, matching a raw `curl` to the same endpoint) —
+not click-through-tested in a real browser (no headless Chrome in this sandbox). See
+`web/README.md`'s "Verified (2026-09-28, continued)" section for the full account.
+
+Item 4 (hosting) has real infra now, not the static client bundle itself: `DEADWEIGHT/ops/systemd/
+dw-ws-bridge.service` (loopback-only `ws-tcp-bridge.js` against the live `dw_server` on `:6980`,
+live-verified by hand — started it, sent a raw WS frame, got a real relayed byte response back)
+and `WOTAN/ops/nginx-wotan.conf`'s new `/DEADWEIGHT/ws` location (terminates `wss://`, proxies to
+the loopback bridge). `sudo-queue/94-deadweight-wotan-ws-bridge.sh` installs both on the live box
+(this sandbox has no passwordless sudo, confirmed) — not yet run. The static bundle itself
+(`index.html` + `dist/` + the compiled `.wasm`) still needs to be copied into a real `WOTAN/
+DEADWEIGHT/` directory and deployed via `wotan-deploy.sh` — genuinely not done yet.
 
 ## What's NOT built yet — real, phased, not glossed over
 
@@ -149,19 +167,15 @@ are therefore done; IDUNA SSO and hosting (items 3-4) are not.
    PARENA's own TypeScript emitter (`web/src/generated/CardRules.ts`/`FxRules.ts`), untouched.
 2. ~~**Networking.**~~ Done above — `web/bridge/ws-tcp-bridge.js` (unmodified) relays the wasm
    module's encoded bytes exactly as it always relayed `proto.ts`'s.
-3. **IDUNA SSO.** WOTAN already has a real, live, end-to-end-verified pattern for exactly this
-   (`WOTAN/friends.html`/`store.html`): redirect to `https://iam.okemily.com/?redirect_uri=<page>`,
-   receive a token via URL fragment, then `POST /api/v1/games/deadweight/sso-exchange` (real,
-   live, `IDUNA/internal/http/handlers/game_online.go`) to mint a real DEADWEIGHT player token.
-   The native wasm client should reuse this exact flow (in the JS host, not in wasm — auth/HTTP
-   has no business inside the compute module) rather than the existing `web/src/account.ts`'s own
-   separate guest-only bootstrap. Not wired yet.
-4. **`wotan.okemily.com/DEADWEIGHT` hosting.** Real static hosting target once the above land;
-   `WOTAN`'s own deploy pipeline (plain static HTML/CSS/JS, no build step, `~/wotan-deploy.sh`)
-   already fits a "wasm + a small JS host + static HTML" artifact directly. The separate,
-   parallel `docs/WASM_DEPLOY_NORTHSTAR.md` GKE/Terraform pipeline (a different, k8s-based hosting
-   target for the same eventual artifact) is real but currently blocked on a non-functional GKE
-   cluster — `wotan.okemily.com` is the simpler, already-live path and should probably ship first.
+3. ~~**IDUNA SSO.**~~ Done above — `sso.ts` + `account.ts`'s `loginWithSso` reuse WOTAN's exact
+   flow (in the JS host, not in wasm — auth/HTTP has no business inside the compute module).
+4. **`wotan.okemily.com/DEADWEIGHT` hosting.** Partially done above (bridge + nginx path) — still
+   missing: the actual static bundle (`index.html`/`dist`/`.wasm`) copied into a `WOTAN/
+   DEADWEIGHT/` directory and deployed via `~/wotan-deploy.sh`, and running `sudo-queue/94` on the
+   live box. The separate, parallel `docs/WASM_DEPLOY_NORTHSTAR.md` GKE/Terraform pipeline (a
+   different, k8s-based hosting target for the same eventual artifact) is real but currently
+   blocked on a non-functional GKE cluster — `wotan.okemily.com` is the simpler, already-live path
+   and should ship first.
 5. **Android parity (Phase 1C/3/4).** Tracked separately, `docs/ANDROID_PARITY_NORTHSTAR.md` —
    unrelated to the wasm work beyond sharing the same founder ask's framing ("parity... all
    platforms").
