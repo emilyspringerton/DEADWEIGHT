@@ -90,6 +90,18 @@ export function encodeHello(mode: 0 | 1 | 2, kind: 0 | 1, name: string, token: s
     return frame(ClientMsg.HELLO, w.toBytes());
 }
 
+/** AUTH (0x06): the real IDUNA player JWT, up to 900 bytes (docs/WIRE_PROTOCOL.md's AUTH row --
+ * "Real IDUNA ES256 JWTs are ~400-500 bytes, far above HELLO's 200-byte token field"). Sent right
+ * after HELLO (which then carries an empty inline token) whenever a real token exists; a
+ * --no-auth server just ignores it. */
+export function encodeAuth(token: string): Uint8Array {
+    const w = new Writer();
+    const tokenBytes = new TextEncoder().encode(token).slice(0, 900);
+    w.u16(tokenBytes.length);
+    w.bytesRaw(tokenBytes);
+    return frame(ClientMsg.AUTH, w.toBytes());
+}
+
 /** matchToken (S537 Duel Phase 2): a purely additive, no-proto-bump extension of QUEUE's already-
  * variable payload (0, 1, or 33 bytes -- docs/WIRE_PROTOCOL.md). When present, the wire form is
  * ALWAYS same_deck-byte-then-32-raw-token-bytes (matching core/protocol.c's dw_encode -- same_deck

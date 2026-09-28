@@ -32,6 +32,8 @@ interface WasmExports {
     set_hello(proto: number, mode: number, kind: number, tokenLen: number): void;
     set_hello_name_char(i: number, c: number): void;
     set_hello_token_byte(i: number, b: number): void;
+    set_auth(tokenLen: number): void;
+    set_auth_token_byte(i: number, b: number): void;
     set_queue(sameDeck: number, hasMatchToken: number): void;
     set_queue_token_char(i: number, c: number): void;
     set_play(matchId: number, round: number, slot: number): void;
@@ -100,6 +102,18 @@ export function encodeHello(mode: 0 | 1 | 2, kind: 0 | 1, name: string, token: s
     w.set_hello(PROTO_VERSION, mode, kind, tokenBytes.length);
     writeName(w, name, w.set_hello_name_char, 17);
     tokenBytes.forEach((b, i) => w.set_hello_token_byte(i, b));
+    return readEncoded(w, w.wasm_encode());
+}
+
+/** AUTH (0x06): the real IDUNA player JWT, up to 900 bytes (docs/WIRE_PROTOCOL.md's AUTH row --
+ * "Real IDUNA ES256 JWTs are ~400-500 bytes, far above HELLO's 200-byte token field"). Sent right
+ * after HELLO (which then carries an empty inline token) whenever a real token exists; a
+ * --no-auth server just ignores it. */
+export function encodeAuth(token: string): Uint8Array {
+    const w = requireWasm();
+    const tokenBytes = new TextEncoder().encode(token).slice(0, 900);
+    w.set_auth(tokenBytes.length);
+    tokenBytes.forEach((b, i) => w.set_auth_token_byte(i, b));
     return readEncoded(w, w.wasm_encode());
 }
 

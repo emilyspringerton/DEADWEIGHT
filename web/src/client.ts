@@ -41,11 +41,19 @@ export class DeadweightClient {
         this.ws.binaryType = 'arraybuffer';
         this.ws.onopen = () => {
             this.ev.onLog?.(`connected to bridge ${this.bridgeUrl}`);
-            // mode 0 = random queue, kind 0 = human. token is a real IDUNA player token (S537,
-            // account.ts) when one was obtained; empty still works against a --no-auth server,
-            // matching the GUI/Android clients' own documented "name-only play works with
-            // --no-auth servers" precedent — apps/gui/main.c's own header comment.
-            this.send(proto.encodeHello(0, 0, name, token));
+            // mode 0 = random queue, kind 0 = human. Real IDUNA player JWTs (S537, account.ts)
+            // are ~400-500 bytes -- far above HELLO's 200-byte inline token field
+            // (docs/WIRE_PROTOCOL.md's AUTH row) -- so HELLO always goes out token-less and a
+            // real token (any length) follows immediately as a separate AUTH frame. Found live,
+            // 2026-09-28: this used to stuff the full token into HELLO's field, silently
+            // truncating every real JWT to garbage and getting ERROR 2 (auth) from any server
+            // actually requiring auth -- worked only against --no-auth throwaway test servers,
+            // never caught until tested against the real production dw_server. An empty token
+            // still sends no AUTH at all, matching the GUI/Android clients' own documented
+            // "name-only play works with --no-auth servers" precedent — apps/gui/main.c's own
+            // header comment.
+            this.send(proto.encodeHello(0, 0, name, ''));
+            if (token) this.send(proto.encodeAuth(token));
         };
         this.ws.onmessage = (ev) => {
             const chunk = new Uint8Array(ev.data as ArrayBuffer);

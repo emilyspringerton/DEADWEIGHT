@@ -39,6 +39,13 @@ function eqObj(a, b, name) {
 // ---- encode parity: same inputs, same wire bytes ----
 eqBytes(proto.encodeHello(2, 0, 'Ripper', 'abc'), wasmProto.encodeHello(2, 0, 'Ripper', 'abc'), 'encodeHello');
 eqBytes(proto.encodeHello(0, 1, 'x'.repeat(20), ''), wasmProto.encodeHello(0, 1, 'x'.repeat(20), ''), 'encodeHello (long name, truncates to 16)');
+// A real IDUNA ES256 JWT is ~400-500 bytes -- AUTH (not HELLO) is the only wire path that fits
+// one (docs/WIRE_PROTOCOL.md's AUTH row, DW_MAX_AUTH_TOKEN=900). Found live, 2026-09-28: client.ts
+// used to stuff a token this long into HELLO's 200-byte field instead, silently truncating every
+// real production token and getting ERROR 2 from any server actually requiring auth.
+const realJwt = 'eyJhbGciOiJFUzI1NiIsImtpZCI6ImlkdW5hLWtleS0wMSIsInR5cCI6IkpXVCJ9.' + 'x'.repeat(400) + '.' + 'y'.repeat(86);
+assert.ok(realJwt.length > 200 && realJwt.length <= 900, 'test fixture must exercise the >200-byte AUTH-only path');
+eqBytes(proto.encodeAuth(realJwt), wasmProto.encodeAuth(realJwt), 'encodeAuth (real-length JWT, >200 bytes)');
 eqBytes(proto.encodeQueue(), wasmProto.encodeQueue(), 'encodeQueue (no args)');
 eqBytes(proto.encodeQueue(1), wasmProto.encodeQueue(1), 'encodeQueue (sameDeck=1)');
 eqBytes(proto.encodeQueue(0, 'deadbeefdeadbeefdeadbeefdeadbee'), wasmProto.encodeQueue(0, 'deadbeefdeadbeefdeadbeefdeadbee'), 'encodeQueue (with match_token)');
