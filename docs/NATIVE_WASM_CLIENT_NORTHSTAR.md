@@ -149,14 +149,22 @@ WOTAN/friends.html's already-live pattern (`iam.okemily.com` redirect → fragme
 not click-through-tested in a real browser (no headless Chrome in this sandbox). See
 `web/README.md`'s "Verified (2026-09-28, continued)" section for the full account.
 
-Item 4 (hosting) has real infra now, not the static client bundle itself: `DEADWEIGHT/ops/systemd/
-dw-ws-bridge.service` (loopback-only `ws-tcp-bridge.js` against the live `dw_server` on `:6980`,
-live-verified by hand — started it, sent a raw WS frame, got a real relayed byte response back)
-and `WOTAN/ops/nginx-wotan.conf`'s new `/DEADWEIGHT/ws` location (terminates `wss://`, proxies to
-the loopback bridge). `sudo-queue/94-deadweight-wotan-ws-bridge.sh` installs both on the live box
-(this sandbox has no passwordless sudo, confirmed) — not yet run. The static bundle itself
-(`index.html` + `dist/` + the compiled `.wasm`) still needs to be copied into a real `WOTAN/
-DEADWEIGHT/` directory and deployed via `wotan-deploy.sh` — genuinely not done yet.
+Item 4 (hosting) is now fully code-complete; only a human/sudo step remains. Built:
+`DEADWEIGHT/ops/systemd/dw-ws-bridge.service` (loopback-only `ws-tcp-bridge.js` against the live
+`dw_server` on `:6980`, live-verified by hand — started it, sent a raw WS frame, got a real
+relayed byte response back), `WOTAN/ops/nginx-wotan.conf`'s new `/DEADWEIGHT/ws` location
+(terminates `wss://`, proxies to the loopback bridge), and `WOTAN/DEADWEIGHT/` (the real built
+client bundle — `index.html` + `dist/` + the compiled `.wasm` + `src/generated/cards.json` — a
+plain copy of this repo's own `web/`, matching WOTAN's own no-build-step convention). Live-verified
+before committing: served the copied tree with a plain HTTP server, confirmed every asset path the
+page references resolves, then fetched the `.wasm` over that real HTTP connection and instantiated
+it (98 exports). All 7 WOTAN pages now link to it ("Play" in the shared nav).
+
+**Remaining, real, honest gap**: `sudo-queue/94-deadweight-wotan-ws-bridge.sh` (installs the
+systemd unit + the live nginx location block) and `~/wotan-deploy.sh` (rsyncs the repo to
+`/var/www/wotan`) haven't been run — this sandboxed session has no passwordless sudo (confirmed
+live) and running the actual site-affecting rsync/deploy is a real, deliberate human-in-the-loop
+step, not an oversight. Once both run, `wotan.okemily.com/DEADWEIGHT` is live.
 
 ## What's NOT built yet — real, phased, not glossed over
 
@@ -169,10 +177,10 @@ DEADWEIGHT/` directory and deployed via `wotan-deploy.sh` — genuinely not done
    module's encoded bytes exactly as it always relayed `proto.ts`'s.
 3. ~~**IDUNA SSO.**~~ Done above — `sso.ts` + `account.ts`'s `loginWithSso` reuse WOTAN's exact
    flow (in the JS host, not in wasm — auth/HTTP has no business inside the compute module).
-4. **`wotan.okemily.com/DEADWEIGHT` hosting.** Partially done above (bridge + nginx path) — still
-   missing: the actual static bundle (`index.html`/`dist`/`.wasm`) copied into a `WOTAN/
-   DEADWEIGHT/` directory and deployed via `~/wotan-deploy.sh`, and running `sudo-queue/94` on the
-   live box. The separate, parallel `docs/WASM_DEPLOY_NORTHSTAR.md` GKE/Terraform pipeline (a
+4. ~~**`wotan.okemily.com/DEADWEIGHT` hosting.**~~ Code-complete above — bridge, nginx path, and
+   the real deployed bundle in `WOTAN/DEADWEIGHT/` all exist. Only remaining gap: `sudo-queue/94`
+   and `~/wotan-deploy.sh` haven't actually been run on the live box (no passwordless sudo in this
+   sandbox). The separate, parallel `docs/WASM_DEPLOY_NORTHSTAR.md` GKE/Terraform pipeline (a
    different, k8s-based hosting target for the same eventual artifact) is real but currently
    blocked on a non-functional GKE cluster — `wotan.okemily.com` is the simpler, already-live path
    and should ship first.
@@ -184,7 +192,8 @@ DEADWEIGHT/` directory and deployed via `wotan-deploy.sh` — genuinely not done
 
 "Eat the codebase... should look the same in all platforms" is a large, multi-session initiative.
 This pass proves the *hardest structurally uncertain part* — that a real, native, Emscripten-free
-wasm32 build of DEADWEIGHT's actual hand-written C is possible at all, and ships one complete,
-verified vertical slice of it (the wire protocol codec, the one piece of client logic that
-previously had zero shared-code story across platforms). Rendering, networking, and SSO are real,
-named, unstarted follow-ups — not silently deferred.
+wasm32 build of DEADWEIGHT's actual hand-written C is possible at all — and then carries it all the
+way through: wire codec, rendering, networking, IDUNA SSO, and a real deployed bundle at
+`wotan.okemily.com/DEADWEIGHT` linked from WOTAN's own nav, same session. What's left is narrow and
+named, not glossed over: two ops scripts need an actual human/sudo run on the live box (item 4
+above), and Android parity (item 5) is real, separate, tracked work, not part of this doc's scope.
