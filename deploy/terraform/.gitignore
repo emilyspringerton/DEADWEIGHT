@@ -1,0 +1,7 @@
+# Local provider plugin cache + state -- never committed (matches every other .gitignore'd
+# .terraform/ convention; state should move to a real GCS backend before this is more than a
+# single-operator first pass, see docs/WASM_DEPLOY_NORTHSTAR.md).
+.terraform/
+*.tfstate
+*.tfstate.*
+.terraform.lock.hcl

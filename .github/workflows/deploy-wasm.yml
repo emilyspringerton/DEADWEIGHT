@@ -1,0 +1,101 @@
+# DEADWEIGHT web client -- build + GitOps deploy to the existing prrject-fatbaby GKE cluster.
+#
+# Real, honest status as of 2026-09-28 (see docs/WASM_DEPLOY_NORTHSTAR.md): this workflow is
+# written and believed correct, but has never run for real. Two real blockers, both named, neither
+# worked around here:
+#   1. `EMILY/docs/KUBERNETES_SERVICE_MIGRATION_NORTHSTAR.md`'s own 2026-09-04 audit found the
+#      prrject-fatbaby cluster's Autopilot node-autoprovisioner stuck at `autoscaledNodesTarget: 0`
+#      for 32+ hours with every pod cluster-wide (including GKE's own system pods) stuck Pending --
+#      root cause unresolved. If that's still true, this workflow's `terraform apply` will succeed
+#      (Terraform doesn't need a schedulable node to create the K8s objects) but the pod will sit
+#      Pending forever, same as everything else did. Check `kubectl get nodes` for real, current
+#      node capacity before trusting a deploy from this workflow actually serves traffic.
+#   2. `secrets.DEADWEIGHT_GCP_SA_KEY` does not exist yet -- a real GCP service account JSON key
+#      (roles/artifactregistry.writer + roles/container.developer on project-d24a71e9-2daf-4b2d-917)
+#      needs to be created by a human with real gcloud access and added as a GitHub Actions repo
+#      secret. Same "degrades to a clean, visible skip until provisioned" shape DEADWEIGHT_2's own
+#      release-signing secrets already use -- this workflow does NOT silently no-op on a missing
+#      secret today (auth would just fail loudly), which is fine for a `workflow_dispatch`-only
+#      workflow a human triggers deliberately, but is named here so it isn't a surprise.
+#
+# Builds from web/ (the existing, real TypeScript browser client) as an interim target -- retarget
+# the build step below once the new Emscripten (emcc -sUSE_SDL=2) WASM build's own output
+# directory is finalized (separate, parallel, in-progress work as of this same date).
+
+name: DEADWEIGHT web client -- build & deploy
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "web/**"
+      - "deploy/**"
+      - ".github/workflows/deploy-wasm.yml"
+  workflow_dispatch: {}
+
+concurrency:
+  group: deploy-wasm-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  GCP_PROJECT: project-d24a71e9-2daf-4b2d-917
+  GCP_REGION: us-central1
+  GKE_CLUSTER: prrject-fatbaby
+  IMAGE: us-central1-docker.pkg.dev/project-d24a71e9-2daf-4b2d-917/deadweight/wasm-client
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Build browser client (interim -- see this file's own header comment)
+        working-directory: web
+        run: |
+          set -euo pipefail
+          npm install --no-save typescript
+          ./node_modules/.bin/tsc -p tsconfig.json
+          mkdir -p dist/generated
+          cp src/generated/cards.json dist/generated/cards.json
+
+      - id: auth
+        name: Authenticate to GCP
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.DEADWEIGHT_GCP_SA_KEY }}
+
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Configure Docker for Artifact Registry
+        run: gcloud auth configure-docker "${GCP_REGION}-docker.pkg.dev" --quiet
+
+      - name: Build & push image
+        run: |
+          set -euo pipefail
+          docker build -f deploy/docker/wasm-client.Dockerfile \
+            -t "${IMAGE}:${GITHUB_SHA}" -t "${IMAGE}:latest" .
+          docker push "${IMAGE}:${GITHUB_SHA}"
+          docker push "${IMAGE}:latest"
+
+      - name: Get GKE credentials
+        uses: google-github-actions/get-gke-credentials@v2
+        with:
+          cluster_name: ${{ env.GKE_CLUSTER }}
+          location: ${{ env.GCP_REGION }}
+
+      - name: Terraform apply
+        working-directory: deploy/terraform
+        env:
+          TF_VAR_image_tag: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          terraform init
+          terraform apply -auto-approve
+
+      - name: Show service status
+        run: kubectl get pods,svc -n deadweight
