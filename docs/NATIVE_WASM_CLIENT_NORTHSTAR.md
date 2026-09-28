@@ -204,6 +204,63 @@ clicking Connect/Sign in with IDUNA fails to reach a server. Everything else abo
 itself (the systemd unit, the loopback proxy target, `dw_server` on the other end) is confirmed
 working — this is purely an nginx routing placement bug, not a bridge or client bug.
 
+**Update (2026-09-28, real brutalist pixel-parity pass)** — founder direction, same session:
+"get it pixel for pixel parity with the windows client everything needs to work there first."
+Checked directly rather than assumed-fine: the browser client's actual styling (`web/index.html`'s
+`<style>` block, `main.ts`'s `KIND_COLORS`, `fx.ts`'s hardcoded animation colors) had **never been
+brought into line with `docs/BRAND_STYLE_GUIDE.md`** — it used a generic `system-ui, sans-serif`
+font (the guide's single most explicit rule: "never a humanist sans"), `border-radius` on every
+input/button/panel (the guide's own named "Do Not Do": "No soft/rounded UI geometry... Hard
+rectangles only"), and invented hex colors (`#c0392b`, `#e05252`, `#4a90d9`, etc.) that didn't
+match `apps/gui/main.c`'s real `Col`/`KIND_COL` constants or `fx.c`'s own `C3` animation palette
+at all.
+
+Fixed for real, not just approximated:
+- Every UI color now uses the *exact* hex from `main.c`'s `Col` constants (Terminal Black
+  `#12141C`, Corporate Grey `#202432`, Signal White `#EBEBF0`, Dim Grey `#82879B`, Clearance Green
+  `#50C878`, Error Red `#E15046`, Cursor White `#FFFFFF`, Locked Grey `#5A5A69`, Access Gold
+  `#FFC83C`, and the Offense/Operations/Defense kind triangle).
+- Every fx.ts animation color now uses `fx.c`'s own separate, brighter `C3` constants (RED/YEL/
+  BLU/CYAN/GRN/ORG/SIL/GRY) for the *same* effect in the *same* scenario, checked by reading
+  `fx.c` directly rather than reusing the static-UI palette by assumption (fx.c deliberately uses
+  a different, more saturated palette for animation flashes than for menu chrome).
+- `border-radius: 0` everywhere; buttons changed from bordered to borderless solid-fill blocks and
+  inputs given a visible white 2px frame — both checked against the real reference screenshots
+  already in this repo (`docs/img/s513_desktop_menu.png`, `s513_desktop_match.png`), which show
+  exactly that split (flat buttons, framed inputs).
+- Added Google Fonts "Silkscreen" (a genuine blocky pixel webfont) as the primary font — the
+  brand guide explicitly names "a genuine pixel font" as an acceptable substitute for `main.c`'s
+  hand-rolled 5x7 bitmap `FONT` table, with a real monospace fallback stack if it fails to load.
+- UI-chrome text (headers, labels, buttons, status line) gets `text-transform: uppercase`, scoped
+  to exclude card names/keywords/player text, which keep their natural case on the desktop client
+  too (checked directly in `main.c`: `dw_card_name()`/`dw_keyword_name()` are never uppercased,
+  only literal chrome strings like `"COST %d PWR %d"` and the `KIND_NAME` array are).
+- `KIND_COLORS`/`KIND_NAMES` in `main.ts` are now byte-exact to `main.c`'s `KIND_COL`/`KIND_NAME`
+  arrays (previously neither matched — different hex, and title-case instead of the desktop's
+  all-caps `"OFFENSE"/"OPERATIONS"/"DEFENSE"`).
+
+**Verified for real, not claimed on faith**: `npm run build` clean; a real headless Chrome (this
+sandbox already had `ms-playwright`'s `chrome-linux64` binary cached — no install needed) took a
+real screenshot of the actual live page at `https://wotan.okemily.com/DEADWEIGHT/` after
+redeploying (`~/wotan-deploy.sh` run for real); rendered pixels sampled with ImageMagick
+`convert -format "%[pixel:p{x,y}]"` confirmed **exact** byte matches, not just visual similarity:
+body background `srgb(18,20,28)` = `#12141C`, warning-box border `srgb(255,200,60)` = `#FFC83C`,
+input border `srgb(255,255,255)` = `#FFFFFF`, button fill `srgb(32,36,50)` = `#202432`. The live
+page also confirmed `applyProductionDefaults()` is still working correctly post-redeploy (IDUNA
+URL field blank/same-origin, bridge URL auto-filled to `wss://wotan.okemily.com/DEADWEIGHT/ws`).
+
+**Real, honest, named remaining gap**: this is a real, verified first pass on the setup/menu
+screen's chrome (colors, font, borders, casing) — it is not yet a full pixel-for-pixel match of
+every screen. Not done in this pass: the in-match HUD/card layout (`#stats`/`#hand`/`#log`) hasn't
+been restructured to mirror `card_box()`'s actual colored-header-bar card layout beyond a
+approximating colored top-bar; the title `<h1>` isn't scaled to match the desktop's oversized
+title treatment; the ship-shape-per-kind distinction `fx.c` implies isn't reproduced (fx.ts draws
+one fixed ship polygon shape for both kinds, only recoloring it); and Silkscreen is a genuine
+pixel font but not a literal reproduction of `main.c`'s specific 5x7 glyph table. None of this was
+testable against a live match in this pass (no headless-Chrome-drivable match was set up — the
+`/DEADWEIGHT/ws` gap above is exactly why), so the match-screen claims above are about the *code*
+(what colors it will draw), not a screenshotted, playable match.
+
 ## What's NOT built yet — real, phased, not glossed over
 
 1. ~~**Rendering.**~~ Done above — `web/src/fx.ts`/`main.ts`'s existing brutalist Canvas2D

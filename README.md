@@ -292,6 +292,18 @@ live file. See `docs/NATIVE_WASM_CLIENT_NORTHSTAR.md` for the full account, incl
 Emscripten attempt that worked technically but was rejected by the founder in favor of this
 approach.
 
+**Pixel parity with the desktop client (2026-09-28)**: the browser client's actual look had never
+been brought into line with `docs/BRAND_STYLE_GUIDE.md` — generic sans-serif font, rounded
+corners on every input/button, invented colors. Fixed for real: exact hex colors from
+`apps/gui/main.c`'s `Col`/`fx.c`'s `C3` constants, `border-radius: 0` everywhere, borderless flat
+buttons + framed inputs (matching the real reference screenshots), a genuine pixel webfont
+(Google Fonts "Silkscreen"), and all-caps UI chrome. Verified against the real live page with a
+real headless Chrome screenshot + ImageMagick pixel sampling — exact hex matches, not just visual
+similarity. Real, honest remaining gap: this covers the setup/menu screen; the in-match HUD/card
+layout, the oversized title treatment, and per-kind ship shapes are not yet reproduced. See
+`docs/NATIVE_WASM_CLIENT_NORTHSTAR.md`'s own "2026-09-28, real brutalist pixel-parity pass" for
+the full account.
+
 ## CI / releases
 
 `.github/workflows/ci.yml`: every push builds/tests everything; every green push to `main` auto-bumps the minor
