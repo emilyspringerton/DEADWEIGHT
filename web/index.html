@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<title>DEADWEIGHT — browser client (VS0.5-web, dev)</title>
+<title>DEADWEIGHT — Dark Sector: Hold Battles</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -32,7 +32,24 @@
        to load (offline dev, network-restricted deploys). */
     --mono: 'Silkscreen', ui-monospace, 'JetBrains Mono', 'IBM Plex Mono', 'Courier New', monospace;
   }
-  body { background: var(--bg); color: var(--text); font-family: var(--mono); max-width: 760px; margin: 0 auto; padding: 16px; }
+  body { background: var(--bg); color: var(--text); font-family: var(--mono); max-width: 760px; margin: 0 auto; padding: 16px; position: relative; }
+  /* Elite-hacker atmosphere, on-brand per docs/BRAND_STYLE_GUIDE.md Section 2A's own named
+     "worth adopting" motifs: scanlines/CRT flicker as a full-screen post-process, dashed borders
+     for unconfirmed/pending state, ASCII dividers -- deliberately NOT drop shadows, glows, or
+     gradients on UI chrome, which that same doc's "Do Not Do" list rules out. Purely additive
+     atmosphere; never touches a fill color or layout the pixel-parity pass already verified. */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    background: repeating-linear-gradient(to bottom, rgba(235,235,240,0.028) 0px, rgba(235,235,240,0.028) 1px, transparent 1px, transparent 3px);
+    z-index: 999;
+  }
+  .divider { border: none; border-top: 2px dashed var(--panel); margin: 14px 0; }
+  .term-caret { display: inline-block; width: 0.55em; height: 1em; background: var(--good); vertical-align: -0.15em; margin-left: 4px; animation: caretblink 1s steps(1) infinite; }
+  @keyframes caretblink { 50% { opacity: 0; } }
+  .srow.pending { border-bottom: 1px dashed var(--dim); }
   /* Reference (docs/img/s513_desktop_menu.png): main.c draws the "DEADWEIGHT" title at bitmap-
      font scale 5 (its biggest text anywhere), left-aligned flush with the panel's own left
      margin, not centered -- huge and blocky, not a normal page heading. */
@@ -101,21 +118,11 @@
 </head>
 <body>
 <h1>DEADWEIGHT</h1>
-<p id="subtitle">Card battler — browser client, dev build</p>
-<div class="warn">
-  <b>VS0.5-web, not a shipped client.</b> This is a real, working proof that PARENA's TypeScript
-  emitter can drive a live browser client against the real dw_server over the real wire protocol —
-  see <code>web/README.md</code> for honest status, limits, and how to run it. Real IDUNA account
-  wiring (S537), no draft mode, no animation/audio yet.
-</div>
+<p id="subtitle">Dark Sector: Hold Battles</p>
 
 <div id="setup">
   <label for="name">Player name (used only if creating a new guest account)</label>
-  <input id="name" value="BrowserPlayer" maxlength="16">
-  <label for="iduna-url">IDUNA base URL</label>
-  <input id="iduna-url" value="http://localhost:8080">
-  <label for="bridge-url">WebSocket bridge URL</label>
-  <input id="bridge-url" value="ws://localhost:8765">
+  <input id="name" value="Runner" maxlength="16">
   <button id="start-btn">Connect</button>
   <button id="sso-btn" style="margin-left:8px;">Sign in with IDUNA</button>
   <div id="account-status" style="margin-top:10px;font-size:0.85rem;opacity:0.85;"></div>
@@ -143,7 +150,7 @@
 </div>
 
 <div id="game">
-  <p>Status: <span id="status">—</span></p>
+  <p>Status: <span id="status">—</span><span class="term-caret"></span></p>
   <button id="queue-btn">Queue (random)</button>
 
   <div id="match">
