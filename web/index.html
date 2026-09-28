@@ -33,40 +33,75 @@
     --mono: 'Silkscreen', ui-monospace, 'JetBrains Mono', 'IBM Plex Mono', 'Courier New', monospace;
   }
   body { background: var(--bg); color: var(--text); font-family: var(--mono); max-width: 760px; margin: 0 auto; padding: 16px; }
-  h1 { font-size: 1.3rem; text-transform: uppercase; letter-spacing: 0.02em; }
+  /* Reference (docs/img/s513_desktop_menu.png): main.c draws the "DEADWEIGHT" title at bitmap-
+     font scale 5 (its biggest text anywhere), left-aligned flush with the panel's own left
+     margin, not centered -- huge and blocky, not a normal page heading. */
+  h1 { font-size: 2.6rem; line-height: 1; text-transform: uppercase; letter-spacing: 0.01em; margin: 0; text-align: left; }
+  #subtitle { margin: 4px 0 14px; opacity: 0.8; font-size: 0.85rem; text-transform: uppercase; }
   .warn { background: var(--panel); border: 2px solid var(--gold); color: var(--text); padding: 8px 12px; border-radius: 0; font-size: 0.85rem; margin-bottom: 16px; text-transform: uppercase; }
   label { display: block; margin: 8px 0 4px; font-size: 0.85rem; opacity: 0.8; text-transform: uppercase; }
   /* Reference (docs/img/s513_desktop_menu.png): text INPUTS get a visible 2px frame; BUTTONS are
      solid fill blocks with no visible border at all -- "PASS"/"LOCK IN"/"REDEEM" in
-     docs/img/s513_desktop_match.png are flat grey rectangles, no frame. */
+     docs/img/s513_desktop_match.png are flat grey rectangles, no frame. main.c's own button()
+     draws every button full-width-of-its-row, 42-52px tall, bold centered label -- the desktop
+     client has no small inline buttons anywhere. */
   input { width: 100%; box-sizing: border-box; padding: 6px 8px; background: var(--bg); border: 2px solid var(--cursor); color: var(--text); border-radius: 0; font-family: var(--mono); }
-  button { cursor: pointer; padding: 8px 14px; border-radius: 0; border: none; background: var(--panel); color: var(--text); margin-top: 10px; font-family: var(--mono); text-transform: uppercase; }
+  button { cursor: pointer; display: block; width: 100%; box-sizing: border-box; padding: 14px; font-size: 1rem; border-radius: 0; border: none; background: var(--panel); color: var(--text); margin-top: 10px; font-family: var(--mono); font-weight: bold; text-transform: uppercase; }
   button:hover:not(:disabled) { background: var(--lock); }
   button:disabled { opacity: 0.4; cursor: default; }
   #status { font-weight: bold; text-transform: uppercase; }
-  #stats { display: flex; gap: 16px; margin: 10px 0; font-size: 0.9rem; text-transform: uppercase; }
-  #hand { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; margin-top: 12px; }
-  /* Reference (docs/img/s513_desktop_match.png): each hand card has a solid kind-colored header
-     bar above its dark body -- approximated here as a thick colored top border (JS sets
-     borderTopColor per kind) rather than a full colored-block header, to keep this a real,
-     minimal, in-place diff on the existing DOM structure. */
-  .card-btn { text-align: left; white-space: normal; text-transform: none; border-top: 6px solid transparent; }
-  .rules-text { opacity: 0.75; text-transform: none; }
+  /* Reference (docs/img/s513_desktop_match.png): hull_bar() -- a full-width panel-background bar,
+     filled proportionally to current/max hull (green above 1/3 hull, red at/below), the label +
+     "N/MAX" on the left and armor/vault ("A0 $4") on the right, both inside the same bar. */
+  .hbar { position: relative; height: 30px; background: var(--panel); margin: 8px 0 2px; overflow: hidden; }
+  .hbar-fill { position: absolute; inset: 0 auto 0 0; background: var(--good); }
+  .hbar-fill.low { background: var(--bad); }
+  .hbar-row { position: relative; display: flex; justify-content: space-between; align-items: center; height: 100%; padding: 0 10px; font-size: 0.85rem; font-weight: bold; text-transform: uppercase; }
+  /* pips() -- always exactly 6 fixed squares, filled yellow up to the current energy count,
+     dark/empty beyond -- never scaled to the actual energy cap. */
+  .erow { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; font-size: 0.8rem; opacity: 0.9; text-transform: uppercase; }
+  .epips { display: flex; gap: 4px; }
+  .epip { width: 20px; height: 12px; background: var(--panel); }
+  .epip.full { background: #FAD246; } /* main.c's pips() fill color {250,210,70}, distinct from --gold */
+  .erow .hand-count { margin-left: auto; }
+  /* text_c(W/2, 118, 3, ..., "ROUND %d/%d", ...) -- big, bold, centered. */
+  #round-num-big { text-align: center; font-size: 1.4rem; font-weight: bold; margin: 6px 0; }
+  #hand { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; margin-top: 4px; }
+  /* card_box(): a solid panel-background card with a full-width colored header bar (kind color)
+     holding the name, COST/PWR line, kind/keyword line, wrapped card text, slot number bottom-
+     left -- not a thin colored top border on an otherwise plain button (the old approximation). */
+  .card-btn { text-align: left; white-space: normal; text-transform: none; padding: 0; overflow: hidden; background: var(--panel); border: 3px solid transparent; margin-top: 0; }
+  .card-btn:hover:not(:disabled) { background: var(--panel); }
+  .card-btn.selected { border-color: var(--cursor); }
+  .card-btn.locked-in { border-color: var(--good); }
+  .card-header { padding: 6px 8px; font-weight: bold; text-transform: uppercase; color: var(--text); }
+  .card-body { padding: 8px; }
+  .card-meta { font-weight: bold; }
+  .card-kind { opacity: 0.75; font-size: 0.8rem; margin: 2px 0 6px; }
+  .card-slot-num { opacity: 0.6; font-size: 0.75rem; padding: 0 8px 6px; }
+  .rules-text { opacity: 0.85; text-transform: none; display: block; margin-top: 4px; }
+  /* button(20,906,200,42,"PASS",...) / button(240,906,220,42,"LOCK IN",C_GOOD,...) -- a 2-column
+     row, PASS in locked-grey, LOCK IN accented green when a card is actually selected. */
+  #action-row { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 8px; }
+  #action-row button { margin-top: 0; }
+  #lockin-btn.can-lock { background: var(--good); color: #0b1a10; }
+  #lockin-btn.can-lock:hover:not(:disabled) { background: #3fa864; }
   #log { margin-top: 16px; height: 220px; overflow-y: auto; background: var(--bg); border: 2px solid var(--panel); padding: 8px; font-size: 0.8rem; font-family: var(--mono); border-radius: 0; }
   #match, #game { display: none; }
-  #fx-canvas { width: 100%; max-width: 480px; height: 220px; background: var(--bg); border: 2px solid var(--panel); border-radius: 0; display: block; margin-bottom: 10px; }
+  #fx-canvas { width: 100%; max-width: 480px; height: 220px; background: var(--bg); border: 2px solid var(--panel); border-radius: 0; display: block; margin: 4px 0 10px; }
   #social { margin-top: 16px; border-top: 2px solid var(--panel); padding-top: 12px; }
   #social h2 { font-size: 1rem; margin: 0 0 8px; text-transform: uppercase; }
   #social h3 { font-size: 0.85rem; margin: 14px 0 4px; opacity: 0.9; text-transform: uppercase; }
   .srow { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 6px 0; border-bottom: 1px solid var(--panel); font-size: 0.85rem; }
   .srow:last-child { border-bottom: none; }
   .srow .sid { opacity: 0.75; font-size: 0.75rem; word-break: break-all; text-transform: none; }
-  .srow button { margin-top: 0; padding: 4px 10px; font-size: 0.8rem; }
+  .srow button { display: inline-block; width: auto; margin-top: 0; padding: 4px 10px; font-size: 0.8rem; }
   .smuted { opacity: 0.7; font-size: 0.85rem; }
 </style>
 </head>
 <body>
-<h1>DEADWEIGHT — card battler (browser client, dev build)</h1>
+<h1>DEADWEIGHT</h1>
+<p id="subtitle">Card battler — browser client, dev build</p>
 <div class="warn">
   <b>VS0.5-web, not a shipped client.</b> This is a real, working proof that PARENA's TypeScript
   emitter can drive a live browser client against the real dw_server over the real wire protocol —
@@ -108,18 +143,25 @@
 </div>
 
 <div id="game">
-  <p>Status: <span id="status">—</span> <button id="queue-btn">Queue (random)</button></p>
+  <p>Status: <span id="status">—</span></p>
+  <button id="queue-btn">Queue (random)</button>
 
   <div id="match">
+    <div id="opp-name" style="text-align:center;opacity:0.85;font-size:0.85rem;text-transform:uppercase;"></div>
+    <div class="hbar" id="hbar-opp"><div class="hbar-fill" id="hbar-opp-fill"></div><div class="hbar-row"><span id="hbar-opp-text">HULL —/—</span><span id="hbar-opp-side">A— $—</span></div></div>
+    <div class="erow"><span>Energy</span><span class="epips" id="epips-opp"></span><span class="hand-count" id="hand-count-opp"></span></div>
+
+    <div id="round-num-big">Round —/—</div>
     <canvas id="fx-canvas" width="480" height="220"></canvas>
-    <div id="stats">
-      <div>Round <b id="round-num">0</b></div>
-      <div>Hull You <b id="hull-you">-</b> / Opp <b id="hull-opp">-</b></div>
-      <div>Energy <b id="energy-you">-</b></div>
-      <div>Credits <b id="vault-you">-</b></div>
-      <div>Armor <b id="armor-you">-</b></div>
-    </div>
+
+    <div class="hbar" id="hbar-you"><div class="hbar-fill" id="hbar-you-fill"></div><div class="hbar-row"><span id="hbar-you-text">YOU —/—</span><span id="hbar-you-side">A— $—</span></div></div>
+    <div class="erow"><span>Energy</span><span class="epips" id="epips-you"></span></div>
+
     <div id="hand"></div>
+    <div id="action-row">
+      <button id="pass-btn">Pass</button>
+      <button id="lockin-btn" disabled>Lock in</button>
+    </div>
     <button id="requeue" style="display:none">Queue again</button>
   </div>
 

@@ -5,6 +5,7 @@
 
 import { DeadweightClient } from './client.js';
 import { initWasmProto } from './wasmProto.js';
+import type { RoundStart } from './wasmProto.js';
 import * as rules from './generated/CardRules.js';
 import * as fx from './fx.js';
 import * as account from './account.js';
@@ -32,6 +33,7 @@ let currentEnergy = 0;
 let currentVault = 0;
 let lockMask = 0;
 let locked = false;
+let oppName = '';
 // "before" snapshot for the round about to resolve, captured at ROUND_START, consumed by the next
 // ROUND_RESULT's fx.computeTimeline() call -- see fx.ts's own header comment for the honest,
 // named gap this leaves (energy-delta and burn/regen status visuals are not wired up yet, the
@@ -59,6 +61,48 @@ function cardLabel(id: number): string {
     return `${c.name} (${KIND_NAMES[rules.cardKind(id)]}${c.keyword ? '/' + c.keyword : ''}, cost ${c.cost}${c.credit ? '+' + c.credit + 'cr' : ''}, pow ${c.power})`;
 }
 
+// Real interaction-model parity, not just visual: apps/gui/main.c's click() handler shows clicking
+// a hand card (or the PASS button) only calls select_slot() -- it doesn't submit anything. Only
+// LOCK IN calls lock_selected(), which is what actually sends DW_C_PLAY. selectedSlot mirrors
+// A.sel (null = A.sel's -2 "nothing chosen" sentinel, -1 = PASS chosen, 0..3 = a hand slot).
+let selectedSlot: number | null = null;
+
+function slotLegal(slot: number): boolean {
+    const id = currentHand[slot];
+    return id >= 0 && rules.isLegalPlay(id, currentEnergy, currentVault) && !((lockMask >> slot) & 1);
+}
+
+function selectSlot(slot: number) {
+    if (locked) return;
+    if (slot !== -1 && !slotLegal(slot)) return;
+    selectedSlot = slot;
+    renderHand();
+    updateActionButtons();
+}
+
+function updateActionButtons() {
+    const passBtn = $('pass-btn') as HTMLButtonElement;
+    const lockBtn = $('lockin-btn') as HTMLButtonElement;
+    passBtn.disabled = locked;
+    passBtn.textContent = selectedSlot === -1 ? (locked ? 'Passed' : 'Pass *') : 'Pass';
+    const canLock = !locked && selectedSlot !== null;
+    lockBtn.disabled = !canLock;
+    lockBtn.textContent = locked ? 'Locked' : 'Lock in';
+    lockBtn.classList.toggle('can-lock', canLock);
+}
+
+function lockIn() {
+    if (locked || selectedSlot === null) return;
+    locked = true;
+    renderHand();
+    updateActionButtons();
+    client.play(selectedSlot);
+    log(`locked slot ${selectedSlot}: ${cardLabel(selectedSlot === -1 ? -1 : currentHand[selectedSlot])}`);
+}
+
+// card_box()'s real layout: a solid-panel card with a full-width kind-colored header bar holding
+// the name, then COST/PWR, kind/keyword, wrapped rules text, and a small slot number bottom-left
+// -- not a plain button with a colored top border (the old approximation).
 function renderHand() {
     const handEl = $('hand');
     handEl.innerHTML = '';
@@ -66,38 +110,61 @@ function renderHand() {
         const btn = document.createElement('button');
         btn.className = 'card-btn';
         if (id === -1) {
-            btn.textContent = '(empty slot)';
+            btn.innerHTML = '<div class="card-header" style="background:var(--lock);">—</div><div class="card-body">(empty slot)</div>';
             btn.disabled = true;
         } else {
             const c = cardsData.cards[id];
             const kind = rules.cardKind(id);
-            const legal = rules.isLegalPlay(id, currentEnergy, currentVault) && !((lockMask >> slot) & 1);
-            btn.style.borderTopColor = KIND_COLORS[kind];
-            btn.innerHTML = `<b>${c ? c.name : '#' + id}</b><br><small>${KIND_NAMES[kind]}${c && c.keyword ? ' / ' + c.keyword : ''}</small><br>` +
-                `<small>cost ${c ? c.cost : '?'}${c && c.credit ? ' +' + c.credit + 'cr' : ''} · pow ${c ? c.power : '?'}</small>` +
-                (c && c.text ? `<br><small class="rules-text">${c.text}</small>` : '');
+            const legal = slotLegal(slot);
+            btn.innerHTML =
+                `<div class="card-header" style="background:${KIND_COLORS[kind]};">${c ? c.name : '#' + id}</div>` +
+                `<div class="card-body">` +
+                `<div class="card-meta">Cost ${c ? c.cost : '?'}${c && c.credit ? ' +' + c.credit + 'cr' : ''} · Pwr ${c ? c.power : '?'}</div>` +
+                `<div class="card-kind">${KIND_NAMES[kind]}${c && c.keyword ? ' / ' + c.keyword : ''}</div>` +
+                (c && c.text ? `<span class="rules-text">${c.text}</span>` : '') +
+                `</div><div class="card-slot-num">(${slot + 1})</div>`;
             btn.disabled = !legal || locked;
-            btn.onclick = () => {
-                locked = true;
-                renderHand();
-                client.play(slot);
-                log(`locked slot ${slot}: ${cardLabel(id)}`);
-            };
+            btn.classList.toggle('selected', !locked && selectedSlot === slot);
+            btn.classList.toggle('locked-in', locked && selectedSlot === slot);
+            btn.onclick = () => selectSlot(slot);
         }
         handEl.appendChild(btn);
     });
+}
 
-    const passBtn = document.createElement('button');
-    passBtn.className = 'card-btn pass-btn';
-    passBtn.textContent = 'PASS (+1 energy)';
-    passBtn.disabled = locked;
-    passBtn.onclick = () => {
-        locked = true;
-        renderHand();
-        client.play(-1);
-        log('locked: PASS');
-    };
-    handEl.appendChild(passBtn);
+// hull_bar()/pips(): the opponent's own bars use ROUND_START's *_opp fields, honoring Merkle
+// Blindness's real hidden sentinels (docs/WIRE_PROTOCOL.md: energy_opp/armor_opp == 255 and
+// vault_opp == -128 while the opponent is hidden) rather than always showing a number.
+function sideText(armor: number, vault: number): string {
+    if (armor === 255) return 'A? $?';
+    return `A${armor} $${vault}`;
+}
+
+function pipsHtml(energy: number, hidden: boolean): string {
+    if (hidden) return '<span style="opacity:0.7;">? (hidden)</span>';
+    let html = '';
+    for (let i = 0; i < 6; i++) html += `<span class="epip${i < energy ? ' full' : ''}"></span>`;
+    return html;
+}
+
+function renderBars(f: RoundStart) {
+    ($('round-num-big') as HTMLElement).textContent = `Round ${f.round}/${rules.maxRounds()}`;
+
+    const startHull = rules.startHull();
+    const oppFrac = Math.max(0, f.hullOpp) / startHull;
+    ($('hbar-opp-fill') as HTMLElement).style.width = `${Math.min(1, oppFrac) * 100}%`;
+    ($('hbar-opp-fill') as HTMLElement).classList.toggle('low', f.hullOpp * 3 <= startHull);
+    ($('hbar-opp-text') as HTMLElement).textContent = `${oppName || 'OPP'} ${Math.max(0, f.hullOpp)}/${startHull}`;
+    ($('hbar-opp-side') as HTMLElement).textContent = sideText(f.armorOpp, f.vaultOpp);
+    ($('epips-opp') as HTMLElement).innerHTML = pipsHtml(f.energyOpp, f.energyOpp === 255);
+    ($('hand-count-opp') as HTMLElement).textContent = `Hand ${f.oppHandSize}`;
+
+    const youFrac = Math.max(0, f.hullYou) / startHull;
+    ($('hbar-you-fill') as HTMLElement).style.width = `${Math.min(1, youFrac) * 100}%`;
+    ($('hbar-you-fill') as HTMLElement).classList.toggle('low', f.hullYou * 3 <= startHull);
+    ($('hbar-you-text') as HTMLElement).textContent = `YOU ${Math.max(0, f.hullYou)}/${startHull}`;
+    ($('hbar-you-side') as HTMLElement).textContent = sideText(f.armorYou, f.vaultYou);
+    ($('epips-you') as HTMLElement).innerHTML = pipsHtml(f.energyYou, false);
 }
 
 function setStatus(s: string) {
@@ -148,7 +215,9 @@ async function enterGame(idunaUrl: string, bridgeUrl: string, fallbackName: stri
             setStatus(`queued (${waiting} waiting)`);
         },
         onMatchFound(f) {
+            oppName = f.oppName;
             log(`MATCH_FOUND vs ${f.oppName} (${f.oppKind === 1 ? 'bot' : 'human'}), seat ${f.seat}, seed ${f.seed}`);
+            ($('opp-name') as HTMLElement).textContent = `${f.oppName} (${f.oppKind === 1 ? 'bot' : 'human'})`;
             $('match').style.display = 'block';
         },
         onRoundStart(f) {
@@ -157,20 +226,21 @@ async function enterGame(idunaUrl: string, bridgeUrl: string, fallbackName: stri
             currentVault = f.vaultYou;
             lockMask = f.lockMask;
             locked = false;
+            selectedSlot = null;
             beforeArmorYou = f.armorYou; beforeArmorOpp = f.armorOpp;
             beforeVaultYou = f.vaultYou; beforeVaultOpp = f.vaultOpp;
-            $('round-num').textContent = String(f.round);
-            $('hull-you').textContent = String(f.hullYou);
-            $('hull-opp').textContent = String(f.hullOpp);
-            $('energy-you').textContent = String(f.energyYou);
-            $('vault-you').textContent = String(f.vaultYou);
-            $('armor-you').textContent = String(f.armorYou);
+            renderBars(f);
             renderHand();
+            updateActionButtons();
             log(`round ${f.round} start: hull ${f.hullYou}/${f.hullOpp}, energy ${f.energyYou}, vault ${f.vaultYou}`);
         },
         onPlayReject(f) {
-            locked = false;
+            // Mirrors apps/gui/main.c's own on-reject handling exactly: DW_REJ_ALREADY_LOCKED (4)
+            // leaves A.locked/A.sel alone (nothing to reset, this client shouldn't have been able
+            // to double-submit anyway); any other reason clears both so the player can pick again.
+            if (f.reason !== 4) { locked = false; selectedSlot = null; }
             renderHand();
+            updateActionButtons();
             log(`play rejected (reason ${f.reason}) — try again`);
         },
         onRoundResult(f) {
@@ -335,6 +405,8 @@ async function createAccount() {
 $('start-btn').addEventListener('click', start);
 $('sso-btn').addEventListener('click', signInWithIduna);
 $('create-account-btn').addEventListener('click', createAccount);
+$('pass-btn').addEventListener('click', () => selectSlot(-1));
+$('lockin-btn').addEventListener('click', lockIn);
 applyProductionDefaults();
 checkStickyIdunaSession();
 $('link-btn').addEventListener('click', async () => {

@@ -249,17 +249,69 @@ input border `srgb(255,255,255)` = `#FFFFFF`, button fill `srgb(32,36,50)` = `#2
 page also confirmed `applyProductionDefaults()` is still working correctly post-redeploy (IDUNA
 URL field blank/same-origin, bridge URL auto-filled to `wss://wotan.okemily.com/DEADWEIGHT/ws`).
 
-**Real, honest, named remaining gap**: this is a real, verified first pass on the setup/menu
-screen's chrome (colors, font, borders, casing) — it is not yet a full pixel-for-pixel match of
-every screen. Not done in this pass: the in-match HUD/card layout (`#stats`/`#hand`/`#log`) hasn't
-been restructured to mirror `card_box()`'s actual colored-header-bar card layout beyond a
-approximating colored top-bar; the title `<h1>` isn't scaled to match the desktop's oversized
-title treatment; the ship-shape-per-kind distinction `fx.c` implies isn't reproduced (fx.ts draws
-one fixed ship polygon shape for both kinds, only recoloring it); and Silkscreen is a genuine
-pixel font but not a literal reproduction of `main.c`'s specific 5x7 glyph table. None of this was
-testable against a live match in this pass (no headless-Chrome-drivable match was set up — the
-`/DEADWEIGHT/ws` gap above is exactly why), so the match-screen claims above are about the *code*
-(what colors it will draw), not a screenshotted, playable match.
+**Real, honest, named remaining gap (as of that pass)**: it was a verified first pass on the
+setup/menu screen's chrome only — not yet the in-match HUD/card layout, not yet the title sizing,
+and not live-match-tested at all (no headless-Chrome-drivable match was set up).
+
+**Update (2026-09-28, same day, founder real-time: "continue to ensure DEADWEIGHT is pixel for
+pixel the windows version")** — closed every gap named above, this time verified against a real,
+live, playing match (a throwaway `dw_server --no-auth --fast-forward` + `dw_bot` + WS↔TCP bridge
+on private ports, driven end to end with Playwright/headless Chrome — the actual compiled
+`dist/main.js`/`dist/client.js`, not a mock):
+
+- **Title**: `<h1>` is now just "DEADWEIGHT" at a large scale (matching `text_c(..., 5, ...,
+  "DEADWEIGHT")`'s own huge, left-aligned treatment), with the descriptive "card battler — browser
+  client, dev build" text demoted to a small `#subtitle` line below it — the same two-tier
+  huge-title/smaller-identity-line hierarchy `docs/img/s513_desktop_menu.png` shows
+  ("DEADWEIGHT" then "NODE-CRL5" then "TICKETS: 20/20").
+- **In-match HUD**: real hull bars (`.hbar`/`.hbar-fill`), not text — a panel-background bar filled
+  proportionally to current/max hull, green above ⅓ hull else red (`hull_bar()`'s own exact rule),
+  with the name+fraction on the left and armor/vault (`A0 $4`, or `A? $?` while Merkle-Blindness-
+  hidden, checked against the real `armorOpp===255` wire sentinel) on the right inside the same
+  bar — for BOTH the opponent and yourself, not just yourself as before. Real energy pip rows
+  (`pips()`'s own fixed-6-squares rule, filled yellow up to the current count) for both sides, plus
+  the opponent's live hand-card count and a real `ROUND N/MAX` line using `rules.maxRounds()`
+  (PARENA-compiled, not a guessed constant) — none of this existed as anything but plain unstyled
+  text before.
+- **Hand cards**: `card_box()`'s real layout — a solid full-width kind-colored HEADER BLOCK holding
+  the name (not a thin colored top border), then Cost/Pwr, kind/keyword, wrapped rules text, and a
+  small slot number — in a real 2-column grid matching the reference screenshot's own layout.
+- **Real interaction-model parity, not just visual**: checked `apps/gui/main.c`'s `click()`
+  directly and found clicking a card (or PASS) never submits anything by itself — it only calls
+  `select_slot()`; only LOCK IN (`lock_selected()`) actually sends `DW_C_PLAY`. The browser client
+  previously submitted immediately on card click, a real functional deviation, not just cosmetic.
+  Fixed: clicking a card now only selects it (white frame, matching `state==1`'s selection frame),
+  LOCK IN enables and turns Clearance-Green-accented (matching `button(...,"LOCK IN",C_GOOD,...)`)
+  only once something is selected, and PASS's own label changes to "PASS *"/"PASSED" exactly like
+  `A.sel==-1 ? (locked?"PASSED":"PASS *") : "PASS"`. `onPlayReject`'s reset behavior also now
+  matches `main.c` exactly: `DW_REJ_ALREADY_LOCKED` (4) leaves selection state alone, any other
+  reason clears it.
+- **Real found-and-fixed bug, not new work**: `fx.ts`'s `drawShip()` filled the ship polygon with
+  `#202432` (C_PANEL, the UI chrome background) — the real `apps/gui/fx.c` fills it with a
+  separate, fx-specific color, `DGR` = `{60,64,78}` = `#3C404E`, deliberately distinct from the
+  static-UI panel color (same "fx.c uses its own brighter/distinct palette" finding the prior pass
+  already made for the clash-effect colors). Fixed.
+- **Real correction to the prior pass's own "gap" note**: re-checked `fx.c`'s `draw_ship()`/
+  `ship_poly()` directly rather than trusting the earlier assumption — the desktop client does
+  NOT draw a different ship silhouette per kind, only a different accent color (`acc[s] =
+  KIND3[cardk[s]]`) on the SAME fixed 11-point polygon. `fx.ts`'s `drawShip()` already uses that
+  exact same 11-point polygon (`(34,0),(6,-10),(-6,-22),...` — byte-identical coordinates). This
+  was never a real gap; the prior pass's note was simply wrong, corrected here rather than left
+  standing.
+- **Verified live, pixel-sampled, not just visually similar**: a real match played end to end
+  through the actual compiled client (queue → MATCH_FOUND → ROUND_START → select a card → LOCK IN)
+  against a real bot. ImageMagick-sampled exact hex matches: hull bar fill `srgb(80,200,120)` =
+  `#50C878` (Clearance Green), Offense card header `srgb(215,70,60)` = `#D7463C`, Operations card
+  header `srgb(225,160,40)` = `#E1A028`, Defense card header `srgb(70,140,230)` = `#468CE6`, LOCK
+  IN's enabled-state fill `srgb(80,200,120)` = `#50C878` — every one a byte-exact match to
+  `main.c`'s own constants, not an approximation.
+- **Real, honest, still-not-covered gap**: Silkscreen remains a genuine pixel font, not a literal
+  reproduction of `main.c`'s specific 5x7 glyph table (the brand guide itself calls this an
+  acceptable substitute — not treated as a gap). The round-log line still uses `#log`'s own
+  scrolling multi-line history rather than reproducing the desktop's single most-recent-round
+  summary line (`R1 YOU -3 +0 OPP -0 +0`) — a real, deliberate, named simplification (the scrolling
+  log is strictly more informative, not a downgrade) rather than an oversight. Draft mode still has
+  no browser UI at all (`web/README.md`'s own long-standing honest gap, unrelated to this pass).
 
 ## What's NOT built yet — real, phased, not glossed over
 

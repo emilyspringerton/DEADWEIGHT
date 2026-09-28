@@ -209,7 +209,7 @@ function drawShip(c: CanvasRenderingContext2D, x: number, y: number, dir: number
     c.moveTo(34, 0); c.lineTo(6, -10); c.lineTo(-6, -22); c.lineTo(-24, -22); c.lineTo(-14, -6);
     c.lineTo(-30, -6); c.lineTo(-30, 6); c.lineTo(-14, 6); c.lineTo(-24, 22); c.lineTo(-6, 22); c.lineTo(6, 10);
     c.closePath();
-    c.fillStyle = '#202432'; c.fill(); // Corporate Grey (C_PANEL)
+    c.fillStyle = '#3C404E'; c.fill(); // fx.c's DGR (Dim Grey, fx-specific -- NOT C_PANEL/Corporate Grey)
     c.strokeStyle = color; c.lineWidth = 2; c.stroke();
     c.restore();
 }
