@@ -62,6 +62,7 @@ public final class MainActivity extends Activity implements Session.Listener {
     private int tickets = 0;
     private boolean isGuest = true, isFounder = false;   // isFounder is session-local only, matching A.is_founder
     private String redeemMsg = "";
+    private int waitingCount = 0;   // apps/gui/main.c's A.waiting -- how many players S_QUEUED reported waiting
 
     @Override protected void onCreate(Bundle b) {
         super.onCreate(b);
@@ -82,7 +83,7 @@ public final class MainActivity extends Activity implements Session.Listener {
 
     // ---------------- Session.Listener (reader thread -> UI thread) ----------------
     @Override public void onState(Session.State s) { ui(this::render); }
-    @Override public void onQueued(int w) { ui(this::render); }
+    @Override public void onQueued(int w) { ui(() -> { waitingCount = w; render(); }); }
     @Override public void onMatchFound(MatchModel m) { ui(() -> { selectedSlot = -2; lastRound = ""; fxRound = null; fxTimeline = null; menuMode = false; render(); }); }
     @Override public void onRoundStart(MatchModel m) { ui(() -> { selectedSlot = -2; render(); }); }
     @Override public void onPlayAck(MatchModel m) { ui(this::render); }
@@ -296,21 +297,31 @@ public final class MainActivity extends Activity implements Session.Listener {
 
     // ---------------- menu (brutalist parity pass -- docs/ANDROID_PARITY_NORTHSTAR.md) ----------------
 
-    private PixelLabel label(String t, float scale, int color) {
+    private PixelLabel label(String t, float scale, int color) { return label(t, scale, color, root, Gravity.CENTER_HORIZONTAL); }
+
+    /** Variant for a non-root parent (e.g. a draft column) and a caller-chosen gravity, matching
+     *  apps/gui/main.c's text() (left) vs text_c() (centered) split at each individual call site. */
+    private PixelLabel label(String t, float scale, int color, LinearLayout parent, int gravity) {
         PixelLabel v = new PixelLabel(this, t, scale, color);
-        v.setGravity(Gravity.CENTER_HORIZONTAL);
+        v.setGravity(gravity);
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1, -2);
         lp.topMargin = (int) (6 * scale);
-        root.addView(v, lp);
+        parent.addView(v, lp);
         return v;
     }
 
     private BrutButton brutButton(String label, int color, boolean enabled, Runnable onClick) {
+        return brutButton(label, color, enabled, onClick, root, 130);
+    }
+
+    /** Variant for a non-root parent (e.g. a draft column) and a caller-chosen height, matching
+     *  apps/gui/main.c's button() taking an explicit w/h per call site rather than one fixed size. */
+    private BrutButton brutButton(String label, int color, boolean enabled, Runnable onClick, LinearLayout parent, int heightPx) {
         BrutButton b = new BrutButton(this);
         b.set(label, color, enabled, onClick);
-        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1, 130);
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1, heightPx);
         lp.topMargin = 18;
-        root.addView(b, lp);
+        parent.addView(b, lp);
         return b;
     }
 
@@ -372,38 +383,62 @@ public final class MainActivity extends Activity implements Session.Listener {
         catch (Exception e) { return "?"; }
     }
 
+    // apps/gui/main.c has no separate "connected, click Find Match" screen -- autoQueue means
+    // this state is normally passed straight through -- but it's a real, reachable state (e.g. a
+    // draft-mode requeue that doesn't auto-fire), so it gets the same brutalist treatment as
+    // everything else rather than staying the one screen still on stock widgets.
     private void renderLobby(Session s) {
-        text("Connected", 26, Theme.TEXT);
-        text("Ready for a match.", 16, Theme.DIM);
-        button("FIND MATCH", v -> s.queue(), null, 0);
-        button("Disconnect", v -> disconnect(), null, 0);
+        label("DEADWEIGHT", 5, Theme.TEXT);
+        label("CONNECTED", 2, Theme.GOOD);
+        brutButton("FIND MATCH", Theme.GOOD, true, s::queue);
+        brutButton("DISCONNECT", Theme.BAD, true, this::disconnect);
     }
 
+    // Matches apps/gui/main.c's draw_queue(): big centered "SEARCHING...", waiting count once
+    // welcomed (S_QUEUED's own waiting field, apps/gui/main.c's A.waiting), the player's own
+    // name, and a single CANCEL button -- same content, same layout, brutalist chrome.
     private void renderQueue(Session s) {
-        if (s.isDraft() && s.deck() != null) text("Deck " + s.deckId() + " locked in (" + s.deck().length + " cards).", 16, 0xFF468CE6);
-        text("Searching for an opponent…", 24, Theme.TEXT);
-        text("A bot will take the seat if no human is waiting.", 14, Theme.DIM);
-        button("Cancel", v -> { s.leave(); }, null, 0);
+        label("SEARCHING...", 4, Theme.TEXT);
+        label(s.state() == Session.State.QUEUED ? "IN QUEUE  (" + waitingCount + " WAITING)" : "CONNECTING...", 2, Theme.DIM);
+        label("PLAYING AS " + (authReady ? authName : "?"), 2, Theme.DIM);
+        if (s.isDraft() && s.deck() != null) label("DECK " + s.deckId() + " LOCKED IN (" + s.deck().length + " CARDS)", 1, Theme.BLUE);
+        brutButton("CANCEL", Theme.BAD, true, s::leave);
     }
 
     private void disconnect() { if (session != null) session.close(); session = null; menuMode = true; status = ""; render(); }
 
+    // Matches apps/gui/main.c's draw_end(): big centered VICTORY/DEFEAT/DRAW in the outcome's own
+    // color, the end reason, the hull comparison, then either SAME DECK/REDRAFT (draft mode) or
+    // PLAY AGAIN (card mode), then MENU. Real, named simplification kept from before this pass
+    // (not something this pass changed): the desktop client routes a draft-mode match end through
+    // its own S_DRAFT_HUB screen first (win-streak "burned proxies" tracker, RESUME UPLINK /
+    // ABORT & EXTRACT) -- Android has no Draft Hub screen or win/loss-streak state at all and
+    // goes straight from match-end to SAME DECK/REDRAFT, same as before this pass. Building the
+    // Hub is new stateful feature work (a whole screen plus win/loss tracking), not a UI reskin,
+    // so it stays a named, deferred gap rather than a half-built stand-in.
     private void renderEnd(Session s, MatchModel m) {
         String res = m.result == Protocol.RESULT_WIN ? "VICTORY" : m.result == Protocol.RESULT_LOSS ? "DEFEAT" : "DRAW";
-        int col = m.result == Protocol.RESULT_WIN ? Theme.GOOD : m.result == Protocol.RESULT_LOSS ? Theme.BAD : 0xFFFAD246;
-        text(res, 40, col).setGravity(Gravity.CENTER);
-        text("vs " + m.oppName + "  |  " + m.hullYou + " - " + m.hullOpp + "  |  " + REASONS[Math.max(0, Math.min(4, m.endReason))], 16, Theme.DIM).setGravity(Gravity.CENTER);
+        int col = m.result == Protocol.RESULT_WIN ? Theme.GOOD : m.result == Protocol.RESULT_LOSS ? Theme.BAD : Theme.DIM;
+        label(res, 6, col);
+        label(REASONS[Math.max(0, Math.min(4, m.endReason))].toUpperCase(java.util.Locale.ROOT), 2, Theme.DIM);
+        label("YOU " + Math.max(0, m.hullYou) + "  -  " + m.oppName + " " + Math.max(0, m.hullOpp), 2, Theme.TEXT);
         if (s.isDraft()) {
-            button("SAME DECK", v -> s.queue(true), null, 0);
-            button("REDRAFT", v -> s.queue(false), null, 0);
-        } else button("PLAY AGAIN", v -> { s.queue(); }, null, 0);
-        button("Menu", v -> disconnect(), null, 0);
+            brutButton("SAME DECK", Theme.GOOD, true, () -> s.queue(true));
+            brutButton("REDRAFT", Theme.GOOD, true, () -> s.queue(false));
+        } else {
+            brutButton("PLAY AGAIN", Theme.GOOD, true, s::queue);
+        }
+        brutButton("MENU", Theme.LOCK, true, this::disconnect);
     }
 
+    // Matches apps/gui/main.c's draw_draft(): pick counter, copies-left tally, two offered cards
+    // (CardView already brutalist since Phase 1) each with its own 1x/2x/3x pick buttons, then the
+    // deck-so-far list, then LEAVE -- same content and order, brutalist chrome throughout (the
+    // 1x/2x/3x/Leave buttons were the one part of this screen still on stock android.widget.Button).
     private void renderDraft(Session s) {
         DraftModel d = s.draft();
-        text("DRAFT  pick " + Math.min(d.pickNo + 1, d.total) + " / " + d.total, 26, Theme.TEXT).setGravity(Gravity.CENTER);
-        text("Copies left:   1x " + d.left[0] + "     2x " + d.left[1] + "     3x " + d.left[2], 16, Theme.DIM).setGravity(Gravity.CENTER);
+        label("DRAFT  PICK " + Math.min(d.pickNo + 1, d.total) + "/" + d.total, 3, Theme.TEXT);
+        label("LEFT  1X: " + d.left[0] + "   2X: " + d.left[1] + "   3X: " + d.left[2], 2, Theme.DIM);
         LinearLayout row = new LinearLayout(this);
         row.setWeightSum(2);
         root.addView(row, new LinearLayout.LayoutParams(-1, 0, 1));
@@ -419,19 +454,17 @@ public final class MainActivity extends Activity implements Session.Listener {
             col.addView(mults, new LinearLayout.LayoutParams(-1, -2));
             for (int m = 1; m <= 3; m++) {
                 final int mult = m;
-                Button b = button(m + "x", v -> s.pick(idx, mult), mults, 1, 130);
-                b.setEnabled(d.canPick(m));
+                brutButton(m + "X", Theme.GOOD, d.canPick(m), () -> s.pick(idx, mult), mults, 130);
             }
         }
-        StringBuilder sb = new StringBuilder();
-        for (DraftModel.Pick p : d.picks()) sb.append(p.mult).append("x ").append(CardText.name(p.card)).append('\n');
+        label("YOUR DECK SO FAR (" + d.picks().size() + "/" + d.total + ")", 2, Theme.DIM, root, Gravity.START);
+        LinearLayout deckCol = new LinearLayout(this);
+        deckCol.setOrientation(LinearLayout.VERTICAL);
+        for (DraftModel.Pick p : d.picks()) label(p.mult + "X " + CardText.name(p.card), 2, Theme.TEXT, deckCol, Gravity.START);
         ScrollView sv = new ScrollView(this);
-        TextView deckText = new TextView(this);
-        deckText.setText("Your deck so far (" + d.picks().size() + "/" + d.total + ")\n" + sb);
-        deckText.setTextSize(15); deckText.setTextColor(Theme.DIM);
-        sv.addView(deckText);
+        sv.addView(deckCol);
         root.addView(sv, new LinearLayout.LayoutParams(-1, 240));
-        button("Leave", v -> { s.leave(); disconnect(); }, null, 0, 110);
+        brutButton("LEAVE", Theme.LOCK, true, () -> { s.leave(); disconnect(); }, root, 110);
     }
 
     private void renderMatch(Session s, MatchModel m) {

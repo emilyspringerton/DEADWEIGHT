@@ -91,6 +91,13 @@ the launch target for Itch.io and Steam; Android is catching up per the S555 not
 - **Draft mode** is implemented end-to-end — server, bots, Windows GUI, Android client — and
   covered by unit and end-to-end tests. It is **not deployed to the live server yet**, and the
   Android draft screens have only been type-checked against the SDK, never run on a real device.
+- **Android Phase 1C (2026-09-28)**: the queue, lobby, draft, and match-end screens are now also
+  brutalist-rendered (`PixelLabel`/`BrutButton`, matching the menu and in-match UI from earlier
+  phases) instead of stock `android.widget.*` chrome — see `docs/ANDROID_PARITY_NORTHSTAR.md`.
+  Real, named gaps, not silently dropped: Friends & Duels has no Android screen at all yet (a new
+  feature, not a reskin), and Android has no Draft Hub screen (win/loss-streak tracking, Resume
+  Uplink/Abort & Extract) — draft-mode match end goes straight to SAME DECK/REDRAFT instead, same
+  as before this pass.
 - **Constructed decks (bring your own deck)** — not built.
 - **Accounts (IDUNA guest auth, tiered Draft tickets, redeem codes, Uncapped Draft Runs)** are real
   and live against production. The GUI client speaks real TLS (mbedTLS, bound via PARENA —

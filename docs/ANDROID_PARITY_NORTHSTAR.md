@@ -105,13 +105,40 @@ until scoped.
     feature (friend lists, requests, duel challenges) with no client-side code to re-skin; left
     out of the menu entirely rather than shipped as a dead button, named as real future work below
     rather than silently dropped.
-- **Phase 1C — remaining screens (queue/lobby/draft/match-end/social) — not started.** These
-  still render via `text()`/`button()`'s own `android.widget.*` helpers in `MainActivity`
-  (theme-colored, but still host-widget chrome: rounded corners, ripple, system font) — a real,
-  visible gap from the Windows client's fully brutalist `draw_queue()`/`draw_draft()`/`draw_end()`
-  the founder's "full java parity" ask hasn't reached yet. In-match UI (`CardView`/`BarView`/
-  `FxView`) and now the menu are the two screens that got the real treatment; everything else is
-  phased next work, not forgotten.
+- **Phase 1C — queue/lobby/draft/match-end screens — done** (2026-09-28, part of the founder's
+  broader "get DEADWEIGHT at parity with windows for the android and wasm client... all the ui all
+  the affordances" ask). `renderQueue`/`renderLobby`/`renderDraft`/`renderEnd` in `MainActivity`
+  now build `PixelLabel`/`BrutButton` (same primitives Phase 1B's menu pass already established)
+  instead of `TextView`/`Button`/`ScrollView`+`TextView` — matching `apps/gui/main.c`'s
+  `draw_queue()`/`draw_draft()`/`draw_end()` content and layout exactly (queue now shows the real
+  waiting count from `S_QUEUED`'s own payload, previously received but never displayed; draft's
+  1x/2x/3x pick buttons and LEAVE are brutalist; match-end shows the same big VICTORY/DEFEAT/DRAW
+  plus hull comparison and reason). `renderMatch`'s PASS/LOCK IN buttons were left as-is (out of
+  this phase's scope — Phase 1 already brutalist-rendered the rest of that screen).
+  - **Two real, named gaps found and left un-built, not silently reskinned as if complete**:
+    (1) Android has no Draft Hub screen at all (`apps/gui/main.c`'s `S_DRAFT_HUB` — win-streak
+    "burned proxies" tracker, RESUME UPLINK/ABORT & EXTRACT) and no client-side win/loss-streak
+    state to back one; a draft-mode match end goes straight to SAME DECK/REDRAFT, same as before
+    this pass. Building the Hub is new stateful feature work, not a UI reskin, and doing it under
+    this phase's "reskin existing screens" banner would have meant either skipping real state
+    tracking or over-scoping a supposedly-mechanical pass — named here as real, deferred work
+    instead. (2) Social (Friends & Duels, `S_SOCIAL`) still has no Android screen at all — already
+    named as "a whole new feature, not a redraw" in Phase 1B above; unchanged this pass.
+  - Verified: `javac --release 8` against the real `com.google.android:android:4.1.1.4` Maven
+    Central stub jar — clean, every `src/main` file (same method Phase 1/1B used; the jar itself
+    had to be re-fetched this session, wasn't cached). Bazel was checked again and is still not
+    available in this sandbox (no `bazel`/`bazelisk` binary anywhere on `PATH` or common install
+    locations) — same limitation Phase 1B hit. Found a working full JDK in this sandbox that Phase
+    1B didn't use (`EINHORN_SURVIVAL/jdk25`, real `javac`+`java` 25.0.4 — the previously-tried
+    `.local/opt/jdk-21` install has a broken `libjli.so`), which made it possible to compile and
+    **actually run** all four plain-JVM test mains directly, not just `CoreTest`: `CoreTest` (228
+    checks), `ParityTest` against the real, current `tests/parity_vectors.txt` (24,097 vectors, 0
+    failures — CardRules.java's C parity), `core.FxParityTest` against `tests/fx_parity_vectors.txt`
+    (9,941 vectors / 9,968 checks, 0 failures — FxRules.java's C parity), and `IntegrationTest`
+    against the real, already-built `build/dw_server`/`build/dw_bot` binaries (a full real match,
+    6 rounds, plus a real draft-to-deck-to-requeue flow, 0 failures) — a strictly higher
+    verification bar than any prior phase reached in this sandbox, though still never run on an
+    actual Android device/emulator (none exists here, same limitation every phase has named).
 - **Phase 3 / 4 — not started** (phase 4 still blocked on the open question above). Tracked in
   `EMILY/BACKLOG.md` SECTION 555.
 
