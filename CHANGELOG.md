@@ -1,6 +1,7 @@
 # CHANGELOG
 
 ## 2026-09-28
+- Android 'eat more with PARENA': new account_rules_scalar.prn (PARENA) fixes a real 3-way hand-duplicated 'password needs 8+ characters' rule across apps/gui/main.c, MainActivity.java, and web/src/account.ts. Wired into C and Java; also fixed core/account_rules.c never being linked into dw_gui's build since 2026-09-25. See docs/ANDROID_PARITY_NORTHSTAR.md. (sess-20260923-1030-4a526255)
 - Real in-match pixel-for-pixel parity pass: hull/energy bars, card_box()-style colored-header cards, real select-then-lock-in interaction model matching apps/gui/main.c's click() exactly, ship-fill-color bugfix, and a correction to a prior pass's wrong ship-shape-per-kind claim. Live-verified via Playwright against a real match, redeployed to wotan.okemily.com/DEADWEIGHT. (sess-20260923-1030-4a526255)
 - IDUNA SSO wired (src/sso.ts + account.ts loginWithSso, reusing WOTAN's live iam.okemily.com pattern) and the native wasm client deployed to WOTAN/DEADWEIGHT/ (bridge systemd unit + nginx WS path + the real built bundle) -- only the live-box sudo-queue/deploy run remains. See docs/NATIVE_WASM_CLIENT_NORTHSTAR.md. (sess-20260923-1030-4a526255)
 - feat(android): Phase 1C -- queue/lobby/draft/match-end screens brutalist parity (PixelLabel/BrutButton), matching apps/gui/main.c's draw_queue/draw_draft/draw_end; verified via javac stub-jar compile + all 4 plain-JVM test suites run live (CoreTest/ParityTest/FxParityTest/IntegrationTest, 0 failures) (sess-20260923-1030-4a526255)
