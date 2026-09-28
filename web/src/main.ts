@@ -192,6 +192,15 @@ async function enterGame(idunaUrl: string, bridgeUrl: string, fallbackName: stri
     idunaBaseUrl = idunaUrl;
     $('setup').style.display = 'none';
     $('game').style.display = 'block';
+    // Real bug, found live (2026-09-28, founder repro: connect then immediately click Queue):
+    // the button used to start enabled and only got disabled *after* being clicked, so a click
+    // that landed before the server's WELCOME (IDUNA token verification is a real network round
+    // trip, not instant) sent QUEUE while the connection was still S_NEEDAUTH/S_VERIFYING on the
+    // server side -- an automatic DW_ERR_BAD_STATE (code 4), which also closes the connection
+    // (send_error always sets close_after_flush). Disabled here, at the very start of connecting,
+    // and re-enabled only by the onState('ready') handler below -- the same instant WELCOME
+    // actually arrives.
+    ($('queue-btn') as HTMLButtonElement).disabled = true;
 
     if (currentAccount) initSocial();
 
@@ -201,11 +210,17 @@ async function enterGame(idunaUrl: string, bridgeUrl: string, fallbackName: stri
     client = new DeadweightClient(bridgeUrl, {
         onState(s) {
             setStatus(s);
+            const queueBtn = $('queue-btn') as HTMLButtonElement;
             if (s === 'ready' && pendingMatchToken) {
                 const tok = pendingMatchToken;
                 pendingMatchToken = null;
                 client.queue(0, tok);
-                ($('queue-btn') as HTMLButtonElement).disabled = true;
+                queueBtn.disabled = true;
+            } else {
+                // Only 'ready' means the server has actually WELCOMEd this connection -- every
+                // other state (connecting/queued/in_match/error/closed) must keep this disabled,
+                // see enterGame's own header comment on the ERROR-4 race this closes.
+                queueBtn.disabled = s !== 'ready';
             }
         },
         onLog(line) {
