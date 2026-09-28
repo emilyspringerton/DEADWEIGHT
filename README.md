@@ -275,18 +275,18 @@ hand-written `proto.ts`) instead of the old TS port. A real end-to-end match (7 
 live `dw_bot`/`dw_server` over the real WS↔TCP bridge) was played through the exact compiled
 browser code with 0 failures — see `web/README.md`'s "Verified (2026-09-28)" section.
 
-**IDUNA SSO and hosting are also wired now**: `web/src/sso.ts` + `account.ts`'s `loginWithSso`
-reuse WOTAN's already-live `iam.okemily.com` redirect pattern (verified against the real local
-IDUNA instance — a bad token returned a real 401, not a mock). The actual built bundle is deployed
-to `WOTAN/DEADWEIGHT/` (plain copy, matching WOTAN's own no-build-step convention) and linked from
-every WOTAN page's nav ("Play"); `ops/systemd/dw-ws-bridge.service` + `WOTAN/ops/nginx-wotan.conf`'s
-new `/DEADWEIGHT/ws` location carry the real network path (live-verified: started the bridge
-against the actual production `dw_server`, got a real relayed byte response back). **Real, honest
-remaining gap**: `sudo-queue/94-deadweight-wotan-ws-bridge.sh` and `~/wotan-deploy.sh` haven't
-actually been run on the live box yet (this sandbox has no passwordless sudo) — once they are,
-`wotan.okemily.com/DEADWEIGHT` is live. See `docs/NATIVE_WASM_CLIENT_NORTHSTAR.md` for the full
-account, including an earlier Emscripten attempt that worked technically but was rejected by the
-founder in favor of this approach.
+**IDUNA SSO is wired**: `web/src/sso.ts` + `account.ts`'s `loginWithSso` reuse WOTAN's already-live
+`iam.okemily.com` redirect pattern (verified against the real local IDUNA instance — a bad token
+returned a real 401, not a mock). **The client is genuinely live**: `https://wotan.okemily.com/
+DEADWEIGHT/` serves the real page (curl-verified 200 for the HTML, the compiled JS, and the wasm
+module itself), deployed via WOTAN's own `~/wotan-deploy.sh` and linked from every WOTAN page's
+nav ("Play"). **Real, honest remaining gap**: it can't play a match yet — `ops/systemd/
+dw-ws-bridge.service` + `WOTAN/ops/nginx-wotan.conf`'s new `/DEADWEIGHT/ws` location are written
+(the bridge itself was live-verified standalone against the real production `dw_server`) but
+`sudo-queue/94-deadweight-wotan-ws-bridge.sh` needs real sudo this sandbox doesn't have, so the WS
+path still 404s on the live site until someone runs it. See `docs/NATIVE_WASM_CLIENT_NORTHSTAR.md`
+for the full account, including an earlier Emscripten attempt that worked technically but was
+rejected by the founder in favor of this approach.
 
 ## CI / releases
 
