@@ -1,0 +1,26 @@
+# DEADWEIGHT browser-client WebSocket<->TCP bridge (user unit). FILES ONLY -- not installed/
+# enabled by this repo. See ops/systemd/README.md.
+#
+# Relays wss:// connections (terminated by nginx, see WOTAN/ops/nginx-wotan.conf's /DEADWEIGHT/ws
+# location) to the real dw_server TCP port. Binds 127.0.0.1 only -- ExecStart's --ws-host makes
+# that explicit rather than relying on a firewall rule, matching sudo-queue/62's Asterisk-WS
+# loopback-only precedent. This process is dumb byte relay only (web/bridge/ws-tcp-bridge.js's own
+# header comment) -- it is never the place wire-protocol semantics live.
+[Unit]
+Description=DEADWEIGHT browser client WebSocket<->TCP bridge
+After=network-online.target dw-server.service
+Wants=network-online.target
+StartLimitIntervalSec=300
+StartLimitBurst=10
+
+[Service]
+Type=simple
+EnvironmentFile=%h/.config/deadweight/dw.env
+WorkingDirectory=%h/DEADWEIGHT/web/bridge
+ExecStartPre=/usr/bin/test -d %h/DEADWEIGHT/web/bridge/node_modules/ws
+ExecStart=/usr/bin/node %h/DEADWEIGHT/web/bridge/ws-tcp-bridge.js --ws-host 127.0.0.1 --ws-port ${DW_WS_BRIDGE_PORT} --tcp-host 127.0.0.1 --tcp-port ${DW_PORT}
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=default.target

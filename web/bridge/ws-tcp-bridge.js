@@ -8,7 +8,11 @@
 // WebSocket connection and one TCP connection to dw_server. The real protocol is implemented
 // exactly once, in web/src/proto.ts (browser side) and core/ (server side).
 //
-// Usage: node ws-tcp-bridge.js [--ws-port 8765] [--tcp-host 127.0.0.1] [--tcp-port 7900]
+// Usage: node ws-tcp-bridge.js [--ws-host 0.0.0.0] [--ws-port 8765] [--tcp-host 127.0.0.1] [--tcp-port 7900]
+//
+// --ws-host defaults to 0.0.0.0 (dev convenience, connect from anywhere). Production deploys
+// behind an nginx wss:// proxy (see ops/systemd/dw-ws-bridge.service, WOTAN/ops/nginx-wotan.conf)
+// pass --ws-host 127.0.0.1 so this process is never reachable except through nginx.
 'use strict';
 const net = require('net');
 const { WebSocketServer } = require('ws');
@@ -18,12 +22,13 @@ function arg(name, def) {
     return i === -1 ? def : process.argv[i + 1];
 }
 
+const wsHost = arg('--ws-host', '0.0.0.0');
 const wsPort = parseInt(arg('--ws-port', '8765'), 10);
 const tcpHost = arg('--tcp-host', '127.0.0.1');
 const tcpPort = parseInt(arg('--tcp-port', '7900'), 10);
 
-const wss = new WebSocketServer({ port: wsPort });
-console.log(`ws-tcp-bridge: listening ws://0.0.0.0:${wsPort} -> tcp ${tcpHost}:${tcpPort}`);
+const wss = new WebSocketServer({ host: wsHost, port: wsPort });
+console.log(`ws-tcp-bridge: listening ws://${wsHost}:${wsPort} -> tcp ${tcpHost}:${tcpPort}`);
 
 wss.on('connection', (ws) => {
     const tcp = net.connect(tcpPort, tcpHost);

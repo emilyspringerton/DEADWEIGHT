@@ -12,6 +12,10 @@ for a in ripper wall mirror; do systemctl --user enable --now dw-bot@$a; done   
 # draft queue: its own pool of 3 (random and draft are separate queues)
 cp 'ops/systemd/dw-draft-bot@.service' ~/.config/systemd/user/ && systemctl --user daemon-reload
 for a in ripper wall mirror; do systemctl --user enable --now dw-draft-bot@$a; done
+# browser/wasm client bridge (WOTAN's wotan.okemily.com/DEADWEIGHT hosting, see
+# docs/NATIVE_WASM_CLIENT_NORTHSTAR.md) -- npm i in web/bridge/ first if node_modules/ws is missing:
+cp ops/systemd/dw-ws-bridge.service ~/.config/systemd/user/ && systemctl --user daemon-reload
+systemctl --user enable --now dw-ws-bridge
 ```
 
 **The EnvironmentFile is required, on purpose.** `ecowar-matchmaker.service` sat dead for 5 days behind a missing
