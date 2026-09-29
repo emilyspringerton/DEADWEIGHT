@@ -1,5 +1,56 @@
 # CHANGELOG
 
+## 2026-09-29 (cont.)
+
+- feat(web,fx): match-end banner, rings badge, explosion/victory SFX; also root-caused a real
+  stale-deployment bug. Founder real-time, after reporting what turned out to be a correct
+  armor-soak result, not a bug (round-start log now also prints armor/energy/credits for both
+  players so this is legible from the log alone, `web/src/main.ts`'s new `meterLabel()`): "it
+  still doesnt say at the end oof the game if you won or lost it needs to have particle effects
+  like explosions if you loose with apporpriate old school ship explosion noises similar to
+  noises we already have and if you win make it hive you a ring and have gold bullion particles
+  exploding off of it show how many rings you have for now you cant do anything with them but
+  have it show the rings in the interface next to the utc clock have a very simple icon like a
+  battery indicator on a phone".
+  - `apps/gui/main.c`'s own `S_END` screen already draws a big "VICTORY"/"DEFEAT"/"DRAW" text
+    (`text_c(W/2, 220, 6, ...)`) and `fx_match_end()` already fires a gold/green/white particle
+    burst on a win (K_COIN/K_SPARK/K_RING) or red shards + grey smoke on a loss -- the browser
+    client never surfaced any of this as visible text, only a small `#status` line. Added a
+    prominent `#end-banner` (2.2rem, colored `--good`/`--bad`/`--dim`) shown from `onMatchEnd`,
+    synced with the existing particle burst.
+  - `apps/gui/sfx.h`/`sfx.c`: two new synthesized cues, `SFX_EXPLOSION` (deep sub-bass boom +
+    distorted low growl + 8-hit debris scatter + a long low rumble tail, the "old school ship
+    explosion" ask) and `SFX_VICTORY` (a bright resolving major chord + bell arpeggio standing in
+    for the gold-bullion/ring burst already on screen), both CLASH-priority so they dominate.
+    Wired into `apps/gui/fx.c`'s existing `fx_match_end()` (one call site, both native and wasm
+    hosts get it for free) plus a loss-only screen shake. `tests/test_sfx.c` extended (191 checks,
+    0 failures, ASan+UBSan); `scripts/build_wasm_fx.sh` rebuilds `dw_fx.wasm` unmodified.
+  - Rings = this player's total match wins -- reused IDUNA's existing
+    `game_player_stats.wins` via the already-public `GET .../players/{id}/stats` (same call
+    `social.getProfile()` already makes for the Friends panel), not a new counter or endpoint. A
+    small flat gold ring-outline SVG (matching the brutalist no-gradients rule, not an ornate
+    trophy) plus a count sits in a new `#hud-top-row` next to the UTC clock, refreshed on connect
+    and after every win.
+  - Real, found-live process bug, not caused by this pass: `WOTAN/DEADWEIGHT/`'s checked-in
+    `dist/` had silently drifted behind this repo's own source by several real, already-shipped
+    features (the entire fxWasm animation engine, round timer, UTC clock -- `dist/fxWasm.js` and
+    `dist/generated/dw_fx.wasm` didn't exist there at all), despite this file's own 2026-09-29
+    entry above claiming those were deployed. Root cause: `wotan-deploy.sh` rsyncs `--delete`
+    *from* the `WOTAN` git checkout, so a prior ad hoc deploy straight to `/var/www/wotan`
+    (bypassing that checkout) was silently reverted the next time the script ran for anything
+    else, including the S513/2026-09-25-era unrelated fixes committed since. Fixed by redeploying
+    through the checkout properly this time (`WOTAN@2597ce5`) and reconfirmed live via a
+    byte-for-byte `diff` of `wotan.okemily.com/DEADWEIGHT/dist/main.js` against the freshly built
+    local file, not just an HTTP 200. Future DEADWEIGHT web deploys must go through
+    `WOTAN/DEADWEIGHT/` + `wotan-deploy.sh`, never directly into `/var/www/wotan`.
+  - Verified: full native `scripts/build.sh` green (rules/fx-rules/protocol/match/draft/sfx/brain
+    suites + E2E, all ASan+UBSan, 0 failures across 1.27M+ checks); `tsc` clean; `dw_fx.wasm` and
+    `dw_protocol.wasm` rebuilt via their existing, unmodified build scripts. Not independently
+    live-browser-verified this pass (a local Playwright run hit IDUNA's CORS policy blocking
+    cross-origin guest-register from a bare `python3 -m http.server` origin -- a pre-existing local
+    dev-flow gap named in `web/README.md`'s own "honest status/limits" section, not something this
+    pass introduced or fixed) -- relying on the layered checks above plus the live diff.
+
 ## 2026-09-29
 - feat(web): cookie-based guest identity, real random in-universe names, a visible burn/regen status log, round timer + UTC clock, win/loss particle animations, and a futuristic tablet-readout card skin. Founder real-time, batched over several messages: "it needs to use a cookie to track the account" / "it needs to use account names like the windows client does random in universe names" / "also bring in the damage log" / "add an awesome victory animation also an awesome separate defeat animation use like hella particle effects in both and a bit of screen flash but keep it safe for our sensitive screen flash people" / "make the connect button green and the IDUNA button yellow" / "improve the reveal cards to look more like a futureistic ... readout screen" (refined to "1% more sqewmorphic ... a games tablet from the future") / "we are missing the round timer add that to the display as well as the UTC time".
   - `web/src/account.ts`: guest identity now persists via a `dw_account_v1` cookie (400-day max-age, `SameSite=Lax`, `Secure` on https) instead of `localStorage`.

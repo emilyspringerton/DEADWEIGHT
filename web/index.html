@@ -74,7 +74,15 @@
   #sso-btn { background: var(--gold); color: #241a00; }
   #sso-btn:hover:not(:disabled) { background: #e0b232; }
   #status { font-weight: bold; text-transform: uppercase; }
-  #utc-clock { text-align: right; font-size: 0.75rem; opacity: 0.7; text-transform: uppercase; margin: -6px 0 10px; }
+  #hud-top-row { display: flex; justify-content: space-between; align-items: center; margin: -6px 0 10px; }
+  #utc-clock { font-size: 0.75rem; opacity: 0.7; text-transform: uppercase; }
+  /* Rings: 1 per match win (IDUNA's existing per-player wins counter, game_online.go's own
+     playerStats -- no new backend state). "Simple icon like a battery indicator on a phone" --
+     a single flat gold ring glyph, not an ornate trophy, matching this page's own brutalist
+     no-gradients rule (docs/BRAND_STYLE_GUIDE.md). Founder real-time, 2026-09-29: "for now you
+     cant do anything with them but have it show the rings in the interface". */
+  #rings-badge { display: flex; align-items: center; gap: 5px; font-size: 0.75rem; opacity: 0.85; text-transform: uppercase; }
+  #rings-badge svg { display: block; }
   #round-timer { opacity: 0.8; }
   #round-timer.low { color: var(--bad); }
   /* Reference (docs/img/s513_desktop_match.png): hull_bar() -- a full-width panel-background bar,
@@ -93,6 +101,11 @@
   .erow .hand-count { margin-left: auto; }
   /* text_c(W/2, 118, 3, ..., "ROUND %d/%d", ...) -- big, bold, centered. */
   #round-num-big { text-align: center; font-size: 1.4rem; font-weight: bold; margin: 6px 0; }
+  /* Reference apps/gui/main.c line ~810: text_c(W/2, 220, 6, ..., "VICTORY"/"DEFEAT"/"DRAW") --
+     the desktop client's own big, bold, centered match-end call. Founder real-time, 2026-09-29:
+     "it still doesnt say at the end of the game if you won or lost". */
+  #end-banner { display: none; text-align: center; font-size: 2.2rem; font-weight: bold; letter-spacing: 0.04em; margin: 8px 0; text-transform: uppercase; }
+  #end-banner.show { display: block; }
   #hand { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; margin-top: 4px; }
   /* card_box(): a solid panel-background card with a full-width colored header bar (kind color)
      holding the name, COST/PWR line, kind/keyword line, wrapped card text, slot number bottom-
@@ -129,7 +142,15 @@
 <body>
 <h1>DEADWEIGHT</h1>
 <p id="subtitle">Dark Sector: Hold Battles</p>
-<div id="utc-clock">—</div>
+<div id="hud-top-row">
+  <span id="rings-badge" title="Rings -- one per match win">
+    <svg width="13" height="13" viewBox="0 0 13 13" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <circle cx="6.5" cy="6.5" r="5" stroke="#FFC83C" stroke-width="2.4"/>
+    </svg>
+    <span id="rings-count">—</span>
+  </span>
+  <div id="utc-clock">—</div>
+</div>
 
 <div id="setup">
   <label for="name">Player name (optional -- leave blank for a random in-universe callsign, same as the Windows client)</label>
@@ -170,6 +191,7 @@
     <div class="erow"><span>Energy</span><span class="epips" id="epips-opp"></span><span class="hand-count" id="hand-count-opp"></span></div>
 
     <div id="round-num-big">Round —/— <span id="round-timer"></span></div>
+    <div id="end-banner"></div>
     <canvas id="fx-canvas" width="480" height="250"></canvas>
 
     <div class="hbar" id="hbar-you"><div class="hbar-fill" id="hbar-you-fill"></div><div class="hbar-row"><span id="hbar-you-text">YOU —/—</span><span id="hbar-you-side">A— $—</span></div></div>

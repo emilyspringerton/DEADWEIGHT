@@ -207,6 +207,18 @@ function sideText(armor: number, vault: number): string {
     return `A${armor} $${vault}`;
 }
 
+// Founder real-time, 2026-09-29: after a "dealt 0" round turned out to be correct (the opponent's
+// banked armor fully absorbed a winning triangle matchup -- see docs/CARD_MODE_RULES.md), the text
+// log itself had no way to show that without cross-referencing the HUD side-text. Same hidden
+// sentinels as sideText()/pipsHtml() (docs/WIRE_PROTOCOL.md: energy_opp/armor_opp == 255,
+// vault_opp == -128 while Merkle Blindness is active).
+function meterLabel(energy: number, armor: number, vault: number): string {
+    const e = energy === 255 ? '?' : `${energy}`;
+    const a = armor === 255 ? '?' : `${armor}`;
+    const v = vault === -128 ? '?' : `${vault}`;
+    return `energy ${e}, armor ${a}, credits ${v}`;
+}
+
 function pipsHtml(energy: number, hidden: boolean): string {
     if (hidden) return '<span style="opacity:0.7;">? (hidden)</span>';
     let html = '';
@@ -259,6 +271,19 @@ function setStatus(s: string) {
     $('status').textContent = s;
 }
 
+// Rings = this player's total DEADWEIGHT match wins -- IDUNA's existing game_player_stats.wins
+// (social.getProfile, already public/no-token, the same call the Friends panel below already
+// makes), not a new counter. Founder real-time, 2026-09-29: "for now you cant do anything with
+// them but have it show the rings in the interface next to the utc clock". Best-effort: a failed
+// read leaves the last-known count on screen rather than erroring out over a cosmetic badge.
+async function refreshRings() {
+    if (!currentAccount) return;
+    try {
+        const p = await social.getProfile(idunaBaseUrl, currentAccount.playerID);
+        ($('rings-count') as HTMLElement).textContent = `${p.wins}`;
+    } catch { /* cosmetic only -- see comment above */ }
+}
+
 // enterGame is start()'s own real tail, extracted (2026-09-25) so createAccount() below can
 // reach the exact same "connected and playing" state without duplicating the client wiring --
 // both paths only differ in HOW currentAccount got resolved (bootstrap vs. a fresh
@@ -277,7 +302,7 @@ async function enterGame(idunaUrl: string, bridgeUrl: string, fallbackName: stri
     // actually arrives.
     ($('queue-btn') as HTMLButtonElement).disabled = true;
 
-    if (currentAccount) initSocial();
+    if (currentAccount) { initSocial(); refreshRings(); }
 
     cardsData = await (await fetch('./src/generated/cards.json')).json();
     log(`loaded ${cardsData.cards.length}-card catalog (v${cardsData.version})`);
@@ -320,6 +345,8 @@ async function enterGame(idunaUrl: string, bridgeUrl: string, fallbackName: stri
             pendRound = null;
             haveReveal = false; rvYou = -1; rvOpp = -1; rvRound = 0; rvDmgYou = 0; rvDmgOpp = 0;
             roundDeadlineAt = 0;
+            const banner = $('end-banner') as HTMLElement;
+            banner.classList.remove('show'); banner.textContent = '';
             log(`MATCH_FOUND vs ${f.oppName} (${f.oppKind === 1 ? 'bot' : 'human'}), seat ${f.seat}, seed ${f.seed}`);
             ($('opp-name') as HTMLElement).textContent = `${f.oppName} (${f.oppKind === 1 ? 'bot' : 'human'})`;
             $('match').style.display = 'block';
@@ -350,7 +377,7 @@ async function enterGame(idunaUrl: string, bridgeUrl: string, fallbackName: stri
             renderBars(f);
             renderHand();
             updateActionButtons();
-            log(`round ${f.round} start: hull ${f.hullYou}/${f.hullOpp}, energy ${f.energyYou}, vault ${f.vaultYou}${statusLabel(f.statusYou)}${f.statusOpp ? ` opp${statusLabel(f.statusOpp)}` : ''}`);
+            log(`round ${f.round} start: hull ${f.hullYou}/${f.hullOpp} | you: ${meterLabel(f.energyYou, f.armorYou, f.vaultYou)}${statusLabel(f.statusYou)} | opp: ${meterLabel(f.energyOpp, f.armorOpp, f.vaultOpp)}${statusLabel(f.statusOpp)}`);
         },
         onPlayReject(f) {
             // Mirrors apps/gui/main.c's own on-reject handling exactly: DW_REJ_ALREADY_LOCKED (4)
@@ -406,6 +433,15 @@ async function enterGame(idunaUrl: string, bridgeUrl: string, fallbackName: stri
             roundDeadlineAt = 0;
             fxWasm.matchEnd(f.result);
             log(`MATCH_END: ${outcome} (reason ${f.reason})`);
+            // Big, prominent VICTORY/DEFEAT/DRAW text -- apps/gui/main.c's own S_END screen
+            // (text_c(W/2, 220, 6, ...)) already does this on desktop; the browser client only
+            // ever had the small #status line, which the founder found wasn't showing it either
+            // way. Synced with fx_match_end's own particle burst + sfx_match_end audio above.
+            const banner = $('end-banner') as HTMLElement;
+            banner.textContent = f.result === 1 ? 'VICTORY' : f.result === 0 ? 'DEFEAT' : 'DRAW';
+            banner.style.color = f.result === 1 ? 'var(--good)' : f.result === 0 ? 'var(--bad)' : 'var(--dim)';
+            banner.classList.add('show');
+            if (f.result === 1) refreshRings();
             if (pendRound) {
                 // The literal "I got killed and it didn't show my health" bug -- see
                 // applyFinalMeters's own header comment for the full why.

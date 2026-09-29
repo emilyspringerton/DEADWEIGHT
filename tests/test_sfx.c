@@ -13,7 +13,7 @@ static int fails = 0, checks = 0;
 static const char *NAME[SFX_COUNT] = {"blitz", "blitz_crit", "block", "block_crit", "bypass_lock", "bypass_sabotage", "bypass_flank", "bypass_scan", "bypass_siphon", "bypass_crit",
     "mirror_offense", "mirror_operations", "mirror_defense", "unopposed", "hold", "cancelled", "immune", "lifeline", "swap", "flip",
     "hull_hit", "heal", "armor_gain", "armor_loss", "energy_gain", "credits_gain", "resource_loss", "siphon_stream", "overflow",
-    "burn_start", "burn_tick", "emp", "heartbeat", "redline_alarm", "ui_lock", "ui_tick"};
+    "burn_start", "burn_tick", "emp", "heartbeat", "redline_alarm", "ui_lock", "ui_tick", "explosion", "victory"};
 
 static int16_t buf[SFX_RATE * 4 * 2];
 

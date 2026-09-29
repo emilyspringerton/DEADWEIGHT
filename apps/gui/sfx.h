@@ -21,7 +21,10 @@ typedef enum {
     /* resources */
     SFX_HULL_HIT, SFX_HEAL, SFX_ARMOR_GAIN, SFX_ARMOR_LOSS, SFX_ENERGY_GAIN, SFX_CREDITS_GAIN, SFX_RESOURCE_LOSS, SFX_SIPHON_STREAM, SFX_OVERFLOW,
     /* statuses and ambience */
-    SFX_BURN_START, SFX_BURN_TICK, SFX_EMP, SFX_HEARTBEAT, SFX_REDLINE_ALARM, SFX_UI_LOCK, SFX_UI_TICK, SFX_COUNT
+    SFX_BURN_START, SFX_BURN_TICK, SFX_EMP, SFX_HEARTBEAT, SFX_REDLINE_ALARM, SFX_UI_LOCK, SFX_UI_TICK,
+    /* match end (founder real-time, 2026-09-29: "particle effects like explosions if you loose
+     * with apporpriate old school ship explosion noises" / gold-bullion ring burst on a win) */
+    SFX_EXPLOSION, SFX_VICTORY, SFX_COUNT
 } SfxCue;
 
 /* Priorities decide which voices survive when the voice cap is hit: clash > hull > armor > energy/credits > ambience. */

@@ -250,6 +250,28 @@ static void cue(SfxCue c, SfxOpts o) {
         break;
     case SFX_UI_LOCK: noise_hit(o, 0.03f, 4000, 1500, 0.25f, AM, 0, 0.001f); NOTE(W_SQUARE, 76, 0.05f, 0.1f, AM, 0, 5000); break;
     case SFX_UI_TICK: NOTE(W_SINE, 90, 0.03f, 0.08f, AM, 0, 0); break;
+    /* -------- match end: the one moment that should dominate over everything else -------- */
+    /* Old-school ship explosion: a deep sub-bass boom, a distorted low growl, a scattering of
+     * debris (the same noise_hit() timbre SFX_BLITZ_CRIT's own "debris on the glass" already
+     * uses, just more of it), and a long low rumble tail -- founder real-time, 2026-09-29:
+     * "appropriate old school ship explosion noises similar to noises we already have". */
+    case SFX_EXPLOSION:
+        VC(W_SINE, 90, 24, 0.9f, 0.002f, 0.85f, 0, 0.06f, 0, 0, 0, 0, 1.3f, CL, 3.2f, 0);
+        noise_hit(o, 0.55f, 7000, 200, 0.75f, CL, 0, 0.002f);
+        VC(W_SAW, 160, 30, 0.7f, 0.002f, 0.65f, 0, 0.05f, 1200, 150, 0, 0, 0.4f, CL, 5.0f, 40);
+        for (int i = 0; i < 8; i++) noise_hit(o, 0.05f + 0.01f * (i % 3), 6000, 800, 0.22f, CL, 120 + i * 65 + (i * 37) % 40, 0.001f);
+        VC(W_NOISE, 0, 0, 1.1f, 0.1f, 0.9f, 0.1f, 0.3f, 300, 60, 0, 0, 0.28f, CL, 0, 60);
+        break;
+    /* Victory: the same "triumphant resolving major chord" shape SFX_BLOCK_CRIT already proved,
+     * plus a bell-like ascending arpeggio standing in for the gold-bullion/ring burst on screen. */
+    case SFX_VICTORY: {
+        static const float lo[3] = {60, 64, 67}, hi[4] = {72, 76, 79, 84}, bells[5] = {84, 88, 91, 96, 100};
+        chord(o, W_TRI, lo, 3, 0.5f, 0.02f, 0.22f, CL, 0, 0.0f);
+        chord(o, W_TRI, hi, 4, 1.3f, 0.02f, 0.28f, CL, 260, 0.0f);
+        for (int i = 0; i < 5; i++) NOTE(W_SINE, bells[i], 0.9f, 0.16f, CL, 260 + i * 90, 3200);
+        noise_hit(o, 0.15f, 5000, 9000, 0.12f, CL, 260, 0.05f);
+        break;
+    }
     default: break;
     }
 }

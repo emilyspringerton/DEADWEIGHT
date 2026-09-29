@@ -633,9 +633,12 @@ void fx_match_end(int result) {
         burst(cx, cy, 50, 210, 1.6f, 5, GOLD, K_COIN);
         burst(cx, cy, 30, 150, 1.3f, 4, GRN, K_SPARK);
         burst(cx, cy, 22, 90, 1.9f, 9, WHT, K_RING);
+        audio(SFX_VICTORY, 0, 0, 0, 1, 0);
     } else if (end_sign < 0) {
         burst(cx, cy, 40, 170, 1.4f, 6, RED, K_SHARD);
         burst(cx, cy, 26, 70, 2.1f, 13, GRY, K_SMOKE);
+        audio(SFX_EXPLOSION, 0, 0, 0, 1, 0);
+        shake(9);
     }
 }
 static void draw_end_overlay(void) {
