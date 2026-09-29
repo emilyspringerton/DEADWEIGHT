@@ -2079,7 +2079,7 @@ int fx_cond_ok(int x __attribute__((unused)), int dealt __attribute__((unused)),
     return (x >= 0);
     } else {
     if ((fx_nn(x) == 1)) {
-    return (dealt > 0);
+    return ((dealt > 0) && (((ok >= 0) && kind_beats(mk, ok)) || ((ok < 0) && (!((mk == 2))))));
     } else {
     if ((fx_nn(x) == 2)) {
     return (taken > 0);
