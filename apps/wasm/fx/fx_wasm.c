@@ -127,6 +127,7 @@ float wasm_fx_total_ms(void) { return fx_total_ms(); }
 const char *wasm_fx_scenario_name(void) { return fx_scenario_name(); }
 float wasm_fx_pulse(int seat, int meter) { return fx_pulse(seat, meter); }
 void wasm_fx_set_redline(int hull_you, int hull_opp) { fx_set_redline(hull_you, hull_opp); }
+void wasm_fx_match_end(int result) { fx_match_end(result); }
 void wasm_fx_status_changed(int status_you, int status_opp, int lock_mask, int new_round) {
     fx_status_changed(status_you, status_opp, lock_mask, new_round);
 }

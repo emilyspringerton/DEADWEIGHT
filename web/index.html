@@ -66,7 +66,17 @@
   button { cursor: pointer; display: block; width: 100%; box-sizing: border-box; padding: 14px; font-size: 1rem; border-radius: 0; border: none; background: var(--panel); color: var(--text); margin-top: 10px; font-family: var(--mono); font-weight: bold; text-transform: uppercase; }
   button:hover:not(:disabled) { background: var(--lock); }
   button:disabled { opacity: 0.4; cursor: default; }
+  /* Flat fills only, per docs/BRAND_STYLE_GUIDE.md's own "Do Not Do" list -- no gradients/shadows,
+     same #lockin-btn.can-lock precedent below. Founder real-time, 2026-09-29: "make the connect
+     button green and the IDUNA button yellow". */
+  #start-btn { background: var(--good); color: #0b1a10; }
+  #start-btn:hover:not(:disabled) { background: #3fa864; }
+  #sso-btn { background: var(--gold); color: #241a00; }
+  #sso-btn:hover:not(:disabled) { background: #e0b232; }
   #status { font-weight: bold; text-transform: uppercase; }
+  #utc-clock { text-align: right; font-size: 0.75rem; opacity: 0.7; text-transform: uppercase; margin: -6px 0 10px; }
+  #round-timer { opacity: 0.8; }
+  #round-timer.low { color: var(--bad); }
   /* Reference (docs/img/s513_desktop_match.png): hull_bar() -- a full-width panel-background bar,
      filled proportionally to current/max hull (green above 1/3 hull, red at/below), the label +
      "N/MAX" on the left and armor/vault ("A0 $4") on the right, both inside the same bar. */
@@ -119,10 +129,11 @@
 <body>
 <h1>DEADWEIGHT</h1>
 <p id="subtitle">Dark Sector: Hold Battles</p>
+<div id="utc-clock">—</div>
 
 <div id="setup">
-  <label for="name">Player name (used only if creating a new guest account)</label>
-  <input id="name" value="Runner" maxlength="16">
+  <label for="name">Player name (optional -- leave blank for a random in-universe callsign, same as the Windows client)</label>
+  <input id="name" placeholder="e.g. Vega" maxlength="16">
   <button id="start-btn">Connect</button>
   <button id="sso-btn" style="margin-left:8px;">Sign in with IDUNA</button>
   <div id="account-status" style="margin-top:10px;font-size:0.85rem;opacity:0.85;"></div>
@@ -158,7 +169,7 @@
     <div class="hbar" id="hbar-opp"><div class="hbar-fill" id="hbar-opp-fill"></div><div class="hbar-row"><span id="hbar-opp-text">HULL —/—</span><span id="hbar-opp-side">A— $—</span></div></div>
     <div class="erow"><span>Energy</span><span class="epips" id="epips-opp"></span><span class="hand-count" id="hand-count-opp"></span></div>
 
-    <div id="round-num-big">Round —/—</div>
+    <div id="round-num-big">Round —/— <span id="round-timer"></span></div>
     <canvas id="fx-canvas" width="480" height="250"></canvas>
 
     <div class="hbar" id="hbar-you"><div class="hbar-fill" id="hbar-you-fill"></div><div class="hbar-row"><span id="hbar-you-text">YOU —/—</span><span id="hbar-you-side">A— $—</span></div></div>

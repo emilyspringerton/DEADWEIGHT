@@ -136,6 +136,28 @@ static void cb_copyn(char *dst, int dstsize, const char *src, int n) {
     for (int i = 0; i < n; i++) dst[i] = src[i];
     dst[n] = 0;
 }
+static void cb_hud_corners(float x, float y, float w, float h, float len, float th, C3 c, float a) {
+    frect(x, y, len, th, c, a); frect(x, y, th, len, c, a);
+    frect(x + w - len, y, len, th, c, a); frect(x + w - th, y, th, len, c, a);
+    frect(x, y + h - th, len, th, c, a); frect(x, y + h - len, th, len, c, a);
+    frect(x + w - len, y + h - th, len, th, c, a); frect(x + w - th, y + h - len, th, len, c, a);
+}
+/* Futuristic tablet-readout skin, layered as a thin translucent overlay so the name/stat/rules
+ * text underneath stays exactly as crisp as before this pass -- founder real-time, 2026-09-29:
+ * "improve the reveal cards to look more like a futureistic very design forward (apple of the
+ * future) readout screen", refined moments later to "1% more sqewmorphic it should look like a
+ * games tablet from the future" once the plainer first pass at "high design" read as too flat.
+ * Same fx_draw_card_box every host already shares, so Windows' hand/draft cards and the reveal
+ * panel (native and web) all pick this up identically -- no separate skin to keep in sync. */
+static void cb_device_chrome(float x, float y, float w, float h, C3 kc, int state) {
+    cb_frame(x, y, w, h, 1, (C3){10, 11, 16});                 /* a dark physical bezel edge */
+    C3 glow = {fminf(255, kc.r * 1.15f), fminf(255, kc.g * 1.15f), fminf(255, kc.b * 1.15f)};
+    cb_frame(x + 1, y + 1, w - 2, h - 2, 1, glow);              /* lit inner edge, in the card's own kind colour */
+    cb_hud_corners(x, y, w, h, 10, 2, WHT, state == 2 ? 0.22f : 0.5f);   /* HUD targeting-bracket corners */
+    for (int yy = (int)(y + 2); yy < y + h - 2; yy += 3) fline(x + 2, (float)yy, x + w - 2, (float)yy, 1, (C3){0, 0, 0}, 0.06f); /* screen scanlines */
+    float sheen[6] = {x, y, x + w * 0.55f, y, x, y + h * 0.4f};
+    fpoly(sheen, 3, WHT, 0.05f);                                /* soft glass sheen, top-left */
+}
 void fx_draw_card_box(int x, int y, int w, int h, int id, int num, int state) {
     frect((float)x, (float)y, (float)w, (float)h, CB_PANEL, 1);
     if (id < 0) {
@@ -176,6 +198,7 @@ void fx_draw_card_box(int x, int y, int w, int h, int id, int num, int state) {
         t += n; while (*t == ' ') t++;
     }
     if (num > 0) { snprintf(buf, sizeof buf, "(%d)", num); txt((float)(x + 4), (float)(y + h - 14), 1, CB_DIM, 1, buf); }
+    cb_device_chrome((float)x, (float)y, (float)w, (float)h, kc, state);
     if (state == 1) cb_frame((float)(x - 3), (float)(y - 3), (float)(w + 6), (float)(h + 6), 3, CB_SEL);
     if (state == 3) cb_frame((float)x, (float)y, (float)w, (float)h, 2, CB_GOOD);
 }
@@ -272,6 +295,7 @@ static float ember_timer[2], regen_timer[2]; static int st_now[2]; static int lo
 static float overload[2]; static float overload_x[2];
 static float glass_crack[4]; static float glass_age = 99;   /* crack centre + age */
 static float emp_flash = 0;
+static float end_flash = 0; static int end_sign = 0;   /* fx_match_end: +1 win, -1 loss, 0 draw/none */
 
 static int ev(int id, float at) { if (S.fired[id]) return 0; if (S.t >= at) { S.fired[id] = 1; return 1; } return 0; }
 static int crossed(float at) { return S.prev < at && S.t >= at; }
@@ -591,7 +615,35 @@ void fx_set_speed(float sp) { speed_scale = sp > 0.01f ? sp : 1.0f; }
 void fx_reset(void) {
     memset(&S, 0, sizeof S); np = nl = 0; memset(&shown, 0, sizeof shown); memset(&target, 0, sizeof target); shake_amp = 0; vignette[0] = vignette[1] = 0;
     st_now[0] = st_now[1] = 0; lock_now = 0; emp_flash = 0; overload[0] = overload[1] = 0; redline_you = redline_opp = 0; glass_age = 99;
+    end_flash = 0; end_sign = 0;
     sfx_stop_all();
+}
+/* Victory/defeat particle burst + a brief, bounded screen tint -- founder real-time, 2026-09-29:
+ * "add an awesome victory animation" / "a bit of screen flash but keep it safe for our sensitive
+ * screen flash people". result matches DW_RES_* (protocol.h: LOSS=0, WIN=1, DRAW=2) directly, so
+ * both hosts can pass their own match-result field straight through with no translation.
+ * The flash reuses the EMP-disabled effect's own already-tuned, photosensitivity-reviewed envelope
+ * (fx_draw_overlay's emp_flash below: peak 0.12 alpha, 3 short pulses in the first 300ms, then a
+ * fade -- never a solid flash) rather than inventing new numbers. */
+void fx_match_end(int result) {
+    end_sign = result == 1 ? 1 : result == 0 ? -1 : 0;
+    end_flash = end_sign ? 700.0f : 0.0f;
+    float cx = 240, cy = AY + AH * 0.5f;
+    if (end_sign > 0) {
+        burst(cx, cy, 50, 210, 1.6f, 5, GOLD, K_COIN);
+        burst(cx, cy, 30, 150, 1.3f, 4, GRN, K_SPARK);
+        burst(cx, cy, 22, 90, 1.9f, 9, WHT, K_RING);
+    } else if (end_sign < 0) {
+        burst(cx, cy, 40, 170, 1.4f, 6, RED, K_SHARD);
+        burst(cx, cy, 26, 70, 2.1f, 13, GRY, K_SMOKE);
+    }
+}
+static void draw_end_overlay(void) {
+    if (end_flash <= 0) return;
+    float k = end_flash / 700.0f, progress = 1.0f - k, phase = progress * 8.0f, a;
+    if (phase < 3.0f) { int idx = (int)phase; float frac = phase - idx; a = frac < 0.5f ? 0.12f : 0.04f; }
+    else { float fade = fmaxf(0, 1.0f - (phase - 3.0f) / 5.0f); a = 0.04f * fade; }
+    frect(0, AY, 480, AH, end_sign > 0 ? GRN : RED, a);
 }
 int fx_active(void) { return S.active; }
 int fx_elapsed_ms(void) { return (int)S.t; }
@@ -624,6 +676,7 @@ void fx_update(unsigned dt_ms) {
     shake_t += dt_ms; if (shake_amp > 0) { shake_amp *= expf(-dt * 7.0f); if (shake_amp < 0.3f) shake_amp = 0; }
     for (int s = 0; s < 2; s++) { if (vignette[s] > 0) vignette[s] = fmaxf(0, vignette[s] - dt * 1.4f); if (overload[s] > 0) overload[s] -= dt_ms; }
     if (emp_flash > 0) emp_flash -= dt_ms;
+    if (end_flash > 0) end_flash -= dt_ms;
     if (glass_age < 90) glass_age += dt;
     redline_phase += dt;
     if (redline_you) { heart_timer -= dt; if (heart_timer <= 0) { heart_timer = 0.95f; audio(SFX_HEARTBEAT, 0, 0, 0, 1, lock_now != 0); } }
@@ -801,15 +854,21 @@ void fx_draw_arena(int reveal_you, int reveal_opp, int have_reveal, int reveal_r
          * entirely -- moved here so both the SDL2 client and the wasm/Canvas2D client draw the
          * exact same "LAST ROUND" reveal from the exact same code, not two separately maintained
          * copies). All these coordinates are within this function's own y=170..420 arena band. */
-        if (!have_reveal) { txt_c(240, 260, 2, CB_DIM, 1, "PICK A CARD OR PASS"); return; }
-        char buf[24];
-        snprintf(buf, sizeof buf, "LAST ROUND (%d)", reveal_round);
-        txt_c(240, 176, 2, CB_DIM, 1, buf);
-        txt_c(120, 200, 2, CB_DIM, 1, "YOU"); txt_c(360, 200, 2, CB_DIM, 1, "OPP");
-        fx_draw_card_box(20, 222, 200, 170, reveal_you, 0, 0);
-        fx_draw_card_box(260, 222, 200, 170, reveal_opp, 0, 0);
-        snprintf(buf, sizeof buf, "TOOK %d", reveal_dmg_you); txt_c(120, 398, 2, reveal_dmg_you ? CB_BAD : CB_DIM, 1, buf);
-        snprintf(buf, sizeof buf, "TOOK %d", reveal_dmg_opp); txt_c(360, 398, 2, reveal_dmg_opp ? CB_GOOD : CB_DIM, 1, buf);
+        if (!have_reveal) { txt_c(240, 260, 2, CB_DIM, 1, "PICK A CARD OR PASS"); }
+        else {
+            char buf[24];
+            snprintf(buf, sizeof buf, "LAST ROUND (%d)", reveal_round);
+            txt_c(240, 176, 2, CB_DIM, 1, buf);
+            txt_c(120, 200, 2, CB_DIM, 1, "YOU"); txt_c(360, 200, 2, CB_DIM, 1, "OPP");
+            fx_draw_card_box(20, 222, 200, 170, reveal_you, 0, 0);
+            fx_draw_card_box(260, 222, 200, 170, reveal_opp, 0, 0);
+            snprintf(buf, sizeof buf, "TOOK %d", reveal_dmg_you); txt_c(120, 398, 2, reveal_dmg_you ? CB_BAD : CB_DIM, 1, buf);
+            snprintf(buf, sizeof buf, "TOOK %d", reveal_dmg_opp); txt_c(360, 398, 2, reveal_dmg_opp ? CB_GOOD : CB_DIM, 1, buf);
+        }
+        /* fx_match_end's own burst/flash keep animating after the match, whether idle here shows
+         * the last reveal (web, which never leaves this screen) or nothing yet (Windows leaves this
+         * screen for S_END and calls fx_draw_end_fx() there instead -- see fx.h). */
+        draw_end_overlay(); parts_draw(); labels_draw();
         return;
     }
     /* arena backdrop */
@@ -827,6 +886,14 @@ void fx_draw_arena(int reveal_you, int reveal_opp, int have_reveal, int reveal_r
     }
     if (S.sc == SC_BLITZ && S.crit && S.t > S.clash0 + 700) { int l = S.lose; float k = ease_out(sub(S.clash0 + 700, 300)); float hx = CARD_SX[l] + CARD_SW * 0.5f, hy = CARD_SY + CARD_SH * 0.45f;
         fcircle(hx, hy, 15 * k + 3, ORG, 0.7f); fcircle(hx, hy, 8 * k, (C3){20, 10, 10}, 0.95f); fring(hx, hy, 16 * k + 2, 2, YEL, 0.8f); }   /* molten hole punched through the card */
+}
+
+void fx_draw_end_fx(void) {
+    /* Windows' own S_END screen (draw_end() in main.c) never calls fx_draw_arena -- it's a
+     * separate screen, not the match view -- so it calls this directly instead to render the same
+     * fx_match_end() burst/flash the idle arena branch above draws for the web client (which stays
+     * on the match view and shows the reveal panel + this overlay together). */
+    draw_end_overlay(); parts_draw(); labels_draw();
 }
 
 void fx_draw_status_panel(int seat, int x, int y, int w, int h) {

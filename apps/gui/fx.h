@@ -57,6 +57,8 @@ void fx_draw_arena(int reveal_you, int reveal_opp, int have_reveal, int reveal_r
     /* the arena band y=170..420; draws the static "LAST ROUND" reveal (or "PICK A CARD OR PASS")
      * itself when idle -- reveal_round/reveal_dmg_you/reveal_dmg_opp only matter when have_reveal */
 void fx_draw_overlay(void);                            /* redline frame, vignettes; call last */
+void fx_match_end(int result);                         /* DW_RES_* (protocol.h): fires the win/loss particle burst + a brief, bounded screen tint */
+void fx_draw_end_fx(void);                             /* draws fx_match_end's burst/tint + persistent particles -- call once per frame on the result screen (fx_draw_arena's own idle branch already does this for hosts that stay on the match view) */
 void fx_draw_status_panel(int seat, int x, int y, int w, int h);       /* embers / regen sparkles over a hull panel */
 void fx_draw_disabled_card(int x, int y, int w, int h);                /* EMP look for a disabled hand slot */
 /* Single source of truth for drawing one card (name/cost-power/kind-keyword/wrapped rules text,

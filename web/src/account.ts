@@ -23,9 +23,28 @@ export interface Account {
     emailLinked: boolean;
 }
 
+// A cookie, not localStorage -- founder real-time, 2026-09-29: "it needs to use a cookie to track
+// the account". 400 days is the real, current browser-enforced ceiling on a cookie's max-age
+// (Chrome/Firefox both clamp to it), which is as close to "persistent" as a cookie gets.
+const COOKIE_MAX_AGE_DAYS = 400;
+
+function getCookie(name: string): string | null {
+    const m = document.cookie.match(new RegExp('(?:^|; )' + name + '=([^;]*)'));
+    return m ? decodeURIComponent(m[1]) : null;
+}
+
+function setCookie(name: string, value: string, days: number) {
+    const secure = location.protocol === 'https:' ? '; Secure' : '';
+    document.cookie = `${name}=${encodeURIComponent(value)}; path=/; max-age=${days * 86400}; SameSite=Lax${secure}`;
+}
+
+function deleteCookie(name: string) {
+    document.cookie = `${name}=; path=/; max-age=0`;
+}
+
 function loadStored(): Account | null {
     try {
-        const raw = localStorage.getItem(STORAGE_KEY);
+        const raw = getCookie(STORAGE_KEY);
         return raw ? (JSON.parse(raw) as Account) : null;
     } catch (e) {
         return null;
@@ -34,15 +53,15 @@ function loadStored(): Account | null {
 
 function persist(a: Account) {
     try {
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(a));
+        setCookie(STORAGE_KEY, JSON.stringify(a), COOKIE_MAX_AGE_DAYS);
     } catch (e) {
-        /* private browsing / storage disabled -- account still works for this page load */
+        /* cookies disabled -- account still works for this page load */
     }
 }
 
 export function clearAccount() {
     try {
-        localStorage.removeItem(STORAGE_KEY);
+        deleteCookie(STORAGE_KEY);
     } catch (e) {
         /* nothing to clean up */
     }

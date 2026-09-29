@@ -78,6 +78,7 @@ interface FxWasmExports {
     wasm_fx_scenario_name(): number;
     wasm_fx_pulse(seat: number, meter: number): number;
     wasm_fx_set_redline(hy: number, ho: number): void;
+    wasm_fx_match_end(result: number): void;
     wasm_fx_status_changed(sy: number, so: number, lockMask: number, newRound: number): void;
     wasm_fx_shake_dx(): number;
     wasm_fx_shake_dy(): number;
@@ -263,6 +264,13 @@ export function setMeters(hullYou: number, hullOpp: number, armorYou: number, ar
     requireWasm().wasm_fx_set_meters(hullYou, hullOpp, armorYou, armorOpp, energyYou, energyOpp, vaultYou, vaultOpp, snap ? 1 : 0);
 }
 export function setRedline(hullYou: number, hullOpp: number) { requireWasm().wasm_fx_set_redline(hullYou, hullOpp); }
+// result matches DW_RES_* (protocol.h: LOSS=0, WIN=1, DRAW=2) -- the exact same numbering
+// onMatchEnd's own outcome text already switches on, so main.ts passes f.result straight through.
+// Fires fx_match_end()'s win/loss particle burst + bounded screen tint (apps/gui/fx.c) -- founder
+// real-time, 2026-09-29: "add an awesome victory animation also an awesome separate defeat
+// animation use like hella particle effects in both and a bit of screen flash but keep it safe for
+// our sensitive screen flash people".
+export function matchEnd(result: number) { requireWasm().wasm_fx_match_end(result); }
 export function statusChanged(statusYou: number, statusOpp: number, lockMask: number, newRound: boolean) {
     requireWasm().wasm_fx_status_changed(statusYou, statusOpp, lockMask, newRound ? 1 : 0);
 }

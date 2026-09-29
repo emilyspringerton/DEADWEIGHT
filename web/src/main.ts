@@ -54,6 +54,27 @@ let fxLastTs = 0;
 // of leaving the canvas blank between rounds (part of the founder's real-time bug report,
 // 2026-09-28: "it doesnt show the card text on the cards when you reveal it").
 let haveReveal = false, rvYou = -1, rvOpp = -1, rvRound = 0, rvDmgYou = 0, rvDmgOpp = 0;
+// Round countdown, mirrors apps/gui/main.c's A.deadline_at (SDL_GetTicks() + deadline_ms) exactly,
+// just on the wall clock instead of SDL's tick counter -- 0 = no deadline (fast-forward servers
+// send deadlineMs 0). Founder real-time, 2026-09-29: "we are missing the round timer add that to
+// the display".
+let roundDeadlineAt = 0;
+
+function updateRoundTimer() {
+    const el = $('round-timer');
+    if (!roundDeadlineAt) { el.textContent = ''; return; }
+    const leftMs = Math.max(0, roundDeadlineAt - Date.now());
+    el.textContent = `${Math.ceil(leftMs / 1000)}s`;
+    el.classList.toggle('low', leftMs < 5000);
+}
+
+// A live UTC clock, independent of match state -- founder real-time, 2026-09-29: "add ... the UTC
+// time". Ticks once a second; started immediately below, not gated on connecting.
+function updateUtcClock() {
+    $('utc-clock').textContent = new Date().toISOString().slice(11, 19) + ' UTC';
+}
+updateUtcClock();
+setInterval(updateUtcClock, 1000);
 
 function flushPendRound(energyNextYou: number | null, energyNextOpp: number | null, statusAfterYou: number, statusAfterOpp: number, lockAfter: number, lethal: boolean) {
     if (!pendRound) return;
@@ -72,6 +93,7 @@ function fxTickLoop(ts: number) {
     const dt = fxLastTs ? ts - fxLastTs : 16;
     fxLastTs = ts;
     fxWasm.tick(dt, $('fx-canvas') as HTMLCanvasElement, { you: rvYou, opp: rvOpp, have: haveReveal, round: rvRound, dmgYou: rvDmgYou, dmgOpp: rvDmgOpp });
+    updateRoundTimer();
 }
 // Duel Phase 2 (S537): set by playDuel() right before a duel's PLAY button, consumed (and
 // cleared) the next time the client reaches 'ready' -- either immediately, if it's already
@@ -84,6 +106,19 @@ function log(line: string) {
     row.textContent = line;
     el.appendChild(row);
     el.scrollTop = el.scrollHeight;
+}
+
+// core/match.h's DW_ST_BURN=1/DW_ST_REGEN=2/DW_ST_HIDDEN=4 -- surfaced here so a persistent status
+// tick (which silently adds to next round's "took"/"dealt" with no card of its own) is actually
+// visible in the log instead of looking like unexplained damage. Found live, 2026-09-29: a player
+// died to a Defense-mirror round that dealt 0 combat damage -- the real killer was a burn DOT from
+// two rounds earlier that never showed anywhere on screen or in this log.
+function statusLabel(bits: number): string {
+    const parts: string[] = [];
+    if (bits & 1) parts.push('BURNING');
+    if (bits & 2) parts.push('REGEN');
+    if (bits & 4) parts.push('HIDDEN');
+    return parts.length ? ` [${parts.join('+')}]` : '';
 }
 
 function cardLabel(id: number): string {
@@ -284,6 +319,7 @@ async function enterGame(idunaUrl: string, bridgeUrl: string, fallbackName: stri
             fxWasm.resetMatch();
             pendRound = null;
             haveReveal = false; rvYou = -1; rvOpp = -1; rvRound = 0; rvDmgYou = 0; rvDmgOpp = 0;
+            roundDeadlineAt = 0;
             log(`MATCH_FOUND vs ${f.oppName} (${f.oppKind === 1 ? 'bot' : 'human'}), seat ${f.seat}, seed ${f.seed}`);
             ($('opp-name') as HTMLElement).textContent = `${f.oppName} (${f.oppKind === 1 ? 'bot' : 'human'})`;
             $('match').style.display = 'block';
@@ -305,6 +341,7 @@ async function enterGame(idunaUrl: string, bridgeUrl: string, fallbackName: stri
             lockMask = f.lockMask;
             locked = false;
             selectedSlot = null;
+            roundDeadlineAt = f.deadlineMs ? Date.now() + f.deadlineMs : 0;
             beforeHullYou = f.hullYou; beforeHullOpp = f.hullOpp;
             beforeArmorYou = f.armorYou; beforeArmorOpp = f.armorOpp;
             beforeVaultYou = f.vaultYou; beforeVaultOpp = f.vaultOpp;
@@ -313,7 +350,7 @@ async function enterGame(idunaUrl: string, bridgeUrl: string, fallbackName: stri
             renderBars(f);
             renderHand();
             updateActionButtons();
-            log(`round ${f.round} start: hull ${f.hullYou}/${f.hullOpp}, energy ${f.energyYou}, vault ${f.vaultYou}`);
+            log(`round ${f.round} start: hull ${f.hullYou}/${f.hullOpp}, energy ${f.energyYou}, vault ${f.vaultYou}${statusLabel(f.statusYou)}${f.statusOpp ? ` opp${statusLabel(f.statusOpp)}` : ''}`);
         },
         onPlayReject(f) {
             // Mirrors apps/gui/main.c's own on-reject handling exactly: DW_REJ_ALREADY_LOCKED (4)
@@ -325,7 +362,12 @@ async function enterGame(idunaUrl: string, bridgeUrl: string, fallbackName: stri
             log(`play rejected (reason ${f.reason}) — try again`);
         },
         onRoundResult(f) {
-            log(`round ${f.round} result: you played ${cardLabel(f.cardYou)}, opp played ${cardLabel(f.cardOpp)} — dealt ${f.dmgToOpp}, took ${f.dmgToYou}, hull now ${f.hullYou}/${f.hullOpp}`);
+            // lastStatusYou/Opp is the status this round STARTED with (set in onRoundStart) -- if
+            // you were already burning/regenerating going in, some of this round's dealt/took total
+            // is that tick, not the card clash. Flagged here rather than silently folded into the
+            // number so a death like the one above is traceable from the log alone.
+            const tickNote = (lastStatusYou & 1) || (lastStatusOpp & 1) ? ` (burn ticking${lastStatusYou & 1 ? ': you' : ''}${lastStatusYou & 1 && lastStatusOpp & 1 ? ' + ' : ''}${lastStatusOpp & 1 ? 'opp' : ''})` : '';
+            log(`round ${f.round} result: you played ${cardLabel(f.cardYou)}, opp played ${cardLabel(f.cardOpp)} — dealt ${f.dmgToOpp}, took ${f.dmgToYou}, hull now ${f.hullYou}/${f.hullOpp}${tickNote}`);
             // Mirrors apps/gui/main.c's own DW_S_ROUND_RESULT handling exactly: A.rv_you/A.rv_opp/
             // A.rv_dy/A.rv_do/A.rv_round/A.have_reveal update immediately here, not deferred with
             // the rest of pendRound -- fx_draw_arena's idle "LAST ROUND" panel needs to show this
@@ -361,6 +403,8 @@ async function enterGame(idunaUrl: string, bridgeUrl: string, fallbackName: stri
         },
         onMatchEnd(f) {
             const outcome = f.result === 1 ? 'WIN' : f.result === 0 ? 'LOSS' : 'DRAW';
+            roundDeadlineAt = 0;
+            fxWasm.matchEnd(f.result);
             log(`MATCH_END: ${outcome} (reason ${f.reason})`);
             if (pendRound) {
                 // The literal "I got killed and it didn't show my health" bug -- see
@@ -389,7 +433,12 @@ async function enterGame(idunaUrl: string, bridgeUrl: string, fallbackName: stri
 
 async function start() {
     await initWasmProto(); // must resolve before client.connect() ever calls into the wasm codec
-    const name = ($('name') as HTMLInputElement).value.trim() || 'Runner';
+    // Empty, not a hardcoded fallback -- apps/gui/main.c only ever sends a name when --name was
+    // passed on the CLI, otherwise blank, letting IDUNA's own randomGuestName() assign a real
+    // in-universe callsign ("Runner-A7B2" style). Hardcoding 'Runner' here silently bypassed that
+    // shared generator for every guest who left the field blank (founder real-time, 2026-09-29:
+    // "it needs to use account names like the windows client does random in universe names").
+    const name = ($('name') as HTMLInputElement).value.trim();
     const idunaUrl = resolveIdunaUrl();
     const bridgeUrl = resolveBridgeUrl();
     const startBtn = $('start-btn') as HTMLButtonElement;

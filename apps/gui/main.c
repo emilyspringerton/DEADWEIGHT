@@ -541,7 +541,7 @@ static void handle_msg(const DwMsg *m) {
         A.dumped_end = 0;
         if (A.pend_valid) { A.pend.lethal = 1; fx_targets(0); fx_finish_round(0, NULL); }
         if (fx_active() && A.screen == S_MATCH) A.end_wait = 1;   /* let the final clash land before the result screen */
-        else A.screen = S_END;
+        else { A.screen = S_END; fx_match_end(A.result); }
         break;
     case DW_S_ERROR: to_menu(m->u.error.code == DW_ERR_AUTH ? "Server rejected login" : "Server error"); break;
     default: break;
@@ -805,6 +805,7 @@ static void draw_match(int mx, int my) {
     SDL_RenderSetViewport(R, NULL);
 }
 static void draw_end(int mx, int my) {
+    fx_draw_end_fx();   /* the win/loss particle burst + brief bounded tint fx_match_end() fired */
     Col c = A.result == DW_RES_WIN ? C_GOOD : A.result == DW_RES_LOSS ? C_BAD : C_DIM;
     text_c(W / 2, 220, 6, c, "%s", A.result == DW_RES_WIN ? "VICTORY" : A.result == DW_RES_LOSS ? "DEFEAT" : "DRAW");
     const char *why[5] = {"HULL DESTROYED", "ROUNDS OVER", "OPPONENT FORFEIT", "SERVER", "BANKRUPT"};
@@ -1222,7 +1223,7 @@ int main(int argc, char **argv) {
         }
         pump();
         fx_update(dtms);
-        if (A.end_wait && !fx_active()) { A.end_wait = 0; A.screen = S_END; A.state_at = SDL_GetTicks(); }
+        if (A.end_wait && !fx_active()) { A.end_wait = 0; A.screen = S_END; A.state_at = SDL_GetTicks(); fx_match_end(A.result); }
         if (A.selftest) {
             selftest_tick();
             if (A.done_ok) { printf("selftest: full match played, result=%d reason=%d\n", A.result, A.reason); break; }
