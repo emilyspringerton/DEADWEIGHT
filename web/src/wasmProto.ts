@@ -69,14 +69,32 @@ interface WasmExports {
 }
 
 let wasm: WasmExports | null = null;
+let loading: Promise<void> | null = null;
 
 /** Fetches + instantiates dw_protocol.wasm. Must be awaited once before any encode/decode call
  * below. wasmUrl defaults to where scripts/build_wasm_native.sh writes it, relative to
- * index.html (dist/generated/dw_protocol.wasm, matching cards.json's own sibling location). */
+ * index.html (dist/generated/dw_protocol.wasm, matching cards.json's own sibling location).
+ *
+ * Idempotent/re-entrant (2026-09-29, real bug found live): enterGame() is reachable from three
+ * separate entry points (the guest "Connect" button's start(), the SSO-return path, and
+ * createAccount()) and used to rely on ONLY start() awaiting this first -- the other two called
+ * straight into client.connect() with no wasm module loaded at all, throwing "initWasmProto()
+ * must be awaited before use" (requireWasm below) the instant HELLO tried to encode. Founder
+ * repro: "after the first SSO redirect it like didnt work i had to reload" -- it only ever
+ * "worked" after a reload because the earlier failed SSO attempt had already persisted a usable
+ * DEADWEIGHT account cookie, and the reload's OWN Connect-button click happened to go through
+ * start()'s real init call. Caching the in-flight promise (not just the resolved module) makes
+ * calling this from every enterGame()-reaching path safe and cheap on repeat calls. */
 export async function initWasmProto(wasmUrl = 'dist/generated/dw_protocol.wasm'): Promise<void> {
-    const bytes = await (await fetch(wasmUrl)).arrayBuffer();
-    const { instance } = await WebAssembly.instantiate(bytes, {});
-    wasm = instance.exports as unknown as WasmExports;
+    if (wasm) return;
+    if (!loading) {
+        loading = (async () => {
+            const bytes = await (await fetch(wasmUrl)).arrayBuffer();
+            const { instance } = await WebAssembly.instantiate(bytes, {});
+            wasm = instance.exports as unknown as WasmExports;
+        })();
+    }
+    return loading;
 }
 
 function requireWasm(): WasmExports {

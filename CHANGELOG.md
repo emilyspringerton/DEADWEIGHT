@@ -1,5 +1,33 @@
 # CHANGELOG
 
+## 2026-09-29 (cont. 2)
+
+- fix(web): SSO doxxing default + choose-your-username + a real reload-required bug. Founder
+  real-time: "there is an issue with the iduna sso for DEADWEIGHT it just uses your email without
+  the @gmail.com or whatever thats not good bro it could dox someone never show the email address
+  data publicly / when they go back to deadweight they can choose their username / also after the
+  first sso redirect it like didnt work i had to reload".
+  - Root cause of the email leak was server-side (IDUNA's `player_email_auth.go` -- see IDUNA's
+    own CHANGELOG); this client now also ships a real "Change username" control in the Friends &
+    Duels panel (`web/src/account.ts`'s new `setDisplayName`, wired to IDUNA's new `POST
+    /api/v1/games/deadweight/set-display-name`) so any player -- guest, SSO, or email -- can pick
+    their own name at any time, not just accept whatever default they were given.
+  - Root-caused the reload bug: `enterGame()` is reachable from three places (`start()`'s guest
+    Connect flow, `signInWithIduna()`'s SSO-return flow, `createAccount()`), but only `start()`
+    ever awaited `initWasmProto()` before `client.connect()` reached into the wasm protocol
+    codec -- the SSO and create-account paths threw `wasmProto: initWasmProto() must be awaited
+    before use` on their very first real use. The reload only ever "worked" because the failed
+    SSO attempt had already persisted a valid DEADWEIGHT account cookie (via `account.ts`'s
+    `loginWithSso`, which runs and succeeds BEFORE the later wasm crash), so a subsequent manual
+    Connect click reused that cookie through the one path that did init wasm correctly. Fixed by
+    making `wasmProto.ts`'s `initWasmProto()` idempotent (caches the in-flight promise, not just
+    the resolved module) and calling it unconditionally at the top of `enterGame()` itself, so
+    every path that reaches it is covered by construction instead of by caller discipline.
+  - `npm run build` (tsc) clean; `bash scripts/build.sh` full native suite green (unaffected by
+    this change, run to confirm no regressions); redeployed to WOTAN, live-diffed byte-for-byte
+    against the deployed bundle (learned that lesson the hard way earlier this same day -- see the
+    entry below).
+
 ## 2026-09-29 (cont.)
 
 - feat(web,fx): match-end banner, rings badge, explosion/victory SFX; also root-caused a real

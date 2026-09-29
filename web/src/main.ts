@@ -289,6 +289,11 @@ async function refreshRings() {
 // both paths only differ in HOW currentAccount got resolved (bootstrap vs. a fresh
 // register+claim), never in what happens once it's resolved.
 async function enterGame(idunaUrl: string, bridgeUrl: string, fallbackName: string) {
+    // Must resolve before client.connect() below ever calls into the wasm codec -- initWasmProto
+    // is idempotent (see its own header comment), so this is a safe no-op on the path that already
+    // awaited it (start()) and the real fix for the two paths that used not to (signInWithIduna,
+    // createAccount).
+    await initWasmProto();
     idunaBaseUrl = idunaUrl;
     $('setup').style.display = 'none';
     $('game').style.display = 'block';
@@ -468,7 +473,8 @@ async function enterGame(idunaUrl: string, bridgeUrl: string, fallbackName: stri
 }
 
 async function start() {
-    await initWasmProto(); // must resolve before client.connect() ever calls into the wasm codec
+    // initWasmProto() itself now happens inside enterGame() (idempotent -- see its header comment)
+    // so every path that reaches enterGame() is covered, not just this one.
     // Empty, not a hardcoded fallback -- apps/gui/main.c only ever sends a name when --name was
     // passed on the CLI, otherwise blank, letting IDUNA's own randomGuestName() assign a real
     // in-universe callsign ("Runner-A7B2" style). Hardcoding 'Runner' here silently bypassed that
@@ -632,6 +638,28 @@ $('link-btn').addEventListener('click', async () => {
             : 'This email already had an account — signed in to it instead (your fresh guest session is unused, not lost).';
         ($('link-email-box') as HTMLElement).style.display = 'none';
         ($('account-status') as HTMLElement).textContent = 'Playing as ' + currentAccount.displayName + ' (linked account)';
+    } catch (e) {
+        msg.textContent = (e as Error).message;
+    }
+});
+$('rename-btn').addEventListener('click', async () => {
+    const idunaUrl = resolveIdunaUrl();
+    const name = ($('rename-input') as HTMLInputElement).value.trim();
+    const msg = $('rename-msg');
+    if (!currentAccount) {
+        msg.textContent = 'No account yet — click Connect first.';
+        return;
+    }
+    if (!name || !account.isValidDisplayName(name)) {
+        msg.textContent = 'Name must be 1-16 characters, no control characters.';
+        return;
+    }
+    msg.textContent = 'Saving…';
+    try {
+        currentAccount = await account.setDisplayName(idunaUrl, currentAccount, name);
+        ($('rename-input') as HTMLInputElement).value = '';
+        msg.textContent = 'Saved.';
+        await initSocial();
     } catch (e) {
         msg.textContent = (e as Error).message;
     }

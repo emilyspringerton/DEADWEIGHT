@@ -274,3 +274,21 @@ export async function registerAndClaim(idunaBase: string, name: string, email: s
     const fresh = await guestRegister(idunaBase, name);
     return await claimOrLogin(idunaBase, fresh, email, password);
 }
+
+// setDisplayName is the real "choose your username" path (founder real-time, 2026-09-29): every
+// IDUNA SSO signup used to get an unremovable default name (first the literal email local part --
+// a real doxxing risk, fixed server-side; now a lore-friendly generated one, same as a guest's
+// boot-time name) with no way to ever change it. Works for ANY account kind (guest, SSO, email) --
+// IDUNA's own set-display-name endpoint only requires a valid player token for this game, not a
+// specific provider. Returns a fresh Account (the server reissues the token so its own
+// display_name claim matches immediately) and persists it, same as every other account.ts flow.
+export async function setDisplayName(idunaBase: string, current: Account, name: string): Promise<Account> {
+    const body = await api(idunaBase, '/set-display-name', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + current.token },
+        body: JSON.stringify({ display_name: name }),
+    });
+    const a: Account = { ...current, displayName: body.display_name, token: body.token, expiresAt: body.expires_at };
+    persist(a);
+    return a;
+}
