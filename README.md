@@ -1,5 +1,8 @@
 # DEADWEIGHT — Dark Sector: Hold Battles
 
+**Deployed (2026-10-04): GKE.** `dw_server`, the 6 bots and the ws bridge run as one pod (`EMILY/gitops/specs/deadweight.pod`, image from `scripts/build-image.sh`, match logs on a PVC). TCP is `dw.okemily.com:7180` via the shared tcp-edge LB; the box forwards legacy `okemily.com:6980` to it. The image packages the deployed binaries (stopgap, no hermetic build yet).
+
+
 A fast, mean, 1v1 sci-fi card battler. Two commanders, one Dark Sector holding, and a catalog of
 105 cards you'll learn to distrust — because not everything that looks good *is* good. A real
 matchmaking server sits behind it, so you can play a stranger online or warm up against the bot
