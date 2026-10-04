@@ -1133,7 +1133,7 @@ static int run_fx_demo(const char *dir) {
 }
 
 int main(int argc, char **argv) {
-    snprintf(A.name, sizeof A.name, "Player"); snprintf(A.host, sizeof A.host, "okemily.com"); snprintf(A.port, sizeof A.port, "6980");
+    snprintf(A.name, sizeof A.name, "Player"); snprintf(A.host, sizeof A.host, "dw.okemily.com"); snprintf(A.port, sizeof A.port, "7180");
     snprintf(A.account_path, sizeof A.account_path, "dw_account.txt");
     const char *iduna_env = getenv("IDUNA_BASE_URL");
     /* S508d, real found-live gap: this default was "http://localhost:8080" -- fine for local dev

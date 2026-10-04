@@ -7,9 +7,9 @@ package industrial.einhorn.deadweight;
 final class Config {
     private Config() {}
     /** The DEADWEIGHT server on the EINHORN box (okemily.com -> 198.58.107.85). Emulator dev: use 10.0.2.2. */
-    static final String DEFAULT_HOST = "okemily.com";
+    static final String DEFAULT_HOST = "dw.okemily.com";
     /** dw_server TCP port (ops/systemd/dw.env). */
-    static final int DEFAULT_PORT = 6980;
+    static final int DEFAULT_PORT = 7180;
     /** Empty = name-only (server must run --no-auth); "https://okemily.com" is the real, live
      *  production IDUNA -- was empty here (a real, found-live gap: Android had no IDUNA account at
      *  all by default, no tickets/redeem/claim, while the desktop client fixed this at S508d). */
