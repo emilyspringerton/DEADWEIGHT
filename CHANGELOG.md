@@ -1,5 +1,10 @@
 # CHANGELOG
 
+## 2026-10-04
+
+- K8S-MV-04: server moved to GKE (pod deadweight: dw_server, 6 bots, ws bridge; match logs copied to PVC). Clients default to dw.okemily.com:7180 (shared tcp-edge LB); box okemily.com:6980 forwards for old clients. (sess-20260923-1030-4a526255)
+
+
 ## 2026-09-29 (cont. 2)
 
 - fix(web): SSO doxxing default + choose-your-username + a real reload-required bug. Founder
