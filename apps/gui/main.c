@@ -310,6 +310,15 @@ static void start_draft_run(void) {
         return;
     }
     A.mode = DW_MODE_DRAFT; do_connect();   /* fresh run: draft as usual, deck saved to IDUNA on DW_S_DRAFT_DONE */
+    if (!A.connected) {
+        /* The ticket was already spent and the run marked active against IDUNA above -- do_connect()
+         * failing here (dw_server unreachable, e.g. a K8S-MV-04 auto-redeploy mid-connect) must not
+         * strand the player with a spent ticket and no match. Refund via abort: a 0-win/0-loss run
+         * is a full ticket refund (see cashOutDraftRun), not the 0-win cash-out table. */
+        int rwins = 0, rlosses = 0, granted = 0, balance = 0;
+        dwi_draft_run_abort(&A.idu, A.token, &rwins, &rlosses, &granted, &balance);
+        A.tickets = balance;
+    }
 }
 static void do_draft_abort(void) {
     if (!A.auth_ready) return;
