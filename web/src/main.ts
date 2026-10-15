@@ -4,6 +4,7 @@
 // every other DEADWEIGHT client already follows (Android Java shell, Windows SDL2 GUI).
 
 import { DeadweightClient } from './client.js';
+import type { ClientEvents } from './client.js';
 import { initWasmProto } from './wasmProto.js';
 import type { RoundStart } from './wasmProto.js';
 import * as rules from './generated/CardRules.js';
@@ -23,6 +24,20 @@ const KIND_COLORS = ['#D7463C', '#E1A028', '#468CE6'];
 const $ = (id: string) => document.getElementById(id)!;
 
 let client: DeadweightClient;
+let clientHandlers: ClientEvents;
+let connBridge = '', connName = '', connToken = '';
+// Draft mode (apps/gui/main.c's A.mode == DW_MODE_DRAFT flow): HELLO mode 2 -> QUEUE -> DRAFT_OFFER x16 ->
+// DRAFT_DONE -> QUEUED -> match; between matches the Draft Hub (wins / burned proxies / resume / abort).
+let draftActive = false;
+let draftWantQueue = false;
+let draftAwaitingResumeQueue = false;
+let draftResumeCards: number[] | null = null;
+let draftDeck: number[] = [];
+let draftDeckId = 0;
+let draftPicks: { card: number; mult: number }[] = [];
+let draftPend = { card: -1, mult: 0 };
+let draftOfferCards: number[] = [-1, -1];
+let draftLeft: number[] = [0, 0, 0];
 let currentAccount: account.Account | null = null;
 let idunaBaseUrl = '';
 // Fetched at startup (not a static JSON import) so this works unbundled, straight from
@@ -321,11 +336,25 @@ async function enterGame(idunaUrl: string, bridgeUrl: string, fallbackName: stri
     fxLastTs = 0;
     if (!fxTickHandle) fxTickHandle = requestAnimationFrame(fxTickLoop);
 
-    client = new DeadweightClient(bridgeUrl, {
+    connBridge = bridgeUrl;
+    connName = currentAccount ? currentAccount.displayName : fallbackName;
+    connToken = currentAccount ? currentAccount.token : '';
+    clientHandlers = {
         onState(s) {
             setStatus(s);
             const queueBtn = $('queue-btn') as HTMLButtonElement;
-            if (s === 'ready' && pendingMatchToken) {
+            if (s === 'ready' && draftResumeCards) {
+                // RESUME UPLINK after a reconnect: resubmit the persisted deck; DRAFT_DONE echoes it back
+                // and draftDone() then queues same_deck (dw_server does not auto-queue this path).
+                client.draftResume(draftResumeCards);
+                draftAwaitingResumeQueue = true;
+                draftResumeCards = null;
+                queueBtn.disabled = true;
+            } else if (s === 'ready' && draftWantQueue) {
+                draftWantQueue = false;
+                client.queue(0);   // draft mode: no same_deck byte = draft a new deck first
+                queueBtn.disabled = true;
+            } else if (s === 'ready' && pendingMatchToken) {
                 const tok = pendingMatchToken;
                 pendingMatchToken = null;
                 client.queue(0, tok);
@@ -463,13 +492,22 @@ async function enterGame(idunaUrl: string, bridgeUrl: string, fallbackName: stri
             // DW_S_MATCH_END handling exactly (A.pend.lethal = 1; fx_finish_round(0, NULL);).
             if (pendRound) flushPendRound(null, null, pendRound.statusBeforeYou, pendRound.statusBeforeOpp, 0, true);
             setStatus(`match over: ${outcome}`);
-            $('requeue').style.display = 'inline-block';
+            if (draftActive && draftDeck.length) {
+                $('requeue').style.display = 'none';
+                openHub(true);   // S510: "players do not queue immediately after drafting" -- route through the Hub
+            } else {
+                $('requeue').style.display = 'inline-block';
+            }
         },
         onError(f) {
             log(`ERROR code ${f.code}`);
         },
-    });
-    client.connect(currentAccount ? currentAccount.displayName : fallbackName, currentAccount ? currentAccount.token : '');
+        onDraftOffer(f) { draftOffer(f); },
+        onDraftDone(f) { draftDone(f); },
+    };
+    client = new DeadweightClient(bridgeUrl, clientHandlers);
+    client.connect(connName, connToken, 0);
+    refreshTickets();
 }
 
 async function start() {
@@ -893,4 +931,198 @@ $('add-friend-btn').addEventListener('click', async () => {
     } catch (e) {
         msg.textContent = (e as Error).message;
     }
+});
+
+
+// ===================== DRAFT MODE (kanban #626) =====================
+// Same flow, copy and button set as apps/gui/main.c's S_DRAFT / S_DRAFT_HUB screens. The IDUNA ticket spend
+// and run state go through account.ts's draftRun* (the routes dwi_draft_run_* call); the wire frames go
+// through the same wasm codec as everything else. Layout is DOM/CSS, not the SDL pixel grid -- see README.
+
+const DRAFT_PICKS = 16;
+
+function draftCardBox(id: number): string {
+    const c = cardsData.cards[id];
+    const kind = rules.cardKind(id);
+    return `<div class="card-header" style="background:${KIND_COLORS[kind]};">${c ? c.name : '#' + id}</div>` +
+        `<div class="card-body"><div class="card-meta">Cost ${c ? c.cost : '?'}${c && c.credit ? ' +' + c.credit + 'cr' : ''} · Pwr ${c ? c.power : '?'}</div>` +
+        `<div class="card-kind">${KIND_NAMES[kind]}${c && c.keyword ? ' / ' + c.keyword : ''}</div>` +
+        (c && c.text ? `<span class="rules-text">${c.text}</span>` : '') + `</div>`;
+}
+
+function showScreen(which: 'game' | 'draft' | 'hub') {
+    $('draft').style.display = which === 'draft' ? 'block' : 'none';
+    $('hub').style.display = which === 'hub' ? 'block' : 'none';
+    if (which !== 'game') $('match').style.display = 'none';   // game: leave #match as the match events set it
+    ($('queue-btn') as HTMLElement).style.display = which === 'game' ? '' : 'none';
+    ($('draft-btn') as HTMLElement).style.display = which === 'game' ? '' : 'none';
+}
+
+async function refreshTickets() {
+    if (!currentAccount) return;
+    try {
+        const n = await account.ticketBalance(idunaBaseUrl, currentAccount.playerID);
+        $('ticket-count').textContent = `TICKETS: ${n}`;
+        ($('draft-btn') as HTMLButtonElement).textContent = n > 0 ? 'Draft (cost: 1 ticket)' : 'Draft (no tickets)';
+        ($('draft-btn') as HTMLButtonElement).dataset.tickets = String(n);
+    } catch { /* cosmetic */ }
+}
+
+function renderDraft() {
+    const pickNo = draftPicks.length;
+    $('draft-title').textContent = `DRAFT  PICK ${Math.min(pickNo + 1, DRAFT_PICKS)}/${DRAFT_PICKS}`;
+    $('draft-left').textContent = `LEFT  1X: ${draftLeft[0]}   2X: ${draftLeft[1]}   3X: ${draftLeft[2]}`;
+    const offer = $('draft-offer');
+    offer.innerHTML = '';
+    for (let c = 0; c < 2; c++) {
+        const col = document.createElement('div');
+        const box = document.createElement('div');
+        box.className = 'draft-card';
+        box.innerHTML = draftOfferCards[c] >= 0 ? draftCardBox(draftOfferCards[c]) : '';
+        col.appendChild(box);
+        const mults = document.createElement('div');
+        mults.className = 'draft-mults';
+        for (let m = 1; m <= 3; m++) {
+            const b = document.createElement('button');
+            b.textContent = `${m}X`;
+            b.disabled = draftLeft[m - 1] <= 0;
+            b.onclick = () => {
+                draftPend = { card: draftOfferCards[c], mult: m };
+                client.draftPick(c as 0 | 1, m as 1 | 2 | 3);
+            };
+            mults.appendChild(b);
+        }
+        col.appendChild(mults);
+        offer.appendChild(col);
+    }
+    $('draft-deck-title').textContent = `YOUR DECK SO FAR (${draftPicks.length})`;
+    $('draft-deck').innerHTML = draftPicks.map((p) => `${p.mult}X ${escapeHtml(cardsData.cards[p.card] ? cardsData.cards[p.card].name : '#' + p.card)}`).join('<br>');
+}
+
+function draftOffer(f: { pickNo: number; total: number; card: number[]; left: number[] }) {
+    if (f.pickNo === 0) draftPicks = [];
+    else if (f.pickNo === draftPicks.length + 1 && draftPicks.length < DRAFT_PICKS) draftPicks.push({ card: draftPend.card, mult: draftPend.mult });
+    draftOfferCards = [f.card[0], f.card[1]];
+    draftLeft = [f.left[0], f.left[1], f.left[2]];
+    setStatus('drafting');
+    showScreen('draft');
+    renderDraft();
+}
+
+async function draftDone(f: { deckId: number; cards: number[] }) {
+    draftDeck = f.cards.slice();
+    draftDeckId = f.deckId;
+    showScreen('game');
+    setStatus('queued (draft deck ' + f.deckId + ')');
+    if (draftAwaitingResumeQueue) {
+        draftAwaitingResumeQueue = false;
+        client.queue(1);
+    } else if (currentAccount) {
+        // A genuinely new deck: persist it so a boot-time resume / the Hub has a server-side record.
+        // Fire-and-forget -- an IDUNA outage never blocks the match (same contract as the desktop client).
+        account.draftRunSaveDeck(idunaBaseUrl, currentAccount.token, draftDeck).catch((e) => log('draft deck save failed: ' + (e as Error).message));
+    }
+}
+
+function reconnect(mode: 0 | 2) {
+    if (client) client.close();
+    client = new DeadweightClient(connBridge, clientHandlers);
+    client.connect(connName, connToken, mode);
+}
+
+async function startDraftRun() {
+    const msg = $('draft-msg');
+    if (!currentAccount) { msg.textContent = 'No account (IDUNA offline)'; return; }
+    msg.textContent = '';
+    ($('draft-btn') as HTMLButtonElement).disabled = true;
+    try {
+        const r = await account.draftRunStart(idunaBaseUrl, currentAccount.token);
+        refreshTickets();
+        draftActive = true;
+        if (!r.ticketSpent) {
+            // resuming an already-active run: straight to the Hub, never re-spend
+            await openHub(false);
+            return;
+        }
+        draftDeck = []; draftPicks = [];
+        draftWantQueue = true;
+        reconnect(2);
+        showScreen('game');
+        setStatus('connecting (draft)…');
+    } catch (e) {
+        const err = e as { status?: number; message: string };
+        msg.textContent = err.status === 402 ? 'Insufficient tickets' : 'IDUNA unreachable: ' + err.message;
+        ($('draft-btn') as HTMLButtonElement).disabled = false;
+    }
+}
+
+async function openHub(connected: boolean) {
+    if (!currentAccount) return;
+    let st: account.DraftRunState | null = null;
+    try { st = await account.draftRunState(idunaBaseUrl, currentAccount.token); } catch { /* shown below */ }
+    // S520: trust the server's state -- a 3rd loss auto-cashes-out and flips active=false.
+    if (st && !st.active) {
+        draftActive = false;
+        $('hub-msg').textContent = '';
+        showScreen('game');
+        ($('draft-btn') as HTMLButtonElement).disabled = false;
+        ($('requeue').style.display = 'inline-block');
+        refreshTickets();
+        setStatus('draft run over');
+        return;
+    }
+    const wins = st ? st.wins : 0, losses = st ? st.losses : 0;
+    const deck = st && st.deck.length ? st.deck : draftDeck;
+    draftDeck = deck.slice();
+    $('hub-wins').textContent = `WINS: ${wins}`;
+    Array.from($('hub-proxies').children).forEach((el, i) => el.classList.toggle('burned', i < losses));
+    $('hub-deck-title').textContent = `DECK  (${deck.length} CARDS)`;
+    $('hub-deck').innerHTML = deck.slice(0, 23).map((id) => escapeHtml(cardsData.cards[id] ? cardsData.cards[id].name : '#' + id)).join('<br>');
+    $('hub-msg').textContent = st ? '' : 'IDUNA unreachable (showing last known deck)';
+    ($('hub-resume') as HTMLElement).dataset.connected = connected ? '1' : '0';
+    showScreen('hub');
+}
+
+$('draft-btn').addEventListener('click', () => { void startDraftRun(); });
+
+$('hub-resume').addEventListener('click', () => {
+    showScreen('game');
+    if (client && client.getState() === 'ready') {
+        client.queue(1);   // still connected (came from MATCH_END): dw_server holds this deck in memory
+        ($('queue-btn') as HTMLButtonElement).disabled = true;
+    } else {
+        draftResumeCards = draftDeck.slice();
+        reconnect(2);
+    }
+    setStatus('resuming uplink…');
+});
+
+$('hub-abort').addEventListener('click', async () => {
+    if (!currentAccount) return;
+    try {
+        const r = await account.draftRunAbort(idunaBaseUrl, currentAccount.token);
+        draftActive = false;
+        draftDeck = [];
+        $('draft-msg').textContent = `Extracted: ${r.wins} win${r.wins === 1 ? '' : 's'} -> +${r.granted} ticket${r.granted === 1 ? '' : 's'}`;
+        showScreen('game');
+        ($('draft-btn') as HTMLButtonElement).disabled = false;
+        reconnect(0);
+        refreshTickets();
+    } catch (e) {
+        $('hub-msg').textContent = 'Abort failed (' + (e as Error).message + ')';
+    }
+});
+
+$('draft-leave').addEventListener('click', async () => {
+    // Mid-draft LEAVE (desktop: send LEAVE, back to menu). The run's ticket was already spent, so refund via
+    // abort exactly like start_draft_run()'s connect-failure path: a 0-win/0-loss run is a full refund.
+    try { client.leave(); } catch { /* socket may be gone */ }
+    showScreen('game');
+    if (currentAccount && draftActive && draftDeck.length === 0) {
+        try { await account.draftRunAbort(idunaBaseUrl, currentAccount.token); } catch { /* best effort */ }
+        draftActive = false;
+    }
+    ($('draft-btn') as HTMLButtonElement).disabled = false;
+    reconnect(0);
+    refreshTickets();
 });

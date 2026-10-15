@@ -137,6 +137,26 @@
   .srow .sid { opacity: 0.75; font-size: 0.75rem; word-break: break-all; text-transform: none; }
   .srow button { display: inline-block; width: auto; margin-top: 0; padding: 4px 10px; font-size: 0.8rem; }
   .smuted { opacity: 0.7; font-size: 0.85rem; }
+  /* DRAFT + DRAFT HUB (mirrors apps/gui/main.c draw_draft / draw_draft_hub) */
+  #draft, #hub { text-align: center; margin-top: 10px; }
+  #draft-title, #hub-title { font-size: 1.6rem; font-weight: bold; letter-spacing: 0.05em; }
+  #draft-left { margin-top: 6px; color: var(--dim); }
+  #draft-hint { margin-top: 4px; font-size: 0.7rem; color: var(--dim); }
+  #draft-offer { display: grid; grid-template-columns: repeat(2, 1fr); gap: 20px; margin-top: 12px; }
+  .draft-card { text-align: left; background: var(--panel); min-height: 160px; overflow: hidden; }
+  .draft-mults { display: flex; gap: 10px; margin-top: 8px; }
+  .draft-mults button { flex: 1; min-height: 44px; }
+  #draft-deck-title { margin-top: 16px; color: var(--dim); text-align: left; }
+  #draft-deck, #hub-deck { text-align: left; font-size: 0.85rem; }
+  #hub-wins { font-size: 1.3rem; margin-top: 10px; }
+  .hub-sub { color: var(--dim); font-size: 0.7rem; margin-top: 6px; }
+  #hub-proxies { display: flex; justify-content: center; gap: 16px; margin: 8px 0 14px; }
+  #hub-proxies span { width: 48px; height: 48px; background: var(--panel); border: 2px solid var(--text); display: inline-block; }
+  #hub-proxies span.burned { background: var(--bad); }
+  #hub-deck-title { color: var(--dim); text-align: left; }
+  #hub-resume { background: var(--good); color: #000; min-height: 64px; width: 100%; margin-top: 14px; }
+  #hub-abort { background: var(--bad); color: #000; min-height: 56px; width: 100%; margin-top: 10px; }
+  #hub-msg { color: var(--bad); font-size: 0.8rem; margin-top: 8px; }
 </style>
 </head>
 <body>
@@ -184,6 +204,31 @@
 <div id="game">
   <p>Status: <span id="status">—</span><span class="term-caret"></span></p>
   <button id="queue-btn">Queue (random)</button>
+  <button id="draft-btn" disabled>Draft (cost: 1 ticket)</button>
+  <span id="ticket-count" class="smuted"></span>
+  <div id="draft-msg" class="smuted"></div>
+
+  <!-- DRAFT mode (apps/gui/main.c draw_draft / draw_draft_hub, same copy + order + button set) -->
+  <div id="draft" style="display:none">
+    <div id="draft-title">DRAFT  PICK 1/16</div>
+    <div id="draft-left">LEFT  1X: 0   2X: 0   3X: 0</div>
+    <div id="draft-hint">PICK A CARD AND HOW MANY COPIES: 10 SINGLES, 5 PAIRS, 1 TRIPLE = 23 CARDS</div>
+    <div id="draft-offer"></div>
+    <div id="draft-deck-title">YOUR DECK SO FAR (0)</div>
+    <div id="draft-deck"></div>
+    <button id="draft-leave">LEAVE</button>
+  </div>
+  <div id="hub" style="display:none">
+    <div id="hub-title">DRAFT HUB</div>
+    <div id="hub-wins">WINS: 0</div>
+    <div class="hub-sub">BURNED PROXIES</div>
+    <div id="hub-proxies"><span></span><span></span><span></span></div>
+    <div id="hub-deck-title">DECK  (0 CARDS)</div>
+    <div id="hub-deck"></div>
+    <button id="hub-resume">RESUME UPLINK</button>
+    <button id="hub-abort">ABORT &amp; EXTRACT</button>
+    <div id="hub-msg"></div>
+  </div>
 
   <div id="match">
     <div id="opp-name" style="text-align:center;opacity:0.85;font-size:0.85rem;text-transform:uppercase;"></div>

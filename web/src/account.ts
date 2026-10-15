@@ -292,3 +292,41 @@ export async function setDisplayName(idunaBase: string, current: Account, name: 
     persist(a);
     return a;
 }
+
+
+// ---- Draft run (S510 Draft Hub) -- same IDUNA routes apps/gui/main.c's dwi_draft_run_* call ----
+async function authed(idunaBase: string, token: string, path: string, method: string, body?: unknown): Promise<any> {
+    return api(idunaBase, path, {
+        method,
+        headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
+        body: body === undefined ? undefined : JSON.stringify(body),
+    });
+}
+
+export async function ticketBalance(idunaBase: string, playerID: string): Promise<number> {
+    const b = await api(idunaBase, '/players/' + encodeURIComponent(playerID) + '/tickets');
+    return b && typeof b.tickets === 'number' ? b.tickets : 0;
+}
+
+export interface DraftRunState { active: boolean; wins: number; losses: number; deck: number[]; }
+
+/** Spends one ticket and opens a run (ticketSpent=1), or reports the already-active run (ticketSpent=0).
+ * Throws ApiError(402) when the player has no tickets. */
+export async function draftRunStart(idunaBase: string, token: string): Promise<{ wins: number; losses: number; ticketSpent: boolean }> {
+    const b = await authed(idunaBase, token, '/draft-run/start', 'POST', {});
+    return { wins: b.wins | 0, losses: b.losses | 0, ticketSpent: !!b.ticket_spent };
+}
+
+export async function draftRunState(idunaBase: string, token: string): Promise<DraftRunState> {
+    const b = await authed(idunaBase, token, '/draft-run', 'GET');
+    return { active: !!b.active, wins: b.wins | 0, losses: b.losses | 0, deck: Array.isArray(b.deck) ? b.deck.map((x: unknown) => Number(x)) : [] };
+}
+
+export async function draftRunSaveDeck(idunaBase: string, token: string, deck: number[]): Promise<void> {
+    await authed(idunaBase, token, '/draft-run/deck', 'POST', { deck });
+}
+
+export async function draftRunAbort(idunaBase: string, token: string): Promise<{ wins: number; losses: number; granted: number; tickets: number }> {
+    const b = await authed(idunaBase, token, '/draft-run/abort', 'POST', {});
+    return { wins: b.wins | 0, losses: b.losses | 0, granted: b.tickets_granted | 0, tickets: b.tickets | 0 };
+}

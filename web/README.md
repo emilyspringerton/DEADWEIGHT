@@ -143,9 +143,15 @@ Not just "it compiles" — a real, live, end-to-end match:
 
 ## Honest status / limits — not built yet
 
-- **Random queue only.** Draft mode's own `DRAFT_OFFER`/`DRAFT_PICK`/`DRAFT_DONE` frames are typed
-  in `proto.ts` but `main.ts`'s UI never sends a draft pick — draft is real everywhere else
-  (server, bots, Windows GUI, Android) but not wired into this client.
+- **Draft mode (2026-10-15, kanban #626).** The DRAFT button spends a ticket through IDUNA's
+  `/draft-run/*` routes (same as the desktop client), reconnects with HELLO mode 2, runs the 16 picks
+  (`DRAFT_OFFER` / `DRAFT_PICK`, 1X/2X/3X), saves the deck to IDUNA on `DRAFT_DONE`, and routes between
+  matches through the Draft Hub (wins, burned proxies, deck, RESUME UPLINK via `DRAFT_RESUME`, ABORT &
+  EXTRACT). **Verified:** the wire path end to end (`bridge/draft_e2e_test.mjs`: real compiled client ->
+  ws bridge -> real `dw_server`, 16 picks -> 23-card `DRAFT_DONE` -> `QUEUED`, and `DRAFT_RESUME` echo).
+  **Not verified:** the DOM screens in a real browser, the IDUNA ticket/run calls against live IDUNA, and
+  "pixel for pixel" parity -- this client is DOM/CSS, the desktop one is an SDL pixel grid, so the draft and
+  hub screens copy its copy, order and controls, not its exact pixels.
 - **Friends & Duels (S537 continued, 2026-09-24): real, in-page UI.** `src/social.ts` +
   `main.ts`'s "Friends & Duels" panel (shown once an account is bootstrapped) let any account
   (guest or email-linked — the IDUNA routes only need a valid per-game player token, unlike

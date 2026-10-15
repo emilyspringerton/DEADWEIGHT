@@ -38,6 +38,9 @@ interface WasmExports {
     set_queue_token_char(i: number, c: number): void;
     set_play(matchId: number, round: number, slot: number): void;
     set_leave(): void;
+    set_draft_pick(index: number, mult: number): void;
+    set_draft_resume(): void;
+    set_draft_resume_card(i: number, c: number): void;
     set_ping(nonce: number): void;
     get_welcome_session_id(): number; get_welcome_flags(): number;
     get_queued_waiting(): number;
@@ -159,6 +162,21 @@ export function encodePlay(matchId: number, round: number, slot: number): Uint8A
 export function encodeLeave(): Uint8Array {
     const w = requireWasm();
     w.set_leave();
+    return readEncoded(w, w.wasm_encode());
+}
+
+/** DRAFT_PICK (0x07): which offered card (0/1) and how many copies (1-3). Draft mode only. */
+export function encodeDraftPick(index: 0 | 1, mult: 1 | 2 | 3): Uint8Array {
+    const w = requireWasm();
+    w.set_draft_pick(index, mult);
+    return readEncoded(w, w.wasm_encode());
+}
+
+/** DRAFT_RESUME (0x08): resubmit a persisted 23-card deck (the Draft Hub's RESUME UPLINK after a reconnect). */
+export function encodeDraftResume(cards: number[]): Uint8Array {
+    const w = requireWasm();
+    w.set_draft_resume();
+    for (let i = 0; i < 23; i++) w.set_draft_resume_card(i, i < cards.length ? cards[i] : -1);
     return readEncoded(w, w.wasm_encode());
 }
 

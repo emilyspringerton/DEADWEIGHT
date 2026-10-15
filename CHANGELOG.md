@@ -1,5 +1,12 @@
 # CHANGELOG
 
+## 2026-10-15
+
+- feat(web): draft mode in the browser client (kanban #626) -- DRAFT button (IDUNA ticket spend), 16-pick draft
+  screen, deck save, Draft Hub with resume/abort; `encodeDraftPick`/`encodeDraftResume` over the native wasm codec;
+  `bridge/draft_e2e_test.mjs` passes against a real dw_server. DOM screens not yet exercised in a browser;
+  not pixel-identical to the SDL client (see web/README.md).
+
 ## 2026-10-06
 
 - fix(gui): start_draft_run() now refunds the IDUNA draft-run ticket via dwi_draft_run_abort() when do_connect() to dw_server fails, instead of stranding the player with a spent ticket and no match (sess-20260923-1030-4a526255)
