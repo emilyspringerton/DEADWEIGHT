@@ -2,6 +2,7 @@
 
 ## 2026-10-15
 
+- **ci: auto-deploy like IDUNA** -- new `.github/workflows/deploy.yml`: every push to main builds dw_server/dw_bot (ubuntu-22.04, glibc-matched to the image base), Cloud Builds + pushes `emily/deadweight:<sha>` via Workload Identity; gitops `watch-tags.sh` (already maps `DEADWEIGHT_TAG` -> `deadweight`) then rolls the pod. `scripts/build-image.sh` uses IDUNA's CI-safe async submit. Not yet run in Actions; needs the `GCP_WIF_PROVIDER`/`GCP_CI_SERVICE_ACCOUNT` Variables on this repo (or org).
 - **fix(web): Draft button was permanently disabled** -- `#draft-btn` ships `disabled` in `index.html` and nothing enabled it after connect; `refreshTickets()` now enables it (unless a run is active). **feat(web): IDUNA SSO is the account path** -- removed the email/password "Create Account" and "Link an email" forms; guests are pointed at "Sign in with IDUNA". Not compiled or browser-tested here (no node on this box); `deploy-wasm.yml` builds `dist/` with tsc.
 - **Double-click plays + locks:** double-clicking a hand card (or PASS) selects it and locks it in, in both the SDL client (`apps/gui/main.c`, via `e.button.clicks`) and the web client (`web/src/main.ts`, `ev.detail`). An illegal/EMP-locked card never locks. Headless-unverified (no SDL2 dev on this box); not play-tested live.
 - feat(web): draft mode in the browser client (kanban #626) -- DRAFT button (IDUNA ticket spend), 16-pick draft

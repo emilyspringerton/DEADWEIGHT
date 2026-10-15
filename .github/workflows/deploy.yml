@@ -1,0 +1,46 @@
+name: Build and push image
+
+# Auto-deploy, same pipeline as IDUNA's deploy.yml (K8S-CD-01): every push to main builds dw_server +
+# dw_bot, Cloud Builds the deadweight image (ops/docker/deadweight.Dockerfile, tagged with the short
+# commit SHA) and pushes it to Artifact Registry via Workload Identity (no stored key; the GCP_WIF_PROVIDER /
+# GCP_CI_SERVICE_ACCOUNT Variables are described in EMILY/gitops/CI_SETUP.md). The in-cluster
+# gitops watch-tags/autodeploy path notices the new `emily/deadweight` tag and rolls svc/deadweight --
+# this workflow never talks to the cluster. (deploy-wasm.yml is the separate, still-blocked static web
+# client deploy.)
+on:
+  push:
+    branches: [main]
+    paths-ignore: ['**.md', 'docs/**', 'web/**', 'apps/gui/**', 'apps/wasm/**', 'android/**']
+  workflow_dispatch: {}
+
+concurrency:
+  group: deadweight-deploy-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  build:
+    # 22.04, not latest: the image base is node:20-bookworm-slim (glibc 2.36); binaries linked on a newer
+    # runner's glibc would fail to start in the pod.
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build + test dw_server / dw_bot
+        run: DW_VERSION=0.0.0-${GITHUB_SHA::7} scripts/build.sh
+
+      - name: Auth to GCP (Workload Identity, no stored key)
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ vars.GCP_WIF_PROVIDER }}
+          service_account: ${{ vars.GCP_CI_SERVICE_ACCOUNT }}
+
+      - uses: google-github-actions/setup-gcloud@v2
+
+      - name: Build + push image
+        env:
+          DW_BIN_DIR: ${{ github.workspace }}/build
+        run: scripts/build-image.sh "$(git rev-parse --short HEAD)"
