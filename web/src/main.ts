@@ -299,7 +299,7 @@ async function refreshRings() {
     } catch { /* cosmetic only -- see comment above */ }
 }
 
-// enterGame is start()'s own real tail, extracted (2026-09-25) so createAccount() below can
+// enterGame is start()'s own real tail, extracted (2026-09-25) so the SSO path can
 // reach the exact same "connected and playing" state without duplicating the client wiring --
 // both paths only differ in HOW currentAccount got resolved (bootstrap vs. a fresh
 // register+claim), never in what happens once it's resolved.
@@ -529,7 +529,6 @@ async function start() {
         currentAccount = await account.bootstrapAccount(idunaUrl, name);
         acctStatus.textContent =
             'Playing as ' + currentAccount.displayName + (currentAccount.emailLinked ? ' (linked account)' : ' (guest)');
-        ($('link-email-box') as HTMLElement).style.display = currentAccount.emailLinked ? 'none' : 'block';
     } catch (e) {
         const msg = (e as Error).message;
         acctStatus.textContent = 'IDUNA account error: ' + msg + ' — connecting unauthenticated (only works against a --no-auth server).';
@@ -568,13 +567,11 @@ async function signInWithIduna() {
     try {
         currentAccount = await account.loginWithSso(idunaUrl, session.token);
         acctStatus.textContent = 'Signed in as ' + currentAccount.displayName + ' (IDUNA account)';
-        ($('link-email-box') as HTMLElement).style.display = 'none';
         await enterGame(idunaUrl, bridgeUrl, session.displayName || currentAccount.displayName);
     } catch (e) {
         sso.clearIdunaSession();
         acctStatus.textContent = 'IDUNA sign-in error: ' + (e as Error).message +
-            ' — no DEADWEIGHT account is linked to this IDUNA identity yet. Play as a guest below, ' +
-            'then use "Link an email" with the same email/password to connect it.';
+            ' — try again, or play as a guest.';
         ssoBtn.disabled = false;
     }
 }
@@ -614,72 +611,11 @@ function checkStickyIdunaSession() {
     }
 }
 
-// createAccount is the real "Create Account" flow (2026-09-25, founder real-time: "it should let
-// me create a deadweight account right there with a button"): one button, real, live client-side
-// name feedback (account.isValidDisplayName, mirroring IDUNA's own server-side check -- see its
-// own doc comment for the honest PARENA-TS-emitter gap this hand-written copy works around),
-// register-with-a-chosen-name + immediately claim with email/password, then straight into the
-// game exactly like the existing guest-then-Connect path does.
-async function createAccount() {
-    const name = ($('create-name') as HTMLInputElement).value.trim();
-    const email = ($('create-email') as HTMLInputElement).value.trim();
-    const password = ($('create-password') as HTMLInputElement).value;
-    const idunaUrl = resolveIdunaUrl();
-    const bridgeUrl = resolveBridgeUrl();
-    const createBtn = $('create-account-btn') as HTMLButtonElement;
-    const msg = $('create-account-msg');
-    if (!name || !account.isValidDisplayName(name)) {
-        msg.textContent = 'Name must be 1-16 characters, no control characters.';
-        return;
-    }
-    if (!email || !password) {
-        msg.textContent = 'Email and password required.';
-        return;
-    }
-    if (password.length < 8) {
-        msg.textContent = 'Password needs 8+ characters.';
-        return;
-    }
-    createBtn.disabled = true;
-    msg.textContent = 'Creating…';
-    try {
-        currentAccount = await account.registerAndClaim(idunaUrl, name, email, password);
-        msg.textContent = '';
-        await enterGame(idunaUrl, bridgeUrl, name);
-    } catch (e) {
-        msg.textContent = (e as Error).message;
-        createBtn.disabled = false;
-    }
-}
-
 $('start-btn').addEventListener('click', start);
 $('sso-btn').addEventListener('click', signInWithIduna);
-$('create-account-btn').addEventListener('click', createAccount);
 $('pass-btn').addEventListener('click', (ev) => { selectSlot(-1); if (ev.detail >= 2 && selectedSlot === -1) lockIn(); });
 $('lockin-btn').addEventListener('click', lockIn);
 checkStickyIdunaSession();
-$('link-btn').addEventListener('click', async () => {
-    const idunaUrl = resolveIdunaUrl();
-    const email = ($('link-email') as HTMLInputElement).value.trim();
-    const password = ($('link-password') as HTMLInputElement).value;
-    const msg = $('link-msg');
-    if (!currentAccount) {
-        msg.textContent = 'No account yet — click Connect first.';
-        return;
-    }
-    msg.textContent = 'Linking…';
-    try {
-        const before = currentAccount.playerID;
-        currentAccount = await account.claimOrLogin(idunaUrl, currentAccount, email, password);
-        msg.textContent = currentAccount.playerID === before
-            ? 'Linked — you can sign in with this email on WOTAN’s Friends & Duels page too.'
-            : 'This email already had an account — signed in to it instead (your fresh guest session is unused, not lost).';
-        ($('link-email-box') as HTMLElement).style.display = 'none';
-        ($('account-status') as HTMLElement).textContent = 'Playing as ' + currentAccount.displayName + ' (linked account)';
-    } catch (e) {
-        msg.textContent = (e as Error).message;
-    }
-});
 $('rename-btn').addEventListener('click', async () => {
     const idunaUrl = resolveIdunaUrl();
     const name = ($('rename-input') as HTMLInputElement).value.trim();
@@ -965,6 +901,9 @@ async function refreshTickets() {
         $('ticket-count').textContent = `TICKETS: ${n}`;
         ($('draft-btn') as HTMLButtonElement).textContent = n > 0 ? 'Draft (cost: 1 ticket)' : 'Draft (no tickets)';
         ($('draft-btn') as HTMLButtonElement).dataset.tickets = String(n);
+        // The button ships disabled in index.html and nothing used to enable it after connect.
+        // Enable it unless a run is mid-start/active (startDraftRun/openHub manage those cases).
+        if (!draftActive) ($('draft-btn') as HTMLButtonElement).disabled = false;
     } catch { /* cosmetic */ }
 }
 

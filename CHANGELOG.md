@@ -2,6 +2,7 @@
 
 ## 2026-10-15
 
+- **fix(web): Draft button was permanently disabled** -- `#draft-btn` ships `disabled` in `index.html` and nothing enabled it after connect; `refreshTickets()` now enables it (unless a run is active). **feat(web): IDUNA SSO is the account path** -- removed the email/password "Create Account" and "Link an email" forms; guests are pointed at "Sign in with IDUNA". Not compiled or browser-tested here (no node on this box); `deploy-wasm.yml` builds `dist/` with tsc.
 - **Double-click plays + locks:** double-clicking a hand card (or PASS) selects it and locks it in, in both the SDL client (`apps/gui/main.c`, via `e.button.clicks`) and the web client (`web/src/main.ts`, `ev.detail`). An illegal/EMP-locked card never locks. Headless-unverified (no SDL2 dev on this box); not play-tested live.
 - feat(web): draft mode in the browser client (kanban #626) -- DRAFT button (IDUNA ticket spend), 16-pick draft
   screen, deck save, Draft Hub with resume/abort; `encodeDraftPick`/`encodeDraftResume` over the native wasm codec;
