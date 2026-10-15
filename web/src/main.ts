@@ -208,7 +208,7 @@ function renderHand() {
             btn.disabled = !legal || locked;
             btn.classList.toggle('selected', !locked && selectedSlot === slot);
             btn.classList.toggle('locked-in', locked && selectedSlot === slot);
-            btn.onclick = () => selectSlot(slot);
+            btn.onclick = (ev) => { selectSlot(slot); if (ev.detail >= 2 && selectedSlot === slot) lockIn(); };
         }
         handEl.appendChild(btn);
     });
@@ -655,7 +655,7 @@ async function createAccount() {
 $('start-btn').addEventListener('click', start);
 $('sso-btn').addEventListener('click', signInWithIduna);
 $('create-account-btn').addEventListener('click', createAccount);
-$('pass-btn').addEventListener('click', () => selectSlot(-1));
+$('pass-btn').addEventListener('click', (ev) => { selectSlot(-1); if (ev.detail >= 2 && selectedSlot === -1) lockIn(); });
 $('lockin-btn').addEventListener('click', lockIn);
 checkStickyIdunaSession();
 $('link-btn').addEventListener('click', async () => {

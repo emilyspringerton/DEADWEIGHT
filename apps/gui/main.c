@@ -866,6 +866,7 @@ static void requeue(int same_deck) {
     A.screen = S_QUEUE; A.waiting = 0; A.state_at = SDL_GetTicks();
     if (dwc_send(&A.c, &m)) to_menu("Connection lost");
 }
+static int g_click_count = 1;   /* SDL's e.button.clicks for the click() in flight: 2 = double-click */
 static void click(int x, int y) {
     switch (A.screen) {
     case S_MENU:
@@ -914,8 +915,16 @@ static void click(int x, int y) {
     }
     case S_QUEUE: if (in_rect(x, y, 140, 520, 200, 64)) { send_simple(DW_C_LEAVE); to_menu(""); } break;
     case S_MATCH:
-        for (int i = 0; i < 4; i++) if (in_rect(x, y, 20 + (i % 2) * 232, 620 + (i / 2) * 142, 216, 136)) select_slot(i);
-        if (in_rect(x, y, 20, 906, 200, 42)) select_slot(-1);
+        /* double-click a card (or PASS) = select it AND lock it in; select_slot() refuses an illegal
+         * card, so a double-click on one leaves sel unchanged and never locks something else. */
+        for (int i = 0; i < 4; i++) if (in_rect(x, y, 20 + (i % 2) * 232, 620 + (i / 2) * 142, 216, 136)) {
+            select_slot(i);
+            if (g_click_count >= 2 && A.sel == i) lock_selected();
+        }
+        if (in_rect(x, y, 20, 906, 200, 42)) {
+            select_slot(-1);
+            if (g_click_count >= 2 && A.sel == -1) lock_selected();
+        }
         if (in_rect(x, y, 240, 906, 220, 42)) lock_selected();
         break;
     case S_DRAFT:
@@ -1224,7 +1233,7 @@ int main(int argc, char **argv) {
             else if (e.type == SDL_WINDOWEVENT && (e.window.event == SDL_WINDOWEVENT_RESIZED || e.window.event == SDL_WINDOWEVENT_SIZE_CHANGED))
                 SDL_RenderSetLogicalSize(R, W, H);
             else if (e.type == SDL_MOUSEMOTION) { mx = e.motion.x; my = e.motion.y; }
-            else if (e.type == SDL_MOUSEBUTTONDOWN && e.button.button == SDL_BUTTON_LEFT) click(e.button.x, e.button.y);
+            else if (e.type == SDL_MOUSEBUTTONDOWN && e.button.button == SDL_BUTTON_LEFT) { g_click_count = e.button.clicks; click(e.button.x, e.button.y); g_click_count = 1; }
             else if (e.type == SDL_TEXTINPUT && A.screen == S_MENU) append_to_field(A.focus, e.text.text);
             else if (e.type == SDL_TEXTINPUT && A.screen == S_CLAIM) append_to_claim_field(A.claim_focus, e.text.text);
             else if (e.type == SDL_TEXTINPUT && A.screen == S_SOCIAL) append_to_social_field(e.text.text);
