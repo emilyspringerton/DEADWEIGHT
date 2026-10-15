@@ -142,10 +142,12 @@
   #draft-title, #hub-title { font-size: 1.6rem; font-weight: bold; letter-spacing: 0.05em; }
   #draft-left { margin-top: 6px; color: var(--dim); }
   #draft-hint { margin-top: 4px; font-size: 0.7rem; color: var(--dim); }
-  #draft-offer { display: grid; grid-template-columns: repeat(2, 1fr); gap: 20px; margin-top: 12px; }
+  #draft-offer { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px; margin-top: 12px; }
+  #draft-offer > div { min-width: 0; border: 3px solid var(--cursor); padding: 8px; box-sizing: border-box; }
+  #draft-offer > div + div { border-left: 3px solid var(--cursor); }
   .draft-card { text-align: left; background: var(--panel); min-height: 160px; overflow: hidden; }
-  .draft-mults { display: flex; gap: 10px; margin-top: 8px; }
-  .draft-mults button { flex: 1; min-height: 44px; }
+  .draft-mults { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; margin-top: 8px; }
+  .draft-mults button { width: 100%; min-width: 0; min-height: 44px; margin-top: 0; padding: 8px 0; }
   #draft-deck-title { margin-top: 16px; color: var(--dim); text-align: left; }
   #draft-deck, #hub-deck { text-align: left; font-size: 0.85rem; }
   #hub-wins { font-size: 1.3rem; margin-top: 10px; }

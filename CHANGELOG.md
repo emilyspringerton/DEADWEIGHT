@@ -1,6 +1,9 @@
 # CHANGELOG
 
 ## 2026-10-15
+- fix(web): draft screen 1X/2X/3X buttons laid out as a 3-column grid (were clipped to 1X); border around each draft choice.
+
+## 2026-10-15
 
 - **ci: auto-deploy like IDUNA** -- new `.github/workflows/deploy.yml`: every push to main builds dw_server/dw_bot (ubuntu-22.04, glibc-matched to the image base), Cloud Builds + pushes `emily/deadweight:<sha>` via Workload Identity; gitops `watch-tags.sh` (already maps `DEADWEIGHT_TAG` -> `deadweight`) then rolls the pod. `scripts/build-image.sh` uses IDUNA's CI-safe async submit. Not yet run in Actions; needs the `GCP_WIF_PROVIDER`/`GCP_CI_SERVICE_ACCOUNT` Variables on this repo (or org).
 - **fix(web): Draft button was permanently disabled** -- `#draft-btn` ships `disabled` in `index.html` and nothing enabled it after connect; `refreshTickets()` now enables it (unless a run is active). **feat(web): IDUNA SSO is the account path** -- removed the email/password "Create Account" and "Link an email" forms; guests are pointed at "Sign in with IDUNA". Not compiled or browser-tested here (no node on this box); `deploy-wasm.yml` builds `dist/` with tsc.
