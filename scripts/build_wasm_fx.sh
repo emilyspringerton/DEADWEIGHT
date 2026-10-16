@@ -56,7 +56,7 @@ INCLUDES="-Iapps/wasm/fx -Iapps/wasm -Icore -Iapps/gui"
 # -Wno-parentheses-equality: PARENA's C emitter always parenthesizes generated `if` conditions
 # ("(scenario == 10)"), which clang (not gcc -- the native build's own compiler) flags; cosmetic,
 # and this is generated code ("do not edit by hand") so it's silenced, not hand-fixed.
-CFLAGS="-target wasm32-unknown-unknown -nostdlib -O2 -Wall -Wextra -Werror -Wno-parentheses-equality $INCLUDES"
+CFLAGS="-target wasm32-unknown-unknown -nostdlib -O2 -Wall -Wextra -Werror -Wno-parentheses-equality -DDW_NO_HEARTBEAT $INCLUDES"
 SRCS="apps/wasm/libc_shim.c apps/wasm/fx/math_shim.c apps/wasm/fx/fx_wasm.c core/card_rules.c core/card_text.c apps/gui/fx.c"
 OBJS=""
 for src in $SRCS; do

@@ -289,41 +289,109 @@ export function resetMatch() { requireWasm().wasm_fx_reset(); }
 // when idle) -- see this file's own header comment for what's NOT drawn yet (overlay/status-panel/
 // disabled-card, which need a full-screen canvas this pass doesn't build). ----
 let audioCtx: AudioContext | null = null;
-let audioEpoch = 0; // AudioContext.currentTime this round's frame 0 was scheduled at
-let framesScheduled = 0; // cumulative frames handed to Web Audio since audioEpoch -- see comment above beginRoundAudio
+let audioEpoch = 0; // AudioContext.currentTime this stream's frame 0 was scheduled at
+let framesScheduled = 0; // cumulative frames handed to Web Audio since audioEpoch
+
+// Audio-clock discipline (founder real-time 2026-10-16: "if i wait until round timer and i get auto
+// passed the sound all desyncs and is delayed"). Chunks used to be scheduled at audioEpoch +
+// framesScheduled / SFX_RATE, a position that only moves when WE render frames -- it never looked at
+// the real AudioContext clock again after resetAudioClock(). Whenever the two clocks part ways (the
+// context suspends or throttles while rAF keeps ticking, a long frame, a hidden tab) the stream was
+// left permanently ahead of real time (every sound late, forever) or behind it. Now every chunk
+// checks its lead against ac.currentTime and re-anchors (dropping any queued backlog) when it
+// leaves the window below; nothing is queued while the context is not running; and a stall's worth
+// of frames advances the sound engine (so voices end when the visuals say they do) without being
+// played back or queued (a queued tail would sit ahead of the clock as permanent extra latency).
+const AUDIO_LEAD_S = 0.06;       // lead kept ahead of the hardware clock
+const AUDIO_MAX_LEAD_S = 0.18;   // steady state is 0.06 +/- one frame; beyond this the audio is audibly late: flush, re-anchor
+const AUDIO_MIN_LEAD_S = -0.03;  // fell behind real time (underrun): re-anchor so chunks stay gapless
+const AUDIO_STALL_MS = 100;      // a frame longer than this was a stall (hidden tab, long task), not a normal frame
+const AUDIO_CATCHUP_MS = 17;     // after a stall, schedule just one frame of audio -- the missed gap is dropped, never queued
+const AUDIO_MAX_STALL_MS = 10000;
+const queued = new Set<AudioBufferSourceNode>();
+let audioResyncs = 0;
 
 function ctx(): AudioContext {
     if (!audioCtx) audioCtx = new (window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext)();
     return audioCtx;
 }
 
+function dropQueued() {
+    queued.forEach((src) => { try { src.onended = null; src.stop(); src.disconnect(); } catch (e) { /* already ended */ } });
+    queued.clear();
+}
+
+function reanchor(ac: AudioContext) {
+    dropQueued();
+    audioEpoch = ac.currentTime + AUDIO_LEAD_S;
+    framesScheduled = 0;
+}
+
 /** Call once when a match starts (or whenever the audio clock should re-anchor, e.g. after a long
  * pause) -- establishes the epoch every subsequent pumpAudio() chunk schedules relative to, so
  * chunks stay sample-accurately gapless regardless of how JS's own per-call wall-clock jitters. */
 export function resetAudioClock() {
-    try { audioEpoch = ctx().currentTime + 0.05; framesScheduled = 0; } catch (e) { /* no user gesture yet */ }
+    try { reanchor(ctx()); } catch (e) { /* no user gesture yet */ }
+}
+
+/** Debug/telemetry: how far ahead of the hardware clock the stream is, and how often it re-anchored. */
+export function audioDiagnostics() {
+    const ac = audioCtx;
+    return { state: ac ? ac.state : 'none', leadSeconds: ac ? audioEpoch + framesScheduled / SFX_RATE - ac.currentTime : 0, resyncs: audioResyncs };
+}
+
+// A tab coming back from the background has a stale clock relationship; start clean and wake the context.
+if (typeof document !== 'undefined') {
+    document.addEventListener('visibilitychange', () => {
+        if (document.hidden || !audioCtx) return;
+        try {
+            if (audioCtx.state === 'suspended') void audioCtx.resume();
+            reanchor(audioCtx);
+        } catch (e) { /* ignore */ }
+    });
 }
 
 function pumpAudio(dtMs: number) {
     const w = requireWasm();
-    let framesWanted = Math.round((dtMs / 1000) * SFX_RATE);
-    if (framesWanted <= 0) return;
+    const want = Math.round((Math.min(dtMs, AUDIO_MAX_STALL_MS) / 1000) * SFX_RATE);
+    if (want <= 0) return;
     const cap = w.wasm_audio_chunk_capacity();
-    if (framesWanted > cap) framesWanted = cap;
+    const stalled = dtMs > AUDIO_STALL_MS;
+    const play = stalled ? Math.min(want, Math.round((AUDIO_CATCHUP_MS / 1000) * SFX_RATE)) : want;
     try {
-        const rendered = w.wasm_sfx_render(framesWanted);
-        if (rendered <= 0) return;
-        const ptr = w.wasm_audio_buf_ptr();
-        const pcm = new Int16Array(w.memory.buffer, ptr, rendered * 2);
+        // Advance the sound engine through the part of a stall nobody should hear.
+        for (let skip = want - play; skip > 0; ) {
+            const n = Math.min(skip, cap);
+            w.wasm_sfx_render(n);
+            skip -= n;
+        }
         const ac = ctx();
-        const buf = ac.createBuffer(2, rendered, SFX_RATE);
-        const l = buf.getChannelData(0), r = buf.getChannelData(1);
-        for (let i = 0; i < rendered; i++) { l[i] = pcm[2 * i] / 32768; r[i] = pcm[2 * i + 1] / 32768; }
-        const src = ac.createBufferSource();
-        src.buffer = buf;
-        src.connect(ac.destination);
-        src.start(audioEpoch + framesScheduled / SFX_RATE);
-        framesScheduled += rendered;
+        if (ac.state === 'suspended') { void ac.resume().catch(() => { /* needs a user gesture; retried next frame */ }); }
+        const running = ac.state === 'running';
+        for (let left = play; left > 0; ) {
+            const n = Math.min(left, cap);
+            left -= n;
+            const rendered = w.wasm_sfx_render(n);
+            // Keep engine time moving, but never build a backlog while the context is not playing.
+            if (rendered <= 0 || !running) continue;
+            const lead = audioEpoch + framesScheduled / SFX_RATE - ac.currentTime;
+            if (lead > AUDIO_MAX_LEAD_S || lead < AUDIO_MIN_LEAD_S) {
+                audioResyncs++;
+                console.debug(`[audio] re-anchoring: lead ${lead.toFixed(3)}s (resync #${audioResyncs})`);
+                reanchor(ac);
+            }
+            const pcm = new Int16Array(w.memory.buffer, w.wasm_audio_buf_ptr(), rendered * 2);
+            const buf = ac.createBuffer(2, rendered, SFX_RATE);
+            const l = buf.getChannelData(0), r = buf.getChannelData(1);
+            for (let i = 0; i < rendered; i++) { l[i] = pcm[2 * i] / 32768; r[i] = pcm[2 * i + 1] / 32768; }
+            const src = ac.createBufferSource();
+            src.buffer = buf;
+            src.connect(ac.destination);
+            src.onended = () => { queued.delete(src); };
+            queued.add(src);
+            src.start(audioEpoch + framesScheduled / SFX_RATE);
+            framesScheduled += rendered;
+        }
     } catch (e) {
         // Web Audio can throw pre-user-gesture (autoplay policy); the visual timeline still runs silently.
     }

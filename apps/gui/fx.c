@@ -682,7 +682,9 @@ void fx_update(unsigned dt_ms) {
     if (end_flash > 0) end_flash -= dt_ms;
     if (glass_age < 90) glass_age += dt;
     redline_phase += dt;
+#ifndef DW_NO_HEARTBEAT   /* the web build defines this (scripts/build_wasm_fx.sh): founder real-time 2026-10-16, "remove the heartbeet sound effect from DEADWEIGHT web" */
     if (redline_you) { heart_timer -= dt; if (heart_timer <= 0) { heart_timer = 0.95f; audio(SFX_HEARTBEAT, 0, 0, 0, 1, lock_now != 0); } }
+#endif
     for (int s = 0; s < 2; s++) {   /* persistent status embers + sparkles */
         if (st_now[s] & 1) { ember_timer[s] -= dt; while (ember_timer[s] <= 0) { ember_timer[s] += 0.09f; emit(K_EMBER, 24 + rr(0, 430), HULL_Y[s] + 26 + rr(-6, 4), rr(-6, 6), rr(-42, -18), 0, 0, rr(0.9f, 1.5f), rr(1.6f, 2.8f), ORG); } }
         if (st_now[s] & 2) { regen_timer[s] -= dt; while (regen_timer[s] <= 0) { regen_timer[s] += 0.14f; emit(K_EMBER, 24 + rr(0, 430), HULL_Y[s] + 24, rr(-4, 4), rr(-30, -12), 0, 0, 1.0f, 2.0f, GRN); } }
