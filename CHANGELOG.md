@@ -2,6 +2,8 @@
 
 ## 2026-10-15
 
+- ci: web client auto-deploys on push to main (`deploy-web.yml` + `scripts/build-web.sh`): builds tsc + native wasm, overlays it onto WOTAN's static image via Cloud Build/Workload Identity, gitops rolls it -- same pipeline as IDUNA/SHANKPIT/WOTAN. WOTAN's own deploy now also builds from DEADWEIGHT main. deploy-wasm.yml made manual-only. Never run (needs the GCP_WIF_PROVIDER/GCP_CI_SERVICE_ACCOUNT Variables on this repo; no node/clang here).
+
 - web: setup screen now has Connect / Sign in (or Continue as) IDUNA / Create new account; guests get a "Save progress with IDUNA" button that upgrades the guest in place via IDUNA SSO (new IDUNA `guest-link-sso`); Queue button no longer dead after a closed/errored connection (click reconnects and queues). Untested in a browser (no node on this box).
 - fix(web): draft screen 1X/2X/3X buttons laid out as a 3-column grid (were clipped to 1X); border around each draft choice.
 

@@ -1,0 +1,57 @@
+name: Deploy web client
+
+# Auto-deploy of the browser client, same pipeline as WOTAN/IDUNA/SHANKPIT (K8S-CD-01): build the
+# client from this repo, overlay it onto WOTAN's static-site image (WOTAN serves it at
+# wotan.okemily.com/DEADWEIGHT/), push via Cloud Build with Workload Identity (no stored key; the
+# GCP_WIF_PROVIDER / GCP_CI_SERVICE_ACCOUNT Variables are described in EMILY/gitops/CI_SETUP.md).
+# The in-cluster gitops-autodeploy CronJob notices the new `wotan` image and rolls it out through
+# the PARENA-rendered manifests -- this workflow never talks to the cluster. Supersedes the
+# blocked, key-based deploy-wasm.yml. WOTAN's own deploy.yml builds the same client, so a
+# WOTAN-only push never reverts this one.
+on:
+  push:
+    branches: [main]
+    paths-ignore: ['**.md', 'docs/**']
+  workflow_dispatch: {}
+
+concurrency:
+  group: deadweight-web-deploy-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/checkout@v4
+        with:
+          repository: emilyspringerton/WOTAN
+          path: WOTAN
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Toolchain (clang + wasm-ld for the native wasm32 modules)
+        run: sudo apt-get update && sudo apt-get install -y clang lld
+
+      - name: Build web client
+        run: scripts/build-web.sh "$RUNNER_TEMP/dw-web"
+
+      - name: Auth to GCP (Workload Identity, no stored key)
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ vars.GCP_WIF_PROVIDER }}
+          service_account: ${{ vars.GCP_CI_SERVICE_ACCOUNT }}
+
+      - uses: google-github-actions/setup-gcloud@v2
+
+      - name: Build + push WOTAN image with this client
+        env:
+          DEADWEIGHT_WEB_DIR: ${{ runner.temp }}/dw-web
+        run: WOTAN/scripts/build-image.sh "dw-$(git rev-parse --short HEAD)"

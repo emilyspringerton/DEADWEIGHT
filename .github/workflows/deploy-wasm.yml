@@ -24,13 +24,9 @@
 
 name: DEADWEIGHT web client -- build & deploy
 
+# SUPERSEDED by deploy-web.yml (WOTAN-image overlay, Workload Identity): manual-only now so a push
+# no longer produces a failing run on the missing DEADWEIGHT_GCP_SA_KEY secret.
 on:
-  push:
-    branches: [main]
-    paths:
-      - "web/**"
-      - "deploy/**"
-      - ".github/workflows/deploy-wasm.yml"
   workflow_dispatch: {}
 
 concurrency:
