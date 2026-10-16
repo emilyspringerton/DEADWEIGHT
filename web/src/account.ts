@@ -324,9 +324,17 @@ async function authed(idunaBase: string, token: string, path: string, method: st
     });
 }
 
-export async function ticketBalance(idunaBase: string, playerID: string): Promise<number> {
+export interface TicketStatus { tickets: number; founder: boolean; }
+
+/** The public tickets read: the balance plus the cosmetic Founder flag (IDUNA game_online.go ticketsRead). A server
+ * from before the flag existed simply omits it, which reads as not-a-founder. */
+export async function ticketStatus(idunaBase: string, playerID: string): Promise<TicketStatus> {
     const b = await api(idunaBase, '/players/' + encodeURIComponent(playerID) + '/tickets');
-    return b && typeof b.tickets === 'number' ? b.tickets : 0;
+    return { tickets: b && typeof b.tickets === 'number' ? b.tickets : 0, founder: !!(b && b.founder) };
+}
+
+export async function ticketBalance(idunaBase: string, playerID: string): Promise<number> {
+    return (await ticketStatus(idunaBase, playerID)).tickets;
 }
 
 export interface DraftRunState { active: boolean; wins: number; losses: number; deck: number[]; }

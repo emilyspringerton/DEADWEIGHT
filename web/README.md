@@ -141,6 +141,35 @@ Not just "it compiles" — a real, live, end-to-end match:
   real headless Chrome against a real match (see "Honest status / limits" below for the full
   account and its current, named scope).
 
+## Founder mode: Redeem a code, the FOUNDER badge (2026-10-16)
+
+Founder real-time: "we need it to enable founder mode in DEADWEIGHT web ... the web client should link to the
+affordance for adding a code on wotan like blizzards ... the tokens are supposed to give the 9999 tickets."
+Redeeming itself lives on WOTAN (`/redeem/`, the account menu's "Redeem a code", and a card on `/account/`) and in
+IDUNA (`POST /api/v1/redeem`, which finds the code's game and spends it on the player this client signs in as through
+the very transaction the native client's own Redeem box uses). This client's side is small:
+
+- **"Redeem a code" link** by the ticket count (and "Redeem it on WOTAN" in the setup panel), opening WOTAN's page in a
+  **new tab** so this tab's connection and match survive. On localhost it points at production WOTAN.
+- **FOUNDER badge**: the native client's gold mark (`apps/gui/main.c` `draw_menu`), driven by a new `founder` flag on
+  IDUNA's public `GET .../players/{id}/tickets` -- so, unlike the native client (which only knows it for the session it
+  redeems in), it is right after a reload and across devices. `account.ticketStatus()` returns balance + flag;
+  `ticketBalance()` stays as a wrapper.
+- **Refresh on return**: `visibilitychange` and window `focus` re-read the balance and the badge (2 s floor, so one
+  return asks once), because the answer arrives while this tab was in the background. It changes only the label,
+  the badge and the Draft button's wording -- never whether the Draft button is enabled.
+- **Guests** see "Codes go to your IDUNA account. Choose Save progress with IDUNA first": a code is spent on the
+  account WOTAN is signed in as, so a never-linked guest's code would land on a different (new) account than the one
+  being played. An IDUNA account sees no hint.
+- Every new DOM touch is null-safe: a stale cached `index.html` (no Redeem link / badge / hint elements -- there is no
+  Cache-Control, so heuristic caching can pair old HTML with the new `main.js`) loses the badge, never the game.
+- Tested: `web/test/redeem_link_test.mjs` (21 checks, real headless Chromium against the real build output with a
+  small IDUNA stub: link, new tab, badge colour, burst-debounce, the Draft button left alone, the SSO path, the
+  localhost branch, and that stale-HTML case -- verified to fail against the unsafe version), and `WOTAN/scripts/redeem-browser-test.mjs` with `DEADWEIGHT_SITE` set runs the whole chain against
+  the REAL IDUNA (sign in here -> link -> redeem in the new tab -> back to 9999 + FOUNDER, still true after a reload).
+  Both ran against `scripts/build-web.sh`'s real output. **Not verified**: Firefox/Safari, a phone, and the founder's
+  own production account (a real redemption against production is recorded in the CHANGELOG if it was done).
+
 ## Honest status / limits — not built yet
 
 - **Draft mode (2026-10-15, kanban #626).** The DRAFT button spends a ticket through IDUNA's

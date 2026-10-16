@@ -625,7 +625,12 @@ function checkStickyIdunaSession() {
 const LINK_FLAG = 'dw_link_pending';
 function updateSaveBtn() {
     const b = $('save-btn') as HTMLButtonElement;
-    b.style.display = currentAccount && !currentAccount.emailLinked ? '' : 'none';
+    const guest = !!currentAccount && !currentAccount.emailLinked;
+    b.style.display = guest ? '' : 'none';
+    // A code goes to the IDUNA account it is redeemed on WOTAN with. A guest has none yet, so say how to get one first --
+    // otherwise the code would land on a fresh account and not on the one being played.
+    const hint = document.getElementById('redeem-hint');
+    if (hint) hint.style.display = guest ? 'block' : 'none';
 }
 $('save-btn').addEventListener('click', () => {
     try { sessionStorage.setItem(LINK_FLAG, '1'); } catch { /* falls back to plain sign-in on return */ }
@@ -956,17 +961,50 @@ function showScreen(which: 'game' | 'draft' | 'hub') {
     ($('draft-btn') as HTMLElement).style.display = which === 'game' ? '' : 'none';
 }
 
-async function refreshTickets() {
+// enableDraft=false is the "just look again" refresh (returning to this tab): it updates the label, the FOUNDER badge and
+// the Draft button's wording, but never changes whether the button is enabled -- the caller is mid-whatever.
+async function refreshTickets(enableDraft = true) {
     if (!currentAccount) return;
     try {
-        const n = await account.ticketBalance(idunaBaseUrl, currentAccount.playerID);
+        const st = await account.ticketStatus(idunaBaseUrl, currentAccount.playerID);
+        const n = st.tickets;
         $('ticket-count').textContent = `TICKETS: ${n}`;
+        // The native client's gold FOUNDER mark (apps/gui/main.c draw_menu), shown for as long as the account is one.
+        // optional-chained like the other Redeem/Founder bits below: a stale cached index.html next to a fresh main.js (no
+        // Cache-Control, so heuristic caching can pair them) must lose the badge, never the whole client
+        document.getElementById('founder-badge')?.classList.toggle('on', st.founder);
         ($('draft-btn') as HTMLButtonElement).textContent = n > 0 ? 'Draft (cost: 1 ticket)' : 'Draft (no tickets)';
         ($('draft-btn') as HTMLButtonElement).dataset.tickets = String(n);
         // The button ships disabled in index.html and nothing used to enable it after connect.
         // Enable it unless a run is mid-start/active (startDraftRun/openHub manage those cases).
-        if (!draftActive) ($('draft-btn') as HTMLButtonElement).disabled = false;
+        if (enableDraft && !draftActive) ($('draft-btn') as HTMLButtonElement).disabled = false;
     } catch { /* cosmetic */ }
+}
+
+// A code redeemed on WOTAN changes the balance and the Founder flag on the server. The "Redeem a code" link opens WOTAN in a
+// NEW tab (so this tab's connection and match survive), which means the answer arrives while this tab is in the background:
+// look again the moment it is looked at, no reload. visibilitychange covers a tab switch, focus covers two windows side by
+// side; the 2 s floor keeps one return from asking twice.
+let lastTicketLook = 0;
+function lookAtTicketsOnReturn() {
+    if (document.hidden || !currentAccount) return;
+    const now = Date.now();
+    if (now - lastTicketLook < 2000) return;
+    lastTicketLook = now;
+    void refreshTickets(false);
+}
+document.addEventListener('visibilitychange', lookAtTicketsOnReturn);
+window.addEventListener('focus', lookAtTicketsOnReturn);
+
+// WOTAN's Redeem a Code page. Same origin in production (this client is served from wotan.okemily.com/DEADWEIGHT/); the
+// localhost dev server has no such page, so it points at production.
+function redeemUrl(): string {
+    if (location.hostname === 'localhost' || location.hostname === '127.0.0.1') return 'https://wotan.okemily.com/redeem/';
+    return '/redeem/';
+}
+for (const id of ['redeem-link', 'redeem-link-setup']) {
+    const a = document.getElementById(id) as HTMLAnchorElement | null;
+    if (a) a.href = redeemUrl();
 }
 
 function renderDraft() {

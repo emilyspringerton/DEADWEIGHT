@@ -260,6 +260,11 @@ same "PARENA decides, host renders" split every DEADWEIGHT client already follow
 `https://wotan.okemily.com/DEADWEIGHT/` — real guest accounts (auto-registered against IDUNA, no email required) or
 IDUNA SSO, real random-queue matchmaking against the live production bot pool and other real players, single hardcoded
 production server (no per-session server config UI). See `web/README.md` for full status and how to run it locally.
+**Founder mode / Redeem a code (2026-10-16)**: the web client now has the native client's FOUNDER mark (gold, next to
+the ticket count) and a "Redeem a code" link that opens WOTAN's new Redeem a Code page (`/redeem/`, reachable from the
+user menu on every WOTAN page) in a new tab. A code redeemed there lands on the same IDUNA account the game signs in as
+-- Founder status, tickets lifted to 9,999 -- and the game tab shows it the moment you switch back, no reload. Guests are
+told to "Save progress with IDUNA" first. See `web/README.md` for what was and was not verified.
 Several real, load-bearing bugs in PARENA's TypeScript emitter were found and fixed getting this far (I32 division
 truncation, a 511-character buffer overflow, a missing `(not x)`, unrecognized `true`/`false` literals) — see
 `PARENA/STDLIB.md`'s own TypeScript emitter section.

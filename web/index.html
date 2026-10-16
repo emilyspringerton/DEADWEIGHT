@@ -72,6 +72,11 @@
   #start-btn { background: var(--good); color: #0b1a10; }
   #start-btn:hover:not(:disabled) { background: #3fa864; }
   #sso-btn { background: var(--gold); color: #241a00; }
+  /* Redeem a code (WOTAN's page, opened in a new tab) + the native client's gold FOUNDER mark */
+  #redeem-link, #redeem-link-setup { color: var(--gold); font-size: 0.8rem; margin-left: 10px; }
+  #founder-badge { display: none; margin-left: 10px; padding: 1px 6px; border: 2px solid var(--gold); color: var(--gold); font-size: 0.7rem; font-weight: bold; letter-spacing: 0.12em; vertical-align: 1px; }
+  #founder-badge.on { display: inline-block; }
+  #redeem-hint { display: none; font-size: 0.75rem; margin-top: 6px; color: var(--dim); }
   #sso-btn:hover:not(:disabled) { background: #e0b232; }
   #status { font-weight: bold; text-transform: uppercase; }
   #hud-top-row { display: flex; justify-content: space-between; align-items: center; margin: -6px 0 10px; }
@@ -182,7 +187,8 @@
   <button id="new-btn" style="margin-left:8px;" title="Start a brand-new guest account (uses the name above)">Create new account</button>
   <div id="account-status" style="margin-top:10px;font-size:0.85rem;opacity:0.85;"></div>
   <div style="margin-top:10px;font-size:0.8rem;opacity:0.75;">Guests keep progress only on this device.
-    Sign in with IDUNA (the same single sign-on WOTAN uses) to keep your tickets, rings and friends — no email or password is asked for here.</div>
+    Sign in with IDUNA (the same single sign-on WOTAN uses) to keep your tickets, rings and friends — no email or password is asked for here.
+    Have a code? <a id="redeem-link-setup" href="/redeem/" target="_blank" rel="noopener" style="margin-left:0">Redeem it on WOTAN</a>.</div>
 </div>
 
 <div id="game">
@@ -191,6 +197,9 @@
   <button id="save-btn" style="display:none;background:var(--gold);color:#241a00;" title="Upgrade this guest account to a full IDUNA account (single sign-on). Keeps your tickets, rings and friends.">Save progress with IDUNA</button>
   <button id="draft-btn" disabled>Draft (cost: 1 ticket)</button>
   <span id="ticket-count" class="smuted"></span>
+  <span id="founder-badge" title="Founder: permanent Premium status, effectively unlimited Draft tickets">FOUNDER</span>
+  <a id="redeem-link" href="/redeem/" target="_blank" rel="noopener" title="Opens WOTAN's Redeem a Code page in a new tab; your tickets here update when you come back">Redeem a code</a>
+  <div id="redeem-hint">Codes go to your IDUNA account. Choose &ldquo;Save progress with IDUNA&rdquo; first, so a code lands on the account you are playing.</div>
   <div id="draft-msg" class="smuted"></div>
 
   <!-- DRAFT mode (apps/gui/main.c draw_draft / draw_draft_hub, same copy + order + button set) -->
