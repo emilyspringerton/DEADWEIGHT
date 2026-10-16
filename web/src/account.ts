@@ -196,6 +196,27 @@ export async function loginWithSso(idunaBase: string, ssoToken: string): Promise
     return a;
 }
 
+// linkSso upgrades the CURRENT guest account in place with an IDUNA SSO identity ("Save progress
+// with IDUNA"): same player_id, tickets, rings and friends. A 409 means that IDUNA identity already
+// owns a DEADWEIGHT account -- the caller falls back to loginWithSso (no history merge).
+export async function linkSso(idunaBase: string, current: Account, ssoToken: string): Promise<Account> {
+    const body = await api(idunaBase, '/guest-link-sso', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + current.token },
+        body: JSON.stringify({ sso_token: ssoToken }),
+    });
+    const a: Account = {
+        playerID: body.player_id,
+        guestSecret: current.guestSecret,
+        displayName: body.display_name,
+        token: body.token,
+        expiresAt: body.expires_at,
+        emailLinked: true,
+    };
+    persist(a);
+    return a;
+}
+
 // linkEmail upgrades the CURRENT guest account in place (same player_id, same match/ticket
 // history) -- the browser-client equivalent of dw_gui's real, shipped "Claim Account" flow.
 export async function linkEmail(idunaBase: string, current: Account, email: string, password: string): Promise<Account> {

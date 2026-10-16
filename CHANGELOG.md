@@ -1,6 +1,8 @@
 # CHANGELOG
 
 ## 2026-10-15
+
+- web: setup screen now has Connect / Sign in (or Continue as) IDUNA / Create new account; guests get a "Save progress with IDUNA" button that upgrades the guest in place via IDUNA SSO (new IDUNA `guest-link-sso`); Queue button no longer dead after a closed/errored connection (click reconnects and queues). Untested in a browser (no node on this box).
 - fix(web): draft screen 1X/2X/3X buttons laid out as a 3-column grid (were clipped to 1X); border around each draft choice.
 
 ## 2026-10-15

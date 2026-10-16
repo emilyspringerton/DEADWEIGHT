@@ -179,6 +179,7 @@
   <input id="name" placeholder="e.g. Vega" maxlength="16">
   <button id="start-btn">Connect</button>
   <button id="sso-btn" style="margin-left:8px;">Sign in with IDUNA</button>
+  <button id="new-btn" style="margin-left:8px;" title="Start a brand-new guest account (uses the name above)">Create new account</button>
   <div id="account-status" style="margin-top:10px;font-size:0.85rem;opacity:0.85;"></div>
   <div style="margin-top:10px;font-size:0.8rem;opacity:0.75;">Guests keep progress only on this device.
     Sign in with IDUNA (the same single sign-on WOTAN uses) to keep your tickets, rings and friends — no email or password is asked for here.</div>
@@ -187,6 +188,7 @@
 <div id="game">
   <p>Status: <span id="status">—</span><span class="term-caret"></span></p>
   <button id="queue-btn">Queue (random)</button>
+  <button id="save-btn" style="display:none;background:var(--gold);color:#241a00;" title="Upgrade this guest account to a full IDUNA account (single sign-on). Keeps your tickets, rings and friends.">Save progress with IDUNA</button>
   <button id="draft-btn" disabled>Draft (cost: 1 ticket)</button>
   <span id="ticket-count" class="smuted"></span>
   <div id="draft-msg" class="smuted"></div>

@@ -303,6 +303,8 @@ async function refreshRings() {
 // reach the exact same "connected and playing" state without duplicating the client wiring --
 // both paths only differ in HOW currentAccount got resolved (bootstrap vs. a fresh
 // register+claim), never in what happens once it's resolved.
+let queueAfterReconnect = false;
+
 async function enterGame(idunaUrl: string, bridgeUrl: string, fallbackName: string) {
     // Must resolve before client.connect() below ever calls into the wasm codec -- initWasmProto
     // is idempotent (see its own header comment), so this is a safe no-op on the path that already
@@ -323,6 +325,7 @@ async function enterGame(idunaUrl: string, bridgeUrl: string, fallbackName: stri
     ($('queue-btn') as HTMLButtonElement).disabled = true;
 
     if (currentAccount) { initSocial(); refreshRings(); }
+    updateSaveBtn();
 
     cardsData = await (await fetch('./src/generated/cards.json')).json();
     log(`loaded ${cardsData.cards.length}-card catalog (v${cardsData.version})`);
@@ -363,7 +366,9 @@ async function enterGame(idunaUrl: string, bridgeUrl: string, fallbackName: stri
                 // Only 'ready' means the server has actually WELCOMEd this connection -- every
                 // other state (connecting/queued/in_match/error/closed) must keep this disabled,
                 // see enterGame's own header comment on the ERROR-4 race this closes.
-                queueBtn.disabled = s !== 'ready';
+                // closed/error stay clickable: the click reconnects and queues (see queue-btn handler).
+                queueBtn.disabled = !(s === 'ready' || s === 'closed' || s === 'error');
+                if (s === 'ready' && queueAfterReconnect) { queueAfterReconnect = false; client.queue(); queueBtn.disabled = true; }
             }
         },
         onLog(line) {
@@ -602,6 +607,9 @@ function resolveBridgeUrl(): string {
 // click requirement (see signInWithIduna's own doc comment for why fresh-return is different).
 function checkStickyIdunaSession() {
     if (location.hash.includes('sso_token=')) {
+        let linking = false;
+        try { linking = sessionStorage.getItem(LINK_FLAG) === '1'; } catch { /* none */ }
+        if (linking) { void completeLink(); return; }
         signInWithIduna();
         return;
     }
@@ -611,6 +619,52 @@ function checkStickyIdunaSession() {
     }
 }
 
+// Guests get "Save progress with IDUNA": redirect through IDUNA SSO, and on return link the SSO
+// identity to THIS guest account in place (guest-link-sso). A flag in sessionStorage marks the
+// round trip so checkStickyIdunaSession knows to link rather than plain sign in.
+const LINK_FLAG = 'dw_link_pending';
+function updateSaveBtn() {
+    const b = $('save-btn') as HTMLButtonElement;
+    b.style.display = currentAccount && !currentAccount.emailLinked ? '' : 'none';
+}
+$('save-btn').addEventListener('click', () => {
+    try { sessionStorage.setItem(LINK_FLAG, '1'); } catch { /* falls back to plain sign-in on return */ }
+    sso.clearIdunaSession();
+    location.href = sso.buildSsoURL();
+});
+async function completeLink(): Promise<boolean> {
+    let pending = false;
+    try { pending = sessionStorage.getItem(LINK_FLAG) === '1'; sessionStorage.removeItem(LINK_FLAG); } catch { /* none */ }
+    if (!pending) return false;
+    const session = sso.handleIdunaSsoReturn();
+    if (!session) return false;
+    const idunaUrl = resolveIdunaUrl();
+    const acctStatus = $('account-status');
+    acctStatus.textContent = 'Saving your progress to IDUNA…';
+    try {
+        const guest = await account.bootstrapAccount(idunaUrl, '');
+        try {
+            currentAccount = await account.linkSso(idunaUrl, guest, session.token);
+            acctStatus.textContent = 'Progress saved — signed in as ' + currentAccount.displayName + ' (IDUNA account)';
+        } catch (e) {
+            if (e instanceof account.ApiError && e.status === 409) {
+                currentAccount = await account.loginWithSso(idunaUrl, session.token);
+                acctStatus.textContent = 'That IDUNA account already has a profile — signed in as ' + currentAccount.displayName;
+            } else throw e;
+        }
+        await enterGame(idunaUrl, resolveBridgeUrl(), currentAccount.displayName);
+    } catch (e) {
+        acctStatus.textContent = 'Could not save progress: ' + (e as Error).message;
+    }
+    return true;
+}
+
+$('new-btn').addEventListener('click', () => {
+    account.clearAccount();
+    sso.clearIdunaSession();
+    ($('sso-btn') as HTMLButtonElement).textContent = 'Sign in with IDUNA';
+    void start();
+});
 $('start-btn').addEventListener('click', start);
 $('sso-btn').addEventListener('click', signInWithIduna);
 $('pass-btn').addEventListener('click', (ev) => { selectSlot(-1); if (ev.detail >= 2 && selectedSlot === -1) lockIn(); });
@@ -633,12 +687,20 @@ $('rename-btn').addEventListener('click', async () => {
         currentAccount = await account.setDisplayName(idunaUrl, currentAccount, name);
         ($('rename-input') as HTMLInputElement).value = '';
         msg.textContent = 'Saved.';
+        updateSaveBtn();
         await initSocial();
     } catch (e) {
         msg.textContent = (e as Error).message;
     }
 });
 $('queue-btn').addEventListener('click', () => {
+    if (client.getState() !== 'ready') {
+        queueAfterReconnect = true;
+        setStatus('reconnecting…');
+        reconnect(0);
+        $('queue-btn').setAttribute('disabled', 'true');
+        return;
+    }
     client.queue();
     $('queue-btn').setAttribute('disabled', 'true');
 });
