@@ -56,6 +56,15 @@ Reads (public, like other player profile routes):
 `GET /api/v1/games/deadweight/players/{player_id}/stats` → `{"player_id","display_name","kind","rating","wins","losses","draws","matches"}`
 `GET /api/v1/games/deadweight/leaderboard?limit=20` → `[{same fields}]` ordered by rating.
 
+## Constructed queue: ratings and bot decks (2026-10-18)
+
+dw_server reads a constructed player's ladder rating at verify (only for `mode` 3 connections; best effort, unknown = 1500):
+`GET /api/v1/games/deadweight/players/{player_id}/profile` → `{"player_id","display_name","kind","rating","wins","losses","draws","matches","friend_count"}`
+(public). It keeps the rating current from the `seat0` / `seat1` objects of every `match-result` response (`rating` may be fractional; the server
+truncates) and reports constructed matches with `"mode":3` (no effect on Draft Runs, which only count `"mode":2`).
+dw_bot's deck source: `GET /api/v1/games/deadweight/bot-decks?tier=N&tiers=T&n=K` (public) → `{"decks":[{"deck_id","cards":[23 ids],"games","wins",...}]}`,
+the tracked draft decks ranked by the Wilson score of their record, slice N of T (1 = weakest); every deck is re-validated with `dw_draft_deck_valid`.
+
 ## Game-scoped checkpoint registry (training league; generalizes brawlpit-checkpoints)
 
 Base `/api/v1/game-checkpoints/deadweight` — **same routes, fields and multipart format as `/api/v1/brawlpit-checkpoints`**

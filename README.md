@@ -101,7 +101,11 @@ the launch target for Itch.io and Steam; Android is catching up per the S555 not
   feature, not a reskin), and Android has no Draft Hub screen (win/loss-streak tracking, Resume
   Uplink/Abort & Extract) — draft-mode match end goes straight to SAME DECK/REDRAFT instead, same
   as before this pass.
-- **Constructed decks (bring your own deck)** — not built.
+- **Constructed decks (bring your own deck, 2026-10-18)** — the **browser client**, the headless `dw_client`
+  and the bots play it (HELLO mode 3: build a 23-card deck from the whole catalog — ten 1-ofs, five 2-ofs, one
+  3-of — free, no tickets, no packs). Its own queue, paired by IDUNA ladder rating against bots that play decks
+  from IDUNA's draft-deck tracker. Covered by unit, wire, e2e and real-browser tests (see `CHANGELOG.md`). The
+  **Windows GUI and Android have no constructed screens yet**.
 - **Accounts (IDUNA guest auth, tiered Draft tickets, redeem codes, Uncapped Draft Runs)** are real
   and live against production. The GUI client speaks real TLS (mbedTLS, bound via PARENA —
   `stdlib/net/tls.prn`, never hand-rolled crypto) and defaults to the real production IDUNA URL.

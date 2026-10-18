@@ -170,6 +170,19 @@ the very transaction the native client's own Redeem box uses). This client's sid
   Both ran against `scripts/build-web.sh`'s real output. **Not verified**: Firefox/Safari, a phone, and the founder's
   own production account (a real redemption against production is recorded in the CHANGELOG if it was done).
 
+## Constructed mode: the deck builder (2026-10-18)
+
+The **Constructed (build a deck, free)** button opens a builder (`src/constructed.ts` is the DOM half, `src/deck.ts` the pure rules): the
+whole card pool in a scrollable grid, each card with the draft's own 1X / 2X / 3X buttons, a deck list beside it that updates as you
+choose, filters (type, keyword, cost, text, in-deck only), sort, named saved decks, fill-at-random, and QUEUE once the deck is
+23 cards (ten 1X, five 2X, one 3X). `main.ts` then reconnects in HELLO mode 3, submits the deck with `DRAFT_RESUME` and queues; "Queue
+again" after a match plays the same deck (the server keeps it), "Edit deck" reopens the builder with it. The deck you are building and
+the saved decks live in `localStorage` (optional: without it the builder just forgets). Every mode switch reconnects (`connMode`).
+Tests (all real): `node test/deck_test.mjs` (the rules, after `tsc`), `node bridge/constructed_e2e_test.mjs ws://localhost:8765`
+(compiled client, real bridge and server with a constructed bot pool: `build/dw_server --no-auth` + `scripts/bot_pool.sh start --mode
+constructed`), and `test/constructed_builder_test.mjs` (headless Chromium against `scripts/build-web.sh` output: starts its own server,
+bots and bridge; 53 checks). Not verified: Firefox, Safari, real phones (it was checked at a 390 px width in Chromium only).
+
 ## Honest status / limits — not built yet
 
 - **Draft mode (2026-10-15, kanban #626).** The DRAFT button spends a ticket through IDUNA's

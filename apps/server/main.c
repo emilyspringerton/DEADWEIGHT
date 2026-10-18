@@ -67,7 +67,7 @@ static int opt_bot_wait_ms = 45000;
 
 /* ---- IDUNA worker thread: verify + match-result HTTP never runs on the poll() loop ---- */
 enum { J_VERIFY = 1, J_REPORT };
-typedef struct { int type; int conn; uint32_t gen; char token[DW_MAX_AUTH_TOKEN + 1]; char name[DW_NAME_LEN + 1]; DwMatchReport rep; } Job;
+typedef struct { int type; int conn; uint32_t gen; int want_rating; char token[DW_MAX_AUTH_TOKEN + 1]; char name[DW_NAME_LEN + 1]; DwMatchReport rep; } Job;
 enum { R_VERIFY = 0, R_RATING };   /* what a result from the worker thread carries */
 typedef struct { int type; int conn; uint32_t gen; int rc; DwIdentity id; int rating, rated_matches; char pid[2][48]; int ratings[2]; } VResult;
 #ifdef DW_HAVE_WORKER
@@ -90,7 +90,7 @@ static void *worker_main(void *arg) {
         if (j->type == J_VERIFY) {
             VResult r; memset(&r, 0, sizeof r); r.type = R_VERIFY; r.conn = j->conn; r.gen = j->gen;
             r.rc = dwi_verify(&iduna, j->token, j->name, &r.id);
-            if (r.rc == 0) {   /* the player's ladder rating, for the constructed queue's matchmaking (best effort: unknown = the default) */
+            if (r.rc == 0 && j->want_rating) {   /* the player's ladder rating, for the constructed queue's matchmaking (best effort: unknown = the default); only that queue pays for the extra IDUNA call */
                 DwProfile pf;
                 if (dwi_profile(&iduna, r.id.player_id, &pf) == 0) { r.rating = pf.rating; r.rated_matches = pf.matches; }
             }
@@ -438,7 +438,7 @@ static int token_ok(const uint8_t *t, unsigned n) {
 
 static void start_verify(int ci, const uint8_t *tok, unsigned n) {
     Conn *c = &conns[ci];
-    Job j; memset(&j, 0, sizeof j); j.type = J_VERIFY; j.conn = ci; j.gen = c->session_id;
+    Job j; memset(&j, 0, sizeof j); j.type = J_VERIFY; j.conn = ci; j.gen = c->session_id; j.want_rating = c->mode == DW_MODE_CONSTRUCTED;
     if (!token_ok(tok, n)) { send_error(ci, DW_ERR_AUTH); return; }
     memcpy(j.token, tok, n);
     if (c->kind == DW_KIND_BOT) {

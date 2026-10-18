@@ -83,7 +83,8 @@ let haveReveal = false, rvYou = -1, rvOpp = -1, rvRound = 0, rvDmgYou = 0, rvDmg
 let roundDeadlineAt = 0;
 
 function updateRoundTimer() {
-    const el = $('round-timer');
+    const el = document.getElementById('round-timer');
+    if (!el) return;   // an older cached index.html (no #round-label) loses the span when the round text is set: no timer, but no error per frame
     if (!roundDeadlineAt) { el.textContent = ''; return; }
     const leftMs = Math.max(0, roundDeadlineAt - Date.now());
     el.textContent = `${Math.ceil(leftMs / 1000)}s`;
@@ -249,7 +250,8 @@ function pipsHtml(energy: number, hidden: boolean): string {
 }
 
 function renderBars(f: RoundStart) {
-    ($('round-num-big') as HTMLElement).textContent = `Round ${f.round}/${rules.maxRounds()}`;
+    // the label has its own span: setting #round-num-big's textContent would delete the #round-timer span beside it
+    ($('round-label') || $('round-num-big')).textContent = `Round ${f.round}/${rules.maxRounds()}`;
 
     const startHull = rules.startHull();
     const oppFrac = Math.max(0, f.hullOpp) / startHull;
