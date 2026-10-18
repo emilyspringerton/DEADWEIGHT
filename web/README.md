@@ -181,7 +181,7 @@ the saved decks live in `localStorage` (optional: without it the builder just fo
 Tests (all real): `node test/deck_test.mjs` (the rules, after `tsc`), `node bridge/constructed_e2e_test.mjs ws://localhost:8765`
 (compiled client, real bridge and server with a constructed bot pool: `build/dw_server --no-auth` + `scripts/bot_pool.sh start --mode
 constructed`), and `test/constructed_builder_test.mjs` (headless Chromium against `scripts/build-web.sh` output: starts its own server,
-bots and bridge; 53 checks). Not verified: Firefox, Safari, real phones (it was checked at a 390 px width in Chromium only).
+bots and bridge; 53 checks). `test/constructed_live_smoke.mjs <origin>` is the same flow against a REAL deployment (a new guest builds a deck, queues, plays a whole match against a live tier bot, IDUNA's profile must show it): it leaves one guest and one rated match behind, so run it deliberately; it passed against production on 2026-10-18 (11 checks). Not verified: Firefox, Safari, real phones (it was checked at a 390 px width in Chromium only).
 
 ## Honest status / limits — not built yet
 
