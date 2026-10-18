@@ -209,10 +209,45 @@ done
 for _ in $(seq 100); do n=$(grep -c '"mode":"constructed"' "$W/matches.ndjson" 2>/dev/null || true); [ "${n:-0}" -ge 3 ] && break; sleep 0.1; done
 [ "${n:-0}" -ge 3 ] || fail "bots in placement did not play each other (only ${n:-0} matches in 10 s)"
 [ -s "$W/iduna2.results" ] || fail "calibration matches were not reported to IDUNA"
-kill -TERM "$SPID"; wait "$SPID" || fail "placement server exited non-zero"; PIDS=()
+kill -TERM "$SPID"; wait "$SPID" || fail "placement server exited non-zero"
+for p in "${PIDS[@]}"; do kill -TERM "$p" 2>/dev/null || true; done; PIDS=()   # the three bots would otherwise retry a dead port forever (orphans)
 grep -q "AddressSanitizer\|runtime error" "$W/server.err" && fail "sanitizer report (placement server)"
-kill -TERM "$IP2" 2>/dev/null || true
 echo "OK: ${n} calibration matches among unrated bots (random legal decks, no tier given), reported to IDUNA"
+
+echo "== e2e 8: ops/docker/constructed_bots.sh -- the tier bots in ONE container, restarted as a whole =="
+rm -f "$W/matches.ndjson" "$W/iduna2.results" "$W/iduna2.results.decks"
+start_server --fast-forward --bot-wait-ms 600000 --iduna-url "http://127.0.0.1:$IPORT2" --agent-secret-file "$W/secret2"
+sup_start() {
+  DW_BOT="$B/dw_bot" ops/docker/constructed_bots.sh --port "$PORT" --think-ms 0 --iduna-url "http://127.0.0.1:$IPORT2" --agent-secret-file "$W/secret2" > "$W/sup.out" 2> "$W/sup.err" & SUP=$!; PIDS+=("$SUP")
+  for _ in $(seq 100); do [ "$(pgrep -P "$SUP" | wc -l)" -ge 5 ] && return 0; sleep 0.1; done
+  fail "the supervisor did not start five bots: $(cat "$W/sup.err")"
+}
+sup_start
+for want in "mirror:1" "wall:2" "ripper:3" "mirror:4" "wall:5"; do
+  a=${want%%:*}; t=${want##*:}
+  ps -o args= --ppid "$SUP" | grep -q -- "--archetype $a --name bot-$a-c$t --mode constructed --tier $t --tiers 5 " || fail "the tier $t bot is not bot-$a-c$t: $(ps -o args= --ppid "$SUP")"
+done
+for _ in $(seq 50); do n=$(grep -c '"tier": ' "$W/iduna2.results.decks" 2>/dev/null || true); [ "${n:-0}" -ge 5 ] && break; sleep 0.1; done
+for t in 1 2 3 4 5; do grep -q "\"tier\": $t," "$W/iduna2.results.decks" || fail "the tier $t bot never fetched its decks"; done
+# a bot dying takes the others down and the supervisor exits 1: the container restarts as a whole
+kid=$(pgrep -P "$SUP" | sed -n 2p); kill -KILL "$kid"
+for _ in $(seq 50); do kill -0 "$SUP" 2>/dev/null || break; sleep 0.1; done
+! kill -0 "$SUP" 2>/dev/null || fail "the supervisor survived one of its bots dying"
+rc=0; wait "$SUP" || rc=$?
+[ "$rc" = 1 ] || fail "the supervisor should exit 1 when a bot dies, it exited $rc"
+[ "$(pgrep -f "dw_bot --archetype .* --port $PORT " | wc -l)" = 0 ] || fail "bots outlived the supervisor"
+# SIGTERM (what kubelet sends) stops everything cleanly
+sup_start
+kill -TERM "$SUP"
+for _ in $(seq 50); do kill -0 "$SUP" 2>/dev/null || break; sleep 0.1; done
+! kill -0 "$SUP" 2>/dev/null || fail "SIGTERM did not stop the supervisor"
+rc=0; wait "$SUP" || rc=$?
+[ "$rc" = 143 ] || fail "the supervisor should exit 143 on SIGTERM, it exited $rc"
+[ "$(pgrep -f "dw_bot --archetype .* --port $PORT " | wc -l)" = 0 ] || fail "bots outlived SIGTERM"
+kill -TERM "$SPID"; wait "$SPID" || fail "supervisor-test server exited non-zero"; PIDS=()
+grep -q "AddressSanitizer\|runtime error" "$W/server.err" && fail "sanitizer report (supervisor-test server)"
+kill -TERM "$IP2" 2>/dev/null || true
+echo "OK: five tier bots (bot-<archetype>-c1..c5, each fetching its own tier), one dying stops the rest (exit 1), SIGTERM stops all (exit 143)"
 fi
 
 echo "== e2e 3: IDUNA auth + result reporting against a fake IDUNA (docs/IDUNA_CONTRACT.md) =="

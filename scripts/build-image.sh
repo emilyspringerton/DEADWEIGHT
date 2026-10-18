@@ -9,6 +9,7 @@ CTX="$(mktemp -d)"; trap 'rm -rf "$CTX"' EXIT
 mkdir -p "$CTX/bridge"
 cp "$SRC/web/bridge/package.json" "$SRC/web/bridge/package-lock.json" "$SRC/web/bridge/ws-tcp-bridge.js" "$CTX/bridge/"
 cp "$BIN/dw_server" "$BIN/dw_bot" "$CTX/"
+cp "$SRC/ops/docker/constructed_bots.sh" "$CTX/"   # the one container that supervises the constructed-queue tier bots
 cp "$SRC/ops/docker/deadweight.Dockerfile" "$CTX/Dockerfile"
 # Same CI-safe submit as IDUNA/scripts/build-image.sh (found live 2026-10-05): the CI SA (github-ci,
 # EMILY/gitops/CI_SETUP.md) is scoped to cloudbuild.builds.editor + artifactregistry.writer, so pin the
