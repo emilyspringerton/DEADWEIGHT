@@ -78,7 +78,7 @@ function frame(type: number, payload: Uint8Array): Uint8Array {
     return out;
 }
 
-export function encodeHello(mode: 0 | 1 | 2, kind: 0 | 1, name: string, token: string): Uint8Array {
+export function encodeHello(mode: 0 | 1 | 2 | 3, kind: 0 | 1, name: string, token: string): Uint8Array {
     const w = new Writer();
     w.u8(PROTO_VERSION);
     w.u8(mode);

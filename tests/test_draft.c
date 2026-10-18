@@ -72,6 +72,33 @@ int main(void) {
         int8_t oob[DW_DECK_SIZE]; memcpy(oob, d.deck, DW_DECK_SIZE); oob[0] = (int8_t)num_cards();
         CHECK(!dw_draft_deck_valid(oob, DW_DECK_SIZE));                /* out-of-range card id */
     }
+    /* constructed mode: dw_random_deck always yields a legal deck (16 distinct cards, 10/5/1), differs by seed, and a deck written
+     * out as text parses back to itself; dw_deck_parse refuses everything that is not exactly a legal deck */
+    {
+        uint32_t rng = 12345; int8_t first[DW_DECK_SIZE]; int differ = 0;
+        for (int i = 0; i < 2000; i++) {
+            int8_t d[DW_DECK_SIZE]; dw_random_deck(&rng, d);
+            CHECK(dw_draft_deck_valid(d, DW_DECK_SIZE));
+            if (i == 0) memcpy(first, d, sizeof d); else if (memcmp(first, d, sizeof d) != 0) differ++;
+        }
+        CHECK(differ > 1900);
+        uint32_t zero = 0; int8_t z[DW_DECK_SIZE]; dw_random_deck(&zero, z); CHECK(dw_draft_deck_valid(z, DW_DECK_SIZE));   /* a zero seed must not stick */
+        /* every card of the catalog can show up in a random deck */
+        int seen[DW_DRAFT_MAX_CARDS] = {0}; rng = 99;
+        for (int i = 0; i < 4000; i++) { int8_t d[DW_DECK_SIZE]; dw_random_deck(&rng, d); for (int k = 0; k < DW_DECK_SIZE; k++) seen[d[k]] = 1; }
+        for (int c = 0; c < num_cards(); c++) CHECK(seen[c]);
+        int8_t d[DW_DECK_SIZE], back[DW_DECK_SIZE]; char txt[256], *w = txt; dw_random_deck(&rng, d);
+        for (int i = 0; i < DW_DECK_SIZE; i++) w += sprintf(w, i ? ",%d" : "%d", d[i]);
+        CHECK(dw_deck_parse(txt, back) && memcmp(d, back, sizeof d) == 0);
+        for (char *c = txt; *c; c++) if (*c == ',') *c = ' ';
+        CHECK(dw_deck_parse(txt, back) && memcmp(d, back, sizeof d) == 0);          /* spaces work too */
+        CHECK(!dw_deck_parse("", back));
+        CHECK(!dw_deck_parse("1,2,3", back));                                        /* too short */
+        CHECK(!dw_deck_parse("a,b,c", back));                                        /* not numbers */
+        CHECK(!dw_deck_parse("0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0", back));   /* 23 copies of one card */
+        CHECK(!dw_deck_parse("1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24", back));   /* too long */
+        CHECK(!dw_deck_parse("9999999999,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1", back));   /* absurd id */
+    }
     printf("test_draft: %d checks, %d failures\n", checks, fails);
     return fails ? 1 : 0;
 }

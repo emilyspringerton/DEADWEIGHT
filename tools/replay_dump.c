@@ -81,8 +81,10 @@ int main(void) {
     unsigned deck_id0 = 0, deck_id1 = 0;
     int8_t dk[2][DW_DRAFT_DECK];
     char *modep = strstr(line, "\"mode\":\"draft\"");
+    char *consp = strstr(line, "\"mode\":\"constructed\"");   /* a built deck replays exactly like a drafted one: both carry their decks */
+    const char *mode_name = consp ? "constructed" : "draft";
     char *dp = strstr(line, "\"decks\":[[");
-    if (modep && dp) {
+    if ((modep || consp) && dp) {
         is_draft = 1;
         char *dip = strstr(line, "\"deck_ids\":[");
         if (dip) sscanf(dip + 12, "%u,%u", &deck_id0, &deck_id1);
@@ -108,7 +110,7 @@ int main(void) {
     printf("{\"match_id\":%u,\"seed\":%u,\"names\":[\"%s\",\"%s\"],\"kinds\":[%d,%d],"
            "\"result\":[%d,%d],\"reason\":%d,\"rounds_reported\":%d,\"mode\":\"%s\"",
            match_id, seed, name0, name1, kind0, kind1, r0, r1, reason, rounds_reported,
-           is_draft ? "draft" : "card");
+           is_draft ? mode_name : "card");
     if (is_draft) {
         printf(",\"deck_ids\":[%u,%u],\"decks\":[[", deck_id0, deck_id1);
         for (int i = 0; i < DW_DRAFT_DECK; i++) printf("%s%d", i ? "," : "", dk[0][i]);

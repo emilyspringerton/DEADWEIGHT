@@ -164,6 +164,53 @@
   #hub-resume { background: var(--good); color: #000; min-height: 64px; width: 100%; margin-top: 14px; }
   #hub-abort { background: var(--bad); color: #000; min-height: 56px; width: 100%; margin-top: 10px; }
   #hub-msg { color: var(--bad); font-size: 0.8rem; margin-top: 8px; }
+  /* CONSTRUCTED deck builder: the whole catalog in a scrollable pool (each card with the draft's own 1X/2X/3X buttons) beside a deck
+     list that updates as you choose. Same brutalist rules as the rest: flat fills, hard frames, no gradients, no rounded corners. */
+  #cons-btn { background: var(--panel); }
+  #constructed { margin-top: 10px; }
+  #cons-title { font-size: 1.6rem; font-weight: bold; letter-spacing: 0.05em; text-align: center; }
+  #cons-sub { text-align: center; color: var(--dim); font-size: 0.7rem; margin-top: 4px; }
+  #cons-rating { text-align: center; margin-top: 4px; font-size: 0.7rem; }
+  #cons-bar { position: sticky; top: 0; z-index: 5; display: flex; justify-content: space-between; gap: 8px; background: var(--bg); border-bottom: 2px solid var(--panel); padding: 8px 0; margin-top: 8px; font-weight: bold; }
+  #cons-left { color: var(--dim); }
+  #cons-filters { margin-top: 8px; display: grid; gap: 6px; }
+  #cons-kinds { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 4px; }
+  #cons-kinds button, #cons-selects button { margin-top: 0; padding: 8px 2px; font-size: 0.72rem; }
+  #cons-kinds button[aria-pressed="true"], #cons-indeck[aria-pressed="true"] { background: var(--cursor); color: #000; }
+  #cons-selects { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4px; }
+  select { width: 100%; box-sizing: border-box; padding: 8px 4px; background: var(--bg); border: 2px solid var(--cursor); color: var(--text); border-radius: 0; font-family: var(--mono); font-size: 0.72rem; text-transform: uppercase; }
+  #cons-count { font-size: 0.7rem; }
+  #cons-main { display: grid; grid-template-columns: minmax(0, 1fr); gap: 10px; margin-top: 8px; }
+  @media (min-width: 700px) { #cons-main { grid-template-columns: minmax(0, 1fr) 260px; align-items: start; } #cons-side { position: sticky; top: 56px; } }
+  #cons-pool { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; max-height: 72vh; overflow-y: auto; padding-right: 4px; border: 2px solid var(--panel); padding: 6px; }
+  .cons-empty { grid-column: 1 / -1; text-align: center; color: var(--dim); padding: 24px 0; }
+  .cons-card { background: var(--panel); border: 3px solid transparent; min-width: 0; display: flex; flex-direction: column; }
+  .cons-card.in { border-color: var(--good); }
+  .cons-face { flex: 1; text-align: left; overflow: hidden; }
+  .cons-face .card-header { font-size: 95%; padding: 4px 6px; }
+  .cons-face .card-body { padding: 6px; font-size: 0.78rem; }
+  .cons-mults { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4px; padding: 4px; background: var(--bg); }
+  .cons-mults button { margin-top: 0; padding: 10px 0; min-height: 40px; font-size: 0.9rem; }
+  .cons-mults button.on { background: var(--good); color: #0b1a10; }
+  #cons-side { background: var(--bg); border: 2px solid var(--panel); padding: 8px; min-width: 0; }
+  .cons-grp-h { display: flex; justify-content: space-between; color: var(--dim); font-size: 0.75rem; border-bottom: 1px dashed var(--panel); margin-top: 6px; }
+  #cons-list ul { list-style: none; margin: 0; padding: 0; }
+  #cons-list li { display: grid; grid-template-columns: 2.2em minmax(0, 1fr) auto 1.8em; align-items: center; gap: 4px; border-left: 4px solid var(--kc, var(--lock)); padding: 2px 0 2px 6px; font-size: 0.78rem; text-transform: uppercase; }
+  #cons-list li.cons-none { border-left-color: transparent; color: var(--dim); }
+  .cons-n { color: var(--gold); font-weight: bold; }
+  .cons-nm { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .cons-c { color: var(--dim); }
+  .cons-x { margin-top: 0; padding: 0; width: 1.8em; height: 1.8em; font-size: 1rem; line-height: 1; }
+  #cons-need { margin-top: 8px; color: var(--gold); font-size: 0.75rem; min-height: 2.4em; }
+  #cons-need.ready { color: var(--good); }
+  #cons-tools { display: grid; grid-template-columns: 1fr; gap: 4px; }
+  #cons-tools button, #cons-saves button { margin-top: 0; padding: 8px 4px; font-size: 0.72rem; }
+  #cons-saves { display: grid; gap: 4px; margin-top: 8px; }
+  #cons-saves input { font-size: 0.75rem; text-transform: uppercase; }
+  .cons-two { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; }
+  #cons-msg { color: var(--dim); font-size: 0.7rem; min-height: 1.4em; margin-top: 6px; }
+  #cons-queue { background: var(--good); color: #000; min-height: 56px; margin-top: 8px; }
+  #cons-back { margin-top: 6px; }
 </style>
 </head>
 <body>
@@ -196,6 +243,7 @@
   <button id="queue-btn">Queue (random)</button>
   <button id="save-btn" style="display:none;background:var(--gold);color:#241a00;" title="Upgrade this guest account to a full IDUNA account (single sign-on). Keeps your tickets, rings and friends.">Save progress with IDUNA</button>
   <button id="draft-btn" disabled>Draft (cost: 1 ticket)</button>
+  <button id="cons-btn" disabled title="Build a 23-card deck from the whole card pool and queue with it. No tickets, no packs: every card is yours.">Constructed (build a deck, free)</button>
   <span id="ticket-count" class="smuted"></span>
   <span id="founder-badge" title="Founder: permanent Premium status, effectively unlimited Draft tickets">FOUNDER</span>
   <a id="redeem-link" href="/redeem/" target="_blank" rel="noopener" title="Opens WOTAN's Redeem a Code page in a new tab; your tickets here update when you come back">Redeem a code</a>
@@ -224,6 +272,50 @@
     <div id="hub-msg"></div>
   </div>
 
+  <!-- CONSTRUCTED: build a deck from the whole card pool (the "standard set"); pick 1X / 2X / 3X of a card and the list updates -->
+  <div id="constructed" style="display:none">
+    <div id="cons-title">CONSTRUCTED</div>
+    <div id="cons-sub">STANDARD SET &middot; EVERY CARD IS YOURS &middot; 10 SINGLES, 5 PAIRS, 1 TRIPLE = 23 CARDS</div>
+    <div id="cons-rating" class="smuted"></div>
+    <div id="cons-bar"><span id="cons-left">LEFT  1X: 10   2X: 5   3X: 1</span><span id="cons-size">DECK 0/23</span></div>
+    <div id="cons-filters">
+      <div id="cons-kinds" role="group" aria-label="Card type">
+        <button type="button" data-kind="-1" aria-pressed="true">ALL</button>
+        <button type="button" data-kind="0" aria-pressed="false">OFFENSE</button>
+        <button type="button" data-kind="1" aria-pressed="false">OPS</button>
+        <button type="button" data-kind="2" aria-pressed="false">DEFENSE</button>
+      </div>
+      <input id="cons-q" type="search" placeholder="SEARCH CARD NAME OR TEXT" autocomplete="off" aria-label="Search cards">
+      <div id="cons-selects">
+        <select id="cons-kw" aria-label="Keyword"></select>
+        <select id="cons-cost" aria-label="Cost"></select>
+        <select id="cons-sort" aria-label="Sort cards"><option value="cost">SORT: COST</option><option value="name">SORT: NAME</option><option value="power">SORT: POWER</option><option value="kind">SORT: TYPE</option></select>
+        <button type="button" id="cons-indeck" aria-pressed="false">IN DECK</button>
+        <button type="button" id="cons-reset">RESET FILTERS</button>
+      </div>
+      <div id="cons-count" class="smuted"></div>
+    </div>
+    <div id="cons-main">
+      <div id="cons-pool" tabindex="0" aria-label="Card pool"></div>
+      <aside id="cons-side" aria-label="Your deck">
+        <div id="cons-list" aria-live="polite"></div>
+        <div id="cons-need"></div>
+        <div id="cons-tools">
+          <button type="button" id="cons-fill">FILL THE REST AT RANDOM</button>
+          <button type="button" id="cons-clear">CLEAR DECK</button>
+        </div>
+        <div id="cons-saves">
+          <select id="cons-saved" aria-label="Saved decks"></select>
+          <input id="cons-name" maxlength="24" placeholder="DECK NAME" autocomplete="off" aria-label="Deck name">
+          <div class="cons-two"><button type="button" id="cons-save">SAVE</button><button type="button" id="cons-del">DELETE</button></div>
+        </div>
+        <div id="cons-msg" role="status"></div>
+        <button type="button" id="cons-queue" disabled>QUEUE CONSTRUCTED</button>
+        <button type="button" id="cons-back">BACK</button>
+      </aside>
+    </div>
+  </div>
+
   <div id="match">
     <div id="opp-name" style="text-align:center;opacity:0.85;font-size:0.85rem;text-transform:uppercase;"></div>
     <div class="hbar" id="hbar-opp"><div class="hbar-fill" id="hbar-opp-fill"></div><div class="hbar-row"><span id="hbar-opp-text">HULL —/—</span><span id="hbar-opp-side">A— $—</span></div></div>
@@ -242,6 +334,7 @@
       <button id="lockin-btn" disabled>Lock in</button>
     </div>
     <button id="requeue" style="display:none">Queue again</button>
+    <button id="cons-edit" style="display:none">Edit deck</button>
   </div>
 
   <div id="log"></div>

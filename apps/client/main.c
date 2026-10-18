@@ -9,6 +9,10 @@
 #include "iduna.h"
 #include "version.h"
 
+/* constructed mode with --deck / --deck-file: always play that deck (no deck given: a random legal one each match) */
+static int8_t fixed_deck[DW_DECK_SIZE]; static int have_fixed = 0;
+static int fixed_deck_cb(void *ctx, int8_t out[DW_DECK_SIZE]) { (void)ctx; if (!have_fixed) return -1; memcpy(out, fixed_deck, DW_DECK_SIZE); return 0; }
+
 int main(int argc, char **argv) {
     const char *host = "127.0.0.1", *name = "player", *iduna_url = NULL, *guest_file = NULL, *raw_token = NULL, *match_token = NULL; int port = 7700, kind = DW_KIND_HUMAN, policy = DW_POL_INTERACTIVE;
     long matches = 1; uint32_t seed = 1; int quiet = 0, think = 0, mode = DW_MODE_CARD;
@@ -26,9 +30,15 @@ int main(int argc, char **argv) {
         else if (!strcmp(argv[i], "--guest-file") && i + 1 < argc) guest_file = argv[++i];
         else if (!strcmp(argv[i], "--token") && i + 1 < argc) raw_token = argv[++i];
         else if (!strcmp(argv[i], "--match-token") && i + 1 < argc) match_token = argv[++i];   /* S537 Duel Phase 2: IDUNA duel match_token, queues for that specific opponent */
-        else if (!strcmp(argv[i], "--mode") && i + 1 < argc) { i++; if (!strcmp(argv[i], "draft")) mode = DW_MODE_DRAFT; else if (!strcmp(argv[i], "random")) mode = DW_MODE_CARD; else { fprintf(stderr, "--mode must be random or draft\n"); return 2; } }
+        else if (!strcmp(argv[i], "--mode") && i + 1 < argc) { i++; if (!strcmp(argv[i], "draft")) mode = DW_MODE_DRAFT; else if (!strcmp(argv[i], "random")) mode = DW_MODE_CARD; else if (!strcmp(argv[i], "constructed")) mode = DW_MODE_CONSTRUCTED; else { fprintf(stderr, "--mode must be random, draft or constructed\n"); return 2; } }
+        else if (!strcmp(argv[i], "--deck") && i + 1 < argc) { if (!dw_deck_parse(argv[++i], fixed_deck)) { fprintf(stderr, "--deck must be 23 card ids forming a legal deck (ten 1-ofs, five 2-ofs, one 3-of)\n"); return 2; } have_fixed = 1; }
+        else if (!strcmp(argv[i], "--deck-file") && i + 1 < argc) {
+            FILE *df = fopen(argv[++i], "r"); char line[512];
+            if (!df || !fgets(line, sizeof line, df) || !dw_deck_parse(line, fixed_deck)) { fprintf(stderr, "--deck-file must hold one legal 23-card deck on its first line\n"); return 2; }
+            fclose(df); have_fixed = 1;
+        }
         else if (!strcmp(argv[i], "--quiet")) quiet = 1;
-        else { fprintf(stderr, "usage: dw_client [--host H] [--port P] [--name N] [--kind human|bot] [--auto random|first-legal|ripper|wall|mirror] [--mode random|draft] [--matches N] [--seed S] [--think-ms N] [--iduna-url URL --guest-file F | --token JWT] [--match-token TOK] [--quiet] [--version]\n"); return 2; }
+        else { fprintf(stderr, "usage: dw_client [--host H] [--port P] [--name N] [--kind human|bot] [--auto random|first-legal|ripper|wall|mirror] [--mode random|draft|constructed [--deck IDS | --deck-file F]] [--matches N] [--seed S] [--think-ms N] [--iduna-url URL --guest-file F | --token JWT] [--match-token TOK] [--quiet] [--version]\n"); return 2; }
     }
     if (dw_net_init() != 0) return 1;
     static char tok[1536];
@@ -61,7 +71,7 @@ int main(int argc, char **argv) {
     DwClient c;
     if (dwc_connect(&c, host, port)) { fprintf(stderr, "dw_client: cannot connect to %s:%d\n", host, port); return 1; }
     DwRunOpts o; memset(&o, 0, sizeof o);
-    o.name = name; o.kind = kind; o.policy = policy; o.seed = seed; o.target_matches = matches; o.think_ms = think; o.verbose = !quiet; o.idle_timeout_ms = 60000; o.token = tok[0] ? tok : raw_token; o.mode = mode; o.match_token = match_token;
+    o.name = name; o.kind = kind; o.policy = policy; o.seed = seed; o.target_matches = matches; o.think_ms = think; o.verbose = !quiet; o.idle_timeout_ms = 60000; o.token = tok[0] ? tok : raw_token; o.mode = mode; o.match_token = match_token; o.next_deck = fixed_deck_cb;
     int rc = dwc_run(&c, &o);
     dwc_close(&c);
     printf("dw_client: matches=%ld wins=%ld losses=%ld draws=%ld\n", o.done, o.wins, o.losses, o.draws);

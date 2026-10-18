@@ -51,6 +51,13 @@ static void bot_draft_pick(uint32_t *rng, const DwMsg *offer, DwMsg *out) {
     memset(out, 0, sizeof *out); out->type = DW_C_DRAFT_PICK; out->u.draft_pick.index = (uint8_t)idx; out->u.draft_pick.mult = (uint8_t)mult;
 }
 
+/* Constructed mode: submit the next deck (DRAFT_RESUME while READY); the server answers DRAFT_DONE and the client then queues. */
+static int send_deck(DwClient *c, const DwRunOpts *o, uint32_t *rng) {
+    DwMsg m; memset(&m, 0, sizeof m); m.type = DW_C_DRAFT_RESUME;
+    if (!o->next_deck || o->next_deck(o->deck_ctx, m.u.draft_resume.cards) != 0) dw_random_deck(rng, m.u.draft_resume.cards);
+    return dwc_send(c, &m);
+}
+
 /* S537 Duel Phase 2: stamps o->match_token (if any) onto a QUEUE message about to be sent. */
 static void fill_queue_token(DwMsg *q, const DwRunOpts *o) {
     if (o->match_token && o->match_token[0]) {
@@ -66,7 +73,7 @@ int dwc_run(DwClient *c, DwRunOpts *o) {
     dw_policy_reset(&ctx, o->seed);
     ctx.decide = o->decide; ctx.brain = o->brain; ctx.arch = o->arch; ctx.w_h = o->w_h; ctx.w_n = o->w_n; ctx.sigma = o->sigma;
     memset(&m, 0, sizeof m);
-    m.type = DW_C_HELLO; m.u.hello.proto = DW_PROTO_VERSION; m.u.hello.mode = (uint8_t)(o->mode == DW_MODE_DRAFT ? DW_MODE_DRAFT : DW_MODE_CARD); m.u.hello.kind = (uint8_t)o->kind;
+    m.type = DW_C_HELLO; m.u.hello.proto = DW_PROTO_VERSION; m.u.hello.mode = (uint8_t)(o->mode == DW_MODE_DRAFT ? DW_MODE_DRAFT : o->mode == DW_MODE_CONSTRUCTED ? DW_MODE_CONSTRUCTED : DW_MODE_CARD); m.u.hello.kind = (uint8_t)o->kind;
     strncpy(m.u.hello.name, o->name, DW_NAME_LEN);
     if (dwc_send(c, &m)) return -1;
     if (o->token && *o->token) {
@@ -83,10 +90,19 @@ int dwc_run(DwClient *c, DwRunOpts *o) {
         if (r == 0) { idle += 500; if (o->idle_timeout_ms > 0 && idle >= o->idle_timeout_ms) return -1; continue; }
         idle = 0;
         switch (m.type) {
-        case DW_S_WELCOME: { DwMsg q; memset(&q, 0, sizeof q); q.type = DW_C_QUEUE; fill_queue_token(&q, o); if (dwc_send(c, &q)) return -1; break; }
+        case DW_S_WELCOME: {
+            if (o->mode == DW_MODE_CONSTRUCTED) { if (send_deck(c, o, &drng)) return -1; break; }   /* the queue follows DRAFT_DONE */
+            DwMsg q; memset(&q, 0, sizeof q); q.type = DW_C_QUEUE; fill_queue_token(&q, o); if (dwc_send(c, &q)) return -1; break;
+        }
         case DW_S_QUEUED: break;
         case DW_S_DRAFT_OFFER: { DwMsg p; bot_draft_pick(&drng, &m, &p); if (dwc_send(c, &p)) return -1; break; }
-        case DW_S_DRAFT_DONE: if (o->verbose) printf("deck %u drafted\n", m.u.draft_done.deck_id); break;
+        case DW_S_DRAFT_DONE:
+            if (o->verbose) printf("deck %u %s\n", m.u.draft_done.deck_id, o->mode == DW_MODE_CONSTRUCTED ? "accepted" : "drafted");
+            if (o->mode == DW_MODE_CONSTRUCTED) {   /* the deck is in: now queue with it */
+                DwMsg q; memset(&q, 0, sizeof q); q.type = DW_C_QUEUE; q.u.queue.same_deck = 1; fill_queue_token(&q, o);
+                if (dwc_send(c, &q)) return -1;
+            }
+            break;
         case DW_S_MATCH_FOUND:
             match_id = m.u.match_found.match_id; dw_policy_reset(&ctx, o->seed ^ m.u.match_found.seed);
             if (o->verbose) printf("match %u vs %s (%s), seat %d\n", match_id, m.u.match_found.opp_name, m.u.match_found.opp_kind ? "bot" : "human", m.u.match_found.seat);
@@ -125,6 +141,7 @@ int dwc_run(DwClient *c, DwRunOpts *o) {
             if (m.u.match_end.result == DW_RES_WIN) o->wins++; else if (m.u.match_end.result == DW_RES_LOSS) o->losses++; else o->draws++;
             if (o->verbose) printf("match end: %s (reason %d)\n", m.u.match_end.result == DW_RES_WIN ? "WIN" : m.u.match_end.result == DW_RES_LOSS ? "LOSS" : "DRAW", m.u.match_end.reason);
             if (o->target_matches > 0 && o->done >= o->target_matches) return 0;
+            if (o->mode == DW_MODE_CONSTRUCTED) { if (send_deck(c, o, &drng)) return -1; break; }   /* a fresh deck choice, then queue */
             { DwMsg q; memset(&q, 0, sizeof q); q.type = DW_C_QUEUE;
               if (o->mode == DW_MODE_DRAFT) q.u.queue.same_deck = m.u.match_end.result != DW_RES_LOSS;   /* keep a winning deck, redraft after a loss */
               fill_queue_token(&q, o);

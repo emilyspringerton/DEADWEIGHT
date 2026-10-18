@@ -117,7 +117,7 @@ function writeName(w: WasmExports, name: string, setChar: (i: number, c: number)
     for (let i = 0; i < len; i++) setChar.call(w, i, i < enc.length ? enc[i] : 0);
 }
 
-export function encodeHello(mode: 0 | 1 | 2, kind: 0 | 1, name: string, token: string): Uint8Array {
+export function encodeHello(mode: 0 | 1 | 2 | 3, kind: 0 | 1, name: string, token: string): Uint8Array {
     const w = requireWasm();
     const tokenBytes = new TextEncoder().encode(token).slice(0, 200);
     w.set_hello(PROTO_VERSION, mode, kind, tokenBytes.length);

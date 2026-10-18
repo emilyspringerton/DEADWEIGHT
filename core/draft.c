@@ -1,5 +1,6 @@
 #include "draft.h"
 #include "card_rules.h"
+#include <stdlib.h>
 #include <string.h>
 
 static uint32_t xs(uint32_t *s) { uint32_t x = *s; x ^= x << 13; x ^= x >> 17; x ^= x << 5; *s = x; return x; }
@@ -57,4 +58,32 @@ int dw_draft_deck_valid(const int8_t *deck, int n) {
         }
     }
     return ones == 10 && twos == 5 && threes == 1;
+}
+
+void dw_random_deck(uint32_t *rng, int8_t out[DW_DECK_SIZE]) {
+    int n = num_cards(), idx[DW_DRAFT_MAX_CARDS];
+    if (!*rng) *rng = 1;                                  /* xorshift never leaves 0 */
+    if (n > DW_DRAFT_MAX_CARDS) n = DW_DRAFT_MAX_CARDS;
+    for (int i = 0; i < n; i++) idx[i] = i;
+    for (int i = 0; i < DW_DRAFT_PICKS; i++) {            /* partial Fisher-Yates: the first 16 are 16 distinct cards */
+        int j = i + (int)(xs(rng) % (uint32_t)(n - i)); int t = idx[i]; idx[i] = idx[j]; idx[j] = t;
+    }
+    int k = 0;
+    for (int i = 0; i < DW_DRAFT_PICKS; i++) {
+        int copies = i < 10 ? 1 : i < 15 ? 2 : 3;
+        for (int c = 0; c < copies; c++) out[k++] = (int8_t)idx[i];
+    }
+}
+
+int dw_deck_parse(const char *text, int8_t out[DW_DECK_SIZE]) {
+    int n = 0; const char *p = text;
+    while (*p) {
+        while (*p == ',' || *p == ' ' || *p == '\t' || *p == '\r' || *p == '\n') p++;
+        if (!*p) break;
+        if (*p < '0' || *p > '9') return 0;
+        long v = 0; while (*p >= '0' && *p <= '9') { v = v * 10 + (*p - '0'); if (v > 1000) return 0; p++; }
+        if (n >= DW_DECK_SIZE) return 0;
+        out[n++] = (int8_t)(v > 127 ? -1 : v);
+    }
+    return n == DW_DECK_SIZE && dw_draft_deck_valid(out, n);
 }

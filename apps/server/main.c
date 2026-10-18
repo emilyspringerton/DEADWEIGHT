@@ -24,6 +24,9 @@
 #define OUTBUF 8192
 #define ROUND_MS_DEFAULT 40000
 #define HELLO_TIMEOUT_MS 10000
+#define DW_DEFAULT_RATING 1500    /* a player IDUNA has no rating for yet (and every player when running --no-auth) */
+#define DW_PLACEMENT_MATCHES 30   /* a constructed bot with fewer rated matches than this calibrates its rating fast ... */
+#define DW_PLACEMENT_WAIT_MS 1500 /* ... re-queueing against another bot after this long */
 
 enum { S_FREE = 0, S_CONNECTED, S_READY, S_QUEUED, S_IN_MATCH, S_NEEDAUTH, S_VERIFYING, S_DRAFTING };
 
@@ -35,7 +38,9 @@ typedef struct {
     char match_token[33];                   /* S537 Duel Phase 2: set from QUEUE, cleared to "" when absent */
     int match, seat; uint64_t queued_seq, connect_ms; int close_after_flush;
     DwDraft draft;                          /* draft mode: the in-progress draft */
-    int8_t deck[DW_DRAFT_DECK]; int deck_n; uint32_t deck_id;   /* draft mode: the last completed deck (replayable via QUEUE same_deck) */
+    int8_t deck[DW_DRAFT_DECK]; int deck_n; uint32_t deck_id;   /* draft mode: the last completed deck (replayable via QUEUE same_deck); constructed: the submitted deck */
+    int rating, rated_matches;              /* IDUNA ladder rating / matches played (0 = not known yet -> DW_DEFAULT_RATING); kept current from match-result responses */
+    uint64_t queued_at;                     /* dw_now_ms() when it entered the queue */
 } Conn;
 
 typedef struct {
@@ -55,12 +60,16 @@ static int opt_round_ms = ROUND_MS_DEFAULT;
 static const char *opt_log_dir = NULL;
 static uint32_t next_session = 1, next_match = 1, next_deck = 1, seed_state = 0x9E3779B9u;
 static uint64_t queue_seq = 0;
-static long st_drafts = 0, st_draft_matches = 0, st_matches = 0, st_bot_bot = 0, st_human_bot = 0, st_human_human = 0, st_forfeits = 0;
+static long st_drafts = 0, st_draft_matches = 0, st_constructed_matches = 0, st_matches = 0, st_bot_bot = 0, st_human_bot = 0, st_human_human = 0, st_forfeits = 0;
+/* constructed queue: how long two waiting bots must have waited before they are paired with each other (they exist to be a human's
+ * opponent; bot-vs-bot games only calibrate their ratings). A bot still in placement waits DW_PLACEMENT_WAIT_MS instead. */
+static int opt_bot_wait_ms = 45000;
 
 /* ---- IDUNA worker thread: verify + match-result HTTP never runs on the poll() loop ---- */
 enum { J_VERIFY = 1, J_REPORT };
 typedef struct { int type; int conn; uint32_t gen; char token[DW_MAX_AUTH_TOKEN + 1]; char name[DW_NAME_LEN + 1]; DwMatchReport rep; } Job;
-typedef struct { int conn; uint32_t gen; int rc; DwIdentity id; } VResult;
+enum { R_VERIFY = 0, R_RATING };   /* what a result from the worker thread carries */
+typedef struct { int type; int conn; uint32_t gen; int rc; DwIdentity id; int rating, rated_matches; char pid[2][48]; int ratings[2]; } VResult;
 #ifdef DW_HAVE_WORKER
 #define JQ 256
 static Job jq[JQ]; static int jq_n = 0, jq_head = 0;
@@ -79,15 +88,29 @@ static void *worker_main(void *arg) {
         *j = jq[jq_head]; jq_head = (jq_head + 1) % JQ; jq_n--;
         pthread_mutex_unlock(&jm);
         if (j->type == J_VERIFY) {
-            VResult r; memset(&r, 0, sizeof r); r.conn = j->conn; r.gen = j->gen;
+            VResult r; memset(&r, 0, sizeof r); r.type = R_VERIFY; r.conn = j->conn; r.gen = j->gen;
             r.rc = dwi_verify(&iduna, j->token, j->name, &r.id);
+            if (r.rc == 0) {   /* the player's ladder rating, for the constructed queue's matchmaking (best effort: unknown = the default) */
+                DwProfile pf;
+                if (dwi_profile(&iduna, r.id.player_id, &pf) == 0) { r.rating = pf.rating; r.rated_matches = pf.matches; }
+            }
             pthread_mutex_lock(&jm);
             if (rq_n < JQ) rq[rq_n++] = r;
             pthread_mutex_unlock(&jm);
             if (write(wake_fd[1], "x", 1) < 0) { /* wake pipe full: the loop is already awake */ }
         } else {
-            if (dwi_report(&iduna, &j->rep) != 0)
+            int r0 = -1, r1 = -1;
+            if (dwi_report_ex(&iduna, &j->rep, &r0, &r1) != 0)
                 fprintf(stderr, "dw_server: IDUNA match-result report failed for match %u (see match log; continuing)\n", j->rep.match_id);
+            else if (r0 > 0 && r1 > 0) {   /* IDUNA says what the two ratings are now: keep the connections' copies current */
+                VResult r; memset(&r, 0, sizeof r); r.type = R_RATING;
+                snprintf(r.pid[0], sizeof r.pid[0], "%s", j->rep.seat_pid[0]); snprintf(r.pid[1], sizeof r.pid[1], "%s", j->rep.seat_pid[1]);
+                r.ratings[0] = r0; r.ratings[1] = r1;
+                pthread_mutex_lock(&jm);
+                if (rq_n < JQ) rq[rq_n++] = r;
+                pthread_mutex_unlock(&jm);
+                if (write(wake_fd[1], "x", 1) < 0) { /* wake pipe full: the loop is already awake */ }
+            }
         }
         free(j);
     }
@@ -179,8 +202,8 @@ static void write_match_log(const Match *mt) {
     fprintf(f, "{\"match_id\":%u,\"seed\":%u,\"names\":[\"%s\",\"%s\"],\"kinds\":[%d,%d],\"plays\":[", mt->id, mt->m.seed, a->name, b->name, a->kind, b->kind);
     for (int i = 0; i < mt->nplays; i++) fprintf(f, "%s[%d,%d]", i ? "," : "", mt->plays[i][0], mt->plays[i][1]);
     fprintf(f, "],\"result\":[%d,%d],\"reason\":%d,\"rounds\":%d", mt->m.result[0], mt->m.result[1], mt->m.reason, mt->m.round);
-    if (mt->mode == DW_MODE_DRAFT) {
-        fprintf(f, ",\"mode\":\"draft\",\"deck_ids\":[%u,%u],\"decks\":[", mt->deck_id[0], mt->deck_id[1]);
+    if (mt->mode == DW_MODE_DRAFT || mt->mode == DW_MODE_CONSTRUCTED) {
+        fprintf(f, ",\"mode\":\"%s\",\"deck_ids\":[%u,%u],\"decks\":[", mt->mode == DW_MODE_DRAFT ? "draft" : "constructed", mt->deck_id[0], mt->deck_id[1]);
         for (int s = 0; s < 2; s++) { fprintf(f, "%s[", s ? "," : ""); for (int i = 0; i < DW_DRAFT_DECK; i++) fprintf(f, "%s%d", i ? "," : "", mt->deck[s][i]); fprintf(f, "]"); }
         fprintf(f, "]");
     }
@@ -208,7 +231,7 @@ static void end_match(int mi) {
         if (conns[ci].state == S_IN_MATCH) { conns[ci].state = S_READY; conns[ci].match = -1; }
     }
     int kb = conns[mt->conn[0]].kind + conns[mt->conn[1]].kind;
-    st_matches++; if (mt->mode == DW_MODE_DRAFT) st_draft_matches++; if (kb == 2) st_bot_bot++; else if (kb == 1) st_human_bot++; else st_human_human++;
+    st_matches++; if (mt->mode == DW_MODE_DRAFT) st_draft_matches++; else if (mt->mode == DW_MODE_CONSTRUCTED) st_constructed_matches++; if (kb == 2) st_bot_bot++; else if (kb == 1) st_human_bot++; else st_human_human++;
     if (mt->m.reason == DW_END_FORFEIT) st_forfeits++;
     if (opt_iduna && mt->m.reason != DW_END_SERVER && conns[mt->conn[0]].player_id[0] && conns[mt->conn[1]].player_id[0]) {
         Job j; memset(&j, 0, sizeof j); j.type = J_REPORT;
@@ -254,7 +277,7 @@ static int start_match(int a, int b, int mode) {
     Match *mt = &matches[mi]; memset(mt, 0, sizeof *mt);
     mt->active = 1; mt->id = next_match++; mt->conn[0] = a; mt->conn[1] = b;
     mt->mode = mode;
-    if (mode == DW_MODE_DRAFT) {
+    if (mode == DW_MODE_DRAFT || mode == DW_MODE_CONSTRUCTED) {
         for (int s = 0; s < 2; s++) { memcpy(mt->deck[s], conns[mt->conn[s]].deck, DW_DRAFT_DECK); mt->deck_id[s] = conns[mt->conn[s]].deck_id; }
         dw_match_init_decks(&mt->m, next_seed(), mt->deck[0], DW_DRAFT_DECK, mt->deck[1], DW_DRAFT_DECK);
     } else dw_match_init(&mt->m, next_seed());
@@ -266,7 +289,8 @@ static int start_match(int a, int b, int mode) {
         memcpy(m.u.match_found.opp_name, conns[oi].name, DW_NAME_LEN + 1); m.u.match_found.opp_kind = conns[oi].kind;
         send_msg(ci, &m);
     }
-    vlog("match %u%s: %s(%d) vs %s(%d) seed=%u", mt->id, mode == DW_MODE_DRAFT ? " [draft]" : "", conns[a].name, conns[a].kind, conns[b].name, conns[b].kind, mt->m.seed);
+    vlog("match %u%s: %s(%d, r%d) vs %s(%d, r%d) seed=%u", mt->id, mode == DW_MODE_DRAFT ? " [draft]" : mode == DW_MODE_CONSTRUCTED ? " [constructed]" : "",
+         conns[a].name, conns[a].kind, conns[a].rating, conns[b].name, conns[b].kind, conns[b].rating, mt->m.seed);
     dw_match_begin_round(&mt->m);
     send_round_start(mt);
     return 1;
@@ -325,8 +349,55 @@ static void try_pair_mode(int mode) {
         break;
     }
 }
+static int rating_of(const Conn *c) { return c->rating > 0 ? c->rating : DW_DEFAULT_RATING; }
+
+/* the queued entry of `kind` in `mode` whose rating is closest to `target` (ties: the one that has waited longest); -1 if none. */
+static int nearest_queued(int mode, int kind, int skip, int target) {
+    int best = -1, bd = 0;
+    for (int i = 0; i < MAX_CONNS; i++) {
+        const Conn *c = &conns[i];
+        if (i == skip || c->state != S_QUEUED || c->kind != kind || c->mode != mode || c->match_token[0]) continue;
+        int d = rating_of(c) - target; if (d < 0) d = -d;
+        if (best < 0 || d < bd || (d == bd && c->queued_seq < conns[best].queued_seq)) { best = i; bd = d; }
+    }
+    return best;
+}
+
+static int bot_ready_for_bot(const Conn *b, uint64_t now) {
+    uint64_t need = b->rated_matches < DW_PLACEMENT_MATCHES ? DW_PLACEMENT_WAIT_MS : (uint64_t)opt_bot_wait_ms;
+    if (need > (uint64_t)opt_bot_wait_ms) need = (uint64_t)opt_bot_wait_ms;
+    return now - b->queued_at >= need;
+}
+
+/* Constructed queue: the same shape as try_pair_mode (token duels first; humans ahead of bots; the last waiting bot is kept for a
+ * human) but by rating. A human meets the waiting bot whose rating is closest to theirs, so a low-rated player gets the bots with
+ * the weaker decks (a bot's rating is what its deck and play earn on IDUNA's ladder); two humans meet the closest pair; two bots
+ * only meet when both have waited long enough (see opt_bot_wait_ms) and then the one that has waited longest takes the bot nearest
+ * to it. Called when the queue changes and on every loop tick, since bot pacing is a matter of time. */
+static void try_pair_constructed(void) {
+    const int mode = DW_MODE_CONSTRUCTED;
+    for (;;) {
+        int ta, tb;
+        if (find_token_pair(mode, &ta, &tb)) { if (!start_match(ta, tb, mode)) break; continue; }
+        int nh, nb;
+        int h1 = oldest_queued(mode, DW_KIND_HUMAN, -1, &nh);
+        int b1 = oldest_queued(mode, DW_KIND_BOT, -1, &nb);
+        if (nh >= 2) { int h2 = nearest_queued(mode, DW_KIND_HUMAN, h1, rating_of(&conns[h1])); if (!start_match(h1, h2, mode)) break; continue; }
+        if (nh == 1 && nb >= 1) { int b = nearest_queued(mode, DW_KIND_BOT, -1, rating_of(&conns[h1])); if (!start_match(h1, b, mode)) break; continue; }
+        if (nh == 0 && nb >= 3) {
+            uint64_t now = dw_now_ms();
+            if (!bot_ready_for_bot(&conns[b1], now)) break;
+            int b2 = nearest_queued(mode, DW_KIND_BOT, b1, rating_of(&conns[b1]));
+            if (b2 < 0 || !bot_ready_for_bot(&conns[b2], now)) break;
+            if (!start_match(b1, b2, mode)) break;
+            continue;
+        }
+        break;
+    }
+}
+
 /* Random and draft are separate queues: a player only ever meets someone queued in the same mode. */
-static void try_pair(void) { try_pair_mode(DW_MODE_CARD); try_pair_mode(DW_MODE_DRAFT); }
+static void try_pair(void) { try_pair_mode(DW_MODE_CARD); try_pair_mode(DW_MODE_DRAFT); try_pair_constructed(); }
 
 static int queued_count(int mode) { int n = 0; for (int i = 0; i < MAX_CONNS; i++) if (conns[i].state == S_QUEUED && conns[i].mode == mode) n++; return n; }
 
@@ -378,6 +449,15 @@ static void start_verify(int ci, const uint8_t *tok, unsigned n) {
     if (!enqueue_job(&j)) { vlog("IDUNA queue unavailable, refusing conn %d", ci); send_error(ci, DW_ERR_AUTH); }
 }
 
+/* IDUNA's match-result response carried both seats' new ratings: update every live connection of those players. */
+static __attribute__((unused)) void rating_update(const VResult *r) {
+    for (int i = 0; i < MAX_CONNS; i++) {
+        Conn *c = &conns[i];
+        if (c->state == S_FREE || !c->player_id[0]) continue;
+        for (int s = 0; s < 2; s++) if (!strcmp(c->player_id, r->pid[s])) { c->rating = r->ratings[s]; c->rated_matches++; }
+    }
+}
+
 static __attribute__((unused)) void verify_done(const VResult *r) {
     if (r->conn < 0 || r->conn >= MAX_CONNS) return;
     Conn *c = &conns[r->conn];
@@ -385,6 +465,7 @@ static __attribute__((unused)) void verify_done(const VResult *r) {
     if (r->rc == 0) {
         if ((int)c->kind != r->id.kind) { vlog("conn %d: token kind mismatch", r->conn); send_error(r->conn, DW_ERR_AUTH); return; }
         snprintf(c->player_id, sizeof c->player_id, "%s", r->id.player_id);
+        c->rating = r->rating; c->rated_matches = r->rated_matches;
         if (c->kind == DW_KIND_HUMAN && r->id.display_name[0]) snprintf(c->name, sizeof c->name, "%.16s", r->id.display_name);
         become_ready(r->conn);
     } else if (r->rc == -1 && opt_fail_open) {
@@ -405,7 +486,7 @@ static void drain_results(void) {
         if (rq_n > 0) { r = rq[0]; memmove(rq, rq + 1, (size_t)(rq_n - 1) * sizeof rq[0]); rq_n--; have = 1; }
         pthread_mutex_unlock(&jm);
         if (!have) break;
-        verify_done(&r);
+        if (r.type == R_RATING) rating_update(&r); else verify_done(&r);
     }
 #endif
 }
@@ -457,7 +538,7 @@ static void start_draft(int ci) {
 
 static void enter_queue(int ci) {
     Conn *c = &conns[ci]; DwMsg r; memset(&r, 0, sizeof r);
-    c->state = S_QUEUED; c->queued_seq = ++queue_seq;
+    c->state = S_QUEUED; c->queued_seq = ++queue_seq; c->queued_at = dw_now_ms();
     r.type = DW_S_QUEUED; r.u.queued.waiting = (uint16_t)queued_count(c->mode); send_msg(ci, &r);
     try_pair();
 }
@@ -484,7 +565,7 @@ static void handle_msg(int ci, const DwMsg *m) {
     case DW_C_HELLO:
         if (c->state != S_CONNECTED) { send_error(ci, DW_ERR_BAD_STATE); return; }
         if (m->u.hello.proto != DW_PROTO_VERSION) { send_error(ci, DW_ERR_BAD_PROTO); return; }
-        if (m->u.hello.mode != DW_MODE_CARD && m->u.hello.mode != DW_MODE_DRAFT) { send_error(ci, DW_ERR_BAD_STATE); return; } /* backpack = VS1 */
+        if (m->u.hello.mode != DW_MODE_CARD && m->u.hello.mode != DW_MODE_DRAFT && m->u.hello.mode != DW_MODE_CONSTRUCTED) { send_error(ci, DW_ERR_BAD_STATE); return; } /* backpack = VS1 */
         if (m->u.hello.kind > DW_KIND_BOT) { send_error(ci, DW_ERR_BAD_FRAME); return; }
         memcpy(c->name, m->u.hello.name, sizeof c->name); c->kind = m->u.hello.kind; c->mode = m->u.hello.mode;
         for (char *q = c->name; *q; q++) if ((unsigned char)*q < 32 || *q == '"' || *q == '\\' || *q == 127) *q = '_';
@@ -505,6 +586,10 @@ static void handle_msg(int ci, const DwMsg *m) {
          * connection itself until draft_pick()'s own enter_queue() call at the end. */
         if (m->u.queue.has_match_token) memcpy(c->match_token, m->u.queue.match_token, sizeof c->match_token);
         else c->match_token[0] = 0;
+        if (c->mode == DW_MODE_CONSTRUCTED) {   /* the deck was submitted with DRAFT_RESUME while READY; there is nothing to queue with otherwise */
+            if (c->deck_n != DW_DRAFT_DECK) { send_error(ci, DW_ERR_BAD_STATE); return; }
+            enter_queue(ci); return;
+        }
         if (c->mode == DW_MODE_DRAFT && !(m->u.queue.same_deck && c->deck_n == DW_DRAFT_DECK)) { start_draft(ci); return; }   /* redraft (or no deck yet) */
         enter_queue(ci);
         return;
@@ -514,10 +599,10 @@ static void handle_msg(int ci, const DwMsg *m) {
     case DW_C_DRAFT_RESUME:
         /* S510 "Resume Uplink": a persisted (IDUNA-side) deck arriving instead of a fresh draft --
          * real legality check (dw_draft_deck_valid), never trust the client's own bucket math. */
-        if (c->state != S_READY || c->mode != DW_MODE_DRAFT) { send_error(ci, DW_ERR_BAD_STATE); return; }
+        if (c->state != S_READY || (c->mode != DW_MODE_DRAFT && c->mode != DW_MODE_CONSTRUCTED)) { send_error(ci, DW_ERR_BAD_STATE); return; }
         if (!dw_draft_deck_valid(m->u.draft_resume.cards, DW_DRAFT_DECK)) { send_error(ci, DW_ERR_BAD_FRAME); return; }
         memcpy(c->deck, m->u.draft_resume.cards, DW_DRAFT_DECK); c->deck_n = DW_DRAFT_DECK; c->deck_id = next_deck++;
-        log_deck(c);
+        if (c->mode == DW_MODE_DRAFT) log_deck(c);   /* a constructed deck is not a draft: decks.ndjson (the tracker's, and the bots' source) stays draft-only */
         r.type = DW_S_DRAFT_DONE; r.u.draft_done.deck_id = c->deck_id; memcpy(r.u.draft_done.cards, c->deck, DW_DRAFT_DECK);
         send_msg(ci, &r);
         return;
@@ -613,9 +698,10 @@ int main(int argc, char **argv) {
         else if (!strcmp(argv[i], "--match-log") && i + 1 < argc) opt_log_dir = argv[++i];
         else if (!strcmp(argv[i], "--max-matches") && i + 1 < argc) opt_max_matches = atol(argv[++i]);
         else if (!strcmp(argv[i], "--round-ms") && i + 1 < argc) { opt_round_ms = atoi(argv[++i]); if (opt_round_ms < 50 || opt_round_ms > 60000) { fprintf(stderr, "--round-ms must be 50..60000\n"); return 2; } }
+        else if (!strcmp(argv[i], "--bot-wait-ms") && i + 1 < argc) { opt_bot_wait_ms = atoi(argv[++i]); if (opt_bot_wait_ms < 0) opt_bot_wait_ms = 0; }
         else if (!strcmp(argv[i], "--verbose")) opt_verbose = 1;
         else {
-            fprintf(stderr, "usage: dw_server [--port N] [--bind ADDR] [--fast-forward] [--no-auth] [--iduna-url URL --agent-secret-file F [--agent-name N] [--auth-fail-open]] [--match-log DIR] [--max-matches N] [--round-ms N] [--verbose] [--version]\n");
+            fprintf(stderr, "usage: dw_server [--port N] [--bind ADDR] [--fast-forward] [--no-auth] [--iduna-url URL --agent-secret-file F [--agent-name N] [--auth-fail-open]] [--match-log DIR] [--max-matches N] [--round-ms N] [--bot-wait-ms N] [--verbose] [--version]\n");
             return 2;
         }
     }
@@ -672,6 +758,7 @@ int main(int argc, char **argv) {
         }
         expire_timers();
         if (opt_iduna) drain_results();
+        try_pair_constructed();   /* bot-vs-bot pacing is time, not an event */
     }
     for (int i = 0; i < MAX_MATCHES; i++) if (matches[i].active) {
         dw_match_forfeit(&matches[i].m, 0); matches[i].m.result[0] = matches[i].m.result[1] = DW_RES_DRAW; matches[i].m.reason = DW_END_SERVER;
@@ -680,7 +767,7 @@ int main(int argc, char **argv) {
     for (int i = 0; i < MAX_CONNS; i++) if (conns[i].state != S_FREE) { flush_conn(i); conn_close(i); }
     dw_close(ls);
     stop_worker();
-    fprintf(stderr, "dw_server: shutdown drafts=%ld draft_matches=%ld matches=%ld bot_bot=%ld human_bot=%ld human_human=%ld forfeits=%ld\n",
-            st_drafts, st_draft_matches, st_matches, st_bot_bot, st_human_bot, st_human_human, st_forfeits);
+    fprintf(stderr, "dw_server: shutdown drafts=%ld draft_matches=%ld constructed_matches=%ld matches=%ld bot_bot=%ld human_bot=%ld human_human=%ld forfeits=%ld\n",
+            st_drafts, st_draft_matches, st_constructed_matches, st_matches, st_bot_bot, st_human_bot, st_human_human, st_forfeits);
     return 0;
 }

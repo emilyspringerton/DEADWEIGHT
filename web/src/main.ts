@@ -12,6 +12,7 @@ import * as fxWasm from './fxWasm.js';
 import * as account from './account.js';
 import * as social from './social.js';
 import * as sso from './sso.js';
+import { DeckBuilder } from './constructed.js';
 
 type CardEntry = { id: number; name: string; kind: string; keyword: string; cost: number; power: number; credit: number; text: string };
 type CardsData = { version: string; cards: CardEntry[] };
@@ -38,6 +39,12 @@ let draftPicks: { card: number; mult: number }[] = [];
 let draftPend = { card: -1, mult: 0 };
 let draftOfferCards: number[] = [-1, -1];
 let draftLeft: number[] = [0, 0, 0];
+// Constructed mode (HELLO mode 3): the player builds a deck from the whole card pool (constructed.ts / deck.ts), this client connects
+// in mode 3, submits it with DRAFT_RESUME, and queues. connMode is the mode of the CURRENT connection: every mode switch reconnects.
+let connMode: 0 | 2 | 3 = 0;
+let consBuilder: DeckBuilder | null = null;
+let consWantCards: number[] | null = null;   // a deck waiting for the constructed connection to become ready
+let consDeckInPlay: number[] = [];
 let currentAccount: account.Account | null = null;
 let idunaBaseUrl = '';
 // Fetched at startup (not a static JSON import) so this works unbundled, straight from
@@ -329,6 +336,17 @@ async function enterGame(idunaUrl: string, bridgeUrl: string, fallbackName: stri
 
     cardsData = await (await fetch('./src/generated/cards.json')).json();
     log(`loaded ${cardsData.cards.length}-card catalog (v${cardsData.version})`);
+    if (!consBuilder) {
+        consBuilder = new DeckBuilder({
+            cards: cardsData.cards,
+            kindOf: (id) => rules.cardKind(id),
+            cardBox: draftCardBox,
+            kindColor: (k) => KIND_COLORS[k],
+            kindName: (k) => KIND_NAMES[k],
+            onQueue: (cards) => startConstructed(cards),
+            onBack: () => showScreen('game'),
+        });
+    }
 
     // The real round-resolution animation/audio engine (apps/gui/fx.c + apps/gui/sfx.c, compiled
     // unmodified to wasm -- see fxWasm.ts's own header comment for scope/honest limits). Started
@@ -346,7 +364,16 @@ async function enterGame(idunaUrl: string, bridgeUrl: string, fallbackName: stri
         onState(s) {
             setStatus(s);
             const queueBtn = $('queue-btn') as HTMLButtonElement;
-            if (s === 'ready' && draftResumeCards) {
+            const consBtn = document.getElementById('cons-btn') as HTMLButtonElement | null;
+            if (consBtn) consBtn.disabled = draftActive || !(s === 'ready' || s === 'closed' || s === 'error');
+            if (s === 'ready' && connMode === 3 && consWantCards) {
+                // the constructed connection is up: submit the built deck (DRAFT_DONE echoes it back and draftDone() queues)
+                const deck = consWantCards;
+                consWantCards = null;
+                client.draftResume(deck);
+                queueBtn.disabled = true;
+                if (consBtn) consBtn.disabled = true;
+            } else if (s === 'ready' && draftResumeCards) {
                 // RESUME UPLINK after a reconnect: resubmit the persisted deck; DRAFT_DONE echoes it back
                 // and draftDone() then queues same_deck (dw_server does not auto-queue this path).
                 client.draftResume(draftResumeCards);
@@ -387,6 +414,7 @@ async function enterGame(idunaUrl: string, bridgeUrl: string, fallbackName: stri
             const banner = $('end-banner') as HTMLElement;
             banner.classList.remove('show'); banner.textContent = '';
             log(`MATCH_FOUND vs ${f.oppName} (${f.oppKind === 1 ? 'bot' : 'human'}), seat ${f.seat}, seed ${f.seed}`);
+            $('cons-edit').style.display = 'none';
             ($('opp-name') as HTMLElement).textContent = `${f.oppName} (${f.oppKind === 1 ? 'bot' : 'human'})`;
             $('match').style.display = 'block';
         },
@@ -497,20 +525,28 @@ async function enterGame(idunaUrl: string, bridgeUrl: string, fallbackName: stri
             // DW_S_MATCH_END handling exactly (A.pend.lethal = 1; fx_finish_round(0, NULL);).
             if (pendRound) flushPendRound(null, null, pendRound.statusBeforeYou, pendRound.statusBeforeOpp, 0, true);
             setStatus(`match over: ${outcome}`);
+            // The Friends & Duels W/L line was only fetched once at connect, so finished matches never showed up
+            // until a reload. dw_server reports the result to IDUNA right at match end; give it a moment, then refetch.
+            setTimeout(() => { void initSocial(); }, 1500);
             if (draftActive && draftDeck.length) {
                 $('requeue').style.display = 'none';
                 openHub(true);   // S510: "players do not queue immediately after drafting" -- route through the Hub
             } else {
                 $('requeue').style.display = 'inline-block';
+                // constructed: the same deck can queue again at once, or go back to the builder first
+                $('cons-edit').style.display = connMode === 3 ? 'inline-block' : 'none';
             }
         },
         onError(f) {
             log(`ERROR code ${f.code}`);
+            // the server checks every submitted deck itself (dw_draft_deck_valid): 3 = it refused the deck, 4 = no deck to queue with
+            if (connMode === 3) setStatus(f.code === 3 ? 'the server refused that deck -- build it again' : `server error ${f.code} (constructed)`);
         },
         onDraftOffer(f) { draftOffer(f); },
         onDraftDone(f) { draftDone(f); },
     };
     client = new DeadweightClient(bridgeUrl, clientHandlers);
+    connMode = 0;
     client.connect(connName, connToken, 0);
     refreshTickets();
 }
@@ -699,7 +735,8 @@ $('rename-btn').addEventListener('click', async () => {
     }
 });
 $('queue-btn').addEventListener('click', () => {
-    if (client.getState() !== 'ready') {
+    // a draft or constructed connection queues in ITS queue: the random queue needs a mode-0 connection
+    if (client.getState() !== 'ready' || connMode !== 0) {
         queueAfterReconnect = true;
         setStatus('reconnecting…');
         reconnect(0);
@@ -711,6 +748,13 @@ $('queue-btn').addEventListener('click', () => {
 });
 $('requeue').addEventListener('click', () => {
     $('requeue').style.display = 'none';
+    if (connMode === 3) {   // constructed: dw_server still holds the deck submitted for this connection
+        $('cons-edit').style.display = 'none';
+        $('match').style.display = 'none';
+        setStatus('queued (constructed)');
+        client.queue(1);
+        return;
+    }
     ($('queue-btn') as HTMLButtonElement).disabled = false;
     client.queue();
 });
@@ -895,12 +939,13 @@ async function refreshDuels() {
 // find_token_pair() pairs this connection with the specific friend who accepted, ahead of and
 // exempt from normal FIFO/bot pairing.
 function playDuel(token: string) {
-    if (client && client.getState() === 'ready') {
+    if (client && client.getState() === 'ready' && connMode === 0) {
         client.queue(0, token);
         ($('queue-btn') as HTMLButtonElement).disabled = true;
     } else {
         pendingMatchToken = token;
         setStatus('connecting… will queue for this duel once ready');
+        if (connMode !== 0) reconnect(0);   // a duel is a random-queue match: leave the draft / constructed connection
     }
 }
 
@@ -953,12 +998,14 @@ function draftCardBox(id: number): string {
         (c && c.text ? `<span class="rules-text">${c.text}</span>` : '') + `</div>`;
 }
 
-function showScreen(which: 'game' | 'draft' | 'hub') {
+function showScreen(which: 'game' | 'draft' | 'hub' | 'constructed') {
     $('draft').style.display = which === 'draft' ? 'block' : 'none';
     $('hub').style.display = which === 'hub' ? 'block' : 'none';
+    $('constructed').style.display = which === 'constructed' ? 'block' : 'none';
     if (which !== 'game') $('match').style.display = 'none';   // game: leave #match as the match events set it
     ($('queue-btn') as HTMLElement).style.display = which === 'game' ? '' : 'none';
     ($('draft-btn') as HTMLElement).style.display = which === 'game' ? '' : 'none';
+    ($('cons-btn') as HTMLElement).style.display = which === 'game' ? '' : 'none';
 }
 
 // enableDraft=false is the "just look again" refresh (returning to this tab): it updates the label, the FOUNDER badge and
@@ -1049,6 +1096,12 @@ function draftOffer(f: { pickNo: number; total: number; card: number[]; left: nu
 }
 
 async function draftDone(f: { deckId: number; cards: number[] }) {
+    if (connMode === 3) {   // the server took the deck we submitted: queue with it (QUEUE does not auto-follow DRAFT_RESUME)
+        showScreen('game');
+        setStatus(`queued (constructed deck ${f.deckId})`);
+        client.queue(1);
+        return;
+    }
     draftDeck = f.cards.slice();
     draftDeckId = f.deckId;
     showScreen('game');
@@ -1063,11 +1116,50 @@ async function draftDone(f: { deckId: number; cards: number[] }) {
     }
 }
 
-function reconnect(mode: 0 | 2) {
+function reconnect(mode: 0 | 2 | 3) {
     if (client) client.close();
+    connMode = mode;
     client = new DeadweightClient(connBridge, clientHandlers);
     client.connect(connName, connToken, mode);
 }
+
+// ===================== CONSTRUCTED MODE =====================
+function openBuilder() {
+    if (!consBuilder) return;
+    showScreen('constructed');
+    consBuilder.open();
+    // the server pairs you with the bot whose ladder rating is nearest yours: show it (cosmetic, like the rings)
+    consBuilder.setRating(null);
+    if (currentAccount) {
+        social.getProfile(idunaBaseUrl, currentAccount.playerID).then((p) => consBuilder && consBuilder.setRating(p.rating)).catch(() => { /* cosmetic */ });
+    }
+}
+
+function startConstructed(cards: number[]) {
+    consDeckInPlay = cards.slice();
+    showScreen('game');
+    $('match').style.display = 'none';
+    $('requeue').style.display = 'none';
+    $('cons-edit').style.display = 'none';
+    ($('queue-btn') as HTMLButtonElement).disabled = true;
+    log(`constructed deck: ${cards.length} cards`);
+    if (client && client.getState() === 'ready' && connMode === 3) {
+        client.draftResume(cards);   // already connected in constructed mode (between matches)
+        setStatus('submitting deck…');
+        return;
+    }
+    consWantCards = cards.slice();
+    setStatus('connecting (constructed)…');
+    reconnect(3);
+}
+
+$('cons-btn').addEventListener('click', () => openBuilder());
+$('cons-edit').addEventListener('click', () => {
+    $('requeue').style.display = 'none';
+    $('cons-edit').style.display = 'none';
+    if (consBuilder && consDeckInPlay.length) consBuilder.load(consDeckInPlay);
+    openBuilder();
+});
 
 async function startDraftRun() {
     const msg = $('draft-msg');

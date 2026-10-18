@@ -4,6 +4,7 @@
 #ifndef DW_IDUNA_H
 #define DW_IDUNA_H
 #include <stddef.h>
+#include "draft.h"
 
 typedef struct {
     char host[128]; int port; int use_tls; int configured;
@@ -42,6 +43,13 @@ int dwi_agent_login(DwIduna *d);                                   /* 0 ok; fill
 int dwi_verify(DwIduna *d, const char *token, const char *bot_name, DwIdentity *out);
 /* POST match-result as the server agent (logs in / re-logs in on 401). 0 ok (incl. duplicate), -1 failure. */
 int dwi_report(DwIduna *d, const DwMatchReport *r);
+/* dwi_report, plus the two seats' ratings after the match as IDUNA computed them (the response carries them), so the server's
+ * rating-aware constructed matchmaking stays current without another round trip. Each is -1 when IDUNA did not say. */
+int dwi_report_ex(DwIduna *d, const DwMatchReport *r, int *rating0, int *rating1);
+/* Constructed-mode bots' deck source: up to n decks from strength tier `tier` of `tiers` of IDUNA's draft-deck tracker (GET
+ * .../bot-decks, public: decks ranked by the Wilson score of their record, weakest tier 1). Every deck is checked with
+ * dw_draft_deck_valid before it is kept. 0 ok (out->n decks; 0 when the tracker has none yet), -1 unreachable or refused. */
+int dwi_bot_decks(DwIduna *d, int tier, int tiers, int n, DwDeckPool *out);
 /* Guest accounts. Return 0 ok; token written to tok (>= 1536 bytes). display_name may be "" or
  * NULL (S512 zero-friction auth: the release client no longer collects one at all) -- IDUNA
  * auto-assigns a lore-friendly one ("Runner-A7B2") in that case, always readable back via
