@@ -10,9 +10,14 @@
 // Ported rather than shared as a literal file because this is a TS-module site (WOTAN's copy is a
 // plain <script> global) -- kept behaviorally identical on purpose, not reinvented.
 
-const TOKEN_KEY = 'dw_iduna_sso_token';
-const PLAYER_ID_KEY = 'dw_iduna_sso_player_id';
-const DISPLAY_NAME_KEY = 'dw_iduna_sso_display_name';
+// The WOTAN menu (/js/wotan-nav.js) now sits on this page and consumes the SSO fragment first, into WOTAN's
+// keys -- so the game uses the same keys (one sign-in for the whole site). The old per-game keys are still read.
+const TOKEN_KEY = 'wotan_iduna_token';
+const PLAYER_ID_KEY = 'wotan_iduna_player_id';
+const DISPLAY_NAME_KEY = 'wotan_iduna_display_name';
+const OLD_TOKEN_KEY = 'dw_iduna_sso_token';
+const OLD_PLAYER_ID_KEY = 'dw_iduna_sso_player_id';
+const OLD_DISPLAY_NAME_KEY = 'dw_iduna_sso_display_name';
 
 export interface IdunaSession {
     token: string;
@@ -34,10 +39,10 @@ function storageSet(key: string, val: string) {
 
 /** The shared, sticky IDUNA session -- null if nothing is stored. */
 export function getIdunaSession(): IdunaSession | null {
-    const token = storageGet(TOKEN_KEY);
-    const playerID = storageGet(PLAYER_ID_KEY);
+    const token = storageGet(TOKEN_KEY) || storageGet(OLD_TOKEN_KEY);
+    const playerID = storageGet(PLAYER_ID_KEY) || storageGet(OLD_PLAYER_ID_KEY);
     if (!token || !playerID) return null;
-    return { token, playerID, displayName: storageGet(DISPLAY_NAME_KEY) };
+    return { token, playerID, displayName: storageGet(DISPLAY_NAME_KEY) || storageGet(OLD_DISPLAY_NAME_KEY) };
 }
 
 export function setIdunaSession(token: string, playerID: string, displayName: string) {
@@ -50,6 +55,9 @@ export function clearIdunaSession() {
     storageSet(TOKEN_KEY, '');
     storageSet(PLAYER_ID_KEY, '');
     storageSet(DISPLAY_NAME_KEY, '');
+    storageSet(OLD_TOKEN_KEY, '');
+    storageSet(OLD_PLAYER_ID_KEY, '');
+    storageSet(OLD_DISPLAY_NAME_KEY, '');
 }
 
 /** Builds the "Sign in with IDUNA" link target, redirecting back to this exact page. */

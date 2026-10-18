@@ -7,6 +7,8 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Silkscreen:wght@400;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/css/wotan-theme.css">
+<link rel="stylesheet" href="/css/wotan-hs.css">
 <style>
   /* Brand palette, verbatim from apps/gui/main.c's Col constants (docs/BRAND_STYLE_GUIDE.md
      Section 2A) -- brutalist: flat fills, hard 2px frames, zero gradients, zero rounded corners,
@@ -32,7 +34,9 @@
        to load (offline dev, network-restricted deploys). */
     --mono: 'Silkscreen', ui-monospace, 'JetBrains Mono', 'IBM Plex Mono', 'Courier New', monospace;
   }
-  body { background: var(--bg); color: var(--text); font-family: var(--mono); max-width: 760px; margin: 0 auto; padding: 16px; position: relative; }
+  body { background: var(--bg); color: var(--text); font-family: var(--mono); margin: 0; position: relative; }
+  /* The WOTAN menu (#wotan-nav) spans the full width; the game keeps its 760px column below it. */
+  #dw-page { max-width: 760px; margin: 0 auto; padding: 16px; }
   /* Elite-hacker atmosphere, on-brand per docs/BRAND_STYLE_GUIDE.md Section 2A's own named
      "worth adopting" motifs: scanlines/CRT flicker as a full-screen post-process, dashed borders
      for unconfirmed/pending state, ASCII dividers -- deliberately NOT drop shadows, glows, or
@@ -214,6 +218,8 @@
 </style>
 </head>
 <body>
+<header id="wotan-nav" data-skin="dw" data-section="play"></header>
+<div id="dw-page">
 <h1>DEADWEIGHT</h1>
 <p id="subtitle">Dark Sector: Hold Battles</p>
 <div id="hud-top-row">
@@ -365,6 +371,9 @@
   </div>
 </div>
 
+</div>
+<script src="/js/iduna-sso.js"></script>
+<script src="/js/wotan-nav.js"></script>
 <script type="module" src="./dist/main.js"></script>
 </body>
 </html>
