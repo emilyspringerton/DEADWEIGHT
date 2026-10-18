@@ -1,0 +1,39 @@
+# A CI 'web' job (tsc + native wasm build + the constructed deck rules test) that could not be pushed: the GitHub token this was written
+# with lacks the 'workflow' scope. Apply with a token that has it:  git apply ops/ci-web-job.patch  (then delete this file).
+diff --git a/.github/workflows/ci.yml b/.github/workflows/ci.yml
+index e9d6203..4d7174c 100644
+--- a/.github/workflows/ci.yml
++++ b/.github/workflows/ci.yml
+@@ -60,6 +60,23 @@ jobs:
+             build/dw_client
+           if-no-files-found: error
+ 
++  web:
++    name: Web client (tsc, native wasm, constructed deck rules)
++    needs: version
++    runs-on: ubuntu-latest
++    steps:
++      - uses: actions/checkout@v4
++      - uses: actions/setup-node@v4
++        with:
++          node-version: '20'
++      - name: Toolchain (clang + wasm-ld for the native wasm32 modules)
++        run: sudo apt-get update && sudo apt-get install -y clang lld
++      # the same build deploy-web.yml ships: tsc + both wasm modules (a TypeScript or wasm break fails the push, not the later deploy)
++      - name: Build web client
++        run: scripts/build-web.sh "$RUNNER_TEMP/dw-web"
++      - name: Constructed deck rules (pure data, no browser)
++        run: node web/test/deck_test.mjs
++
+   windows:
+     name: Windows cross-build (mingw)
+     needs: version
+@@ -263,7 +280,7 @@ jobs:
+ 
+   release:
+     name: Tag & Release
+-    needs: [version, core, windows, gui, android, construct]
++    needs: [version, core, web, windows, gui, android, construct]
+     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+     runs-on: ubuntu-latest
+     permissions:
