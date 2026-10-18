@@ -214,40 +214,48 @@ for p in "${PIDS[@]}"; do kill -TERM "$p" 2>/dev/null || true; done; PIDS=()   #
 grep -q "AddressSanitizer\|runtime error" "$W/server.err" && fail "sanitizer report (placement server)"
 echo "OK: ${n} calibration matches among unrated bots (random legal decks, no tier given), reported to IDUNA"
 
-echo "== e2e 8: ops/docker/constructed_bots.sh -- the tier bots in ONE container, restarted as a whole =="
+echo "== e2e 8: ops/docker/constructed_bots.sh -- the tier bots in ONE container that never exits on its own =="
 rm -f "$W/matches.ndjson" "$W/iduna2.results" "$W/iduna2.results.decks"
 start_server --fast-forward --bot-wait-ms 600000 --iduna-url "http://127.0.0.1:$IPORT2" --agent-secret-file "$W/secret2"
-sup_start() {
-  DW_BOT="$B/dw_bot" ops/docker/constructed_bots.sh --port "$PORT" --think-ms 0 --iduna-url "http://127.0.0.1:$IPORT2" --agent-secret-file "$W/secret2" > "$W/sup.out" 2> "$W/sup.err" & SUP=$!; PIDS+=("$SUP")
-  for _ in $(seq 100); do [ "$(pgrep -P "$SUP" | wc -l)" -ge 5 ] && return 0; sleep 0.1; done
-  fail "the supervisor did not start five bots: $(cat "$W/sup.err")"
+sup_start() {   # sup_start [bot binary]: starts the supervisor, sets SUP
+  DW_BOT="${1:-$B/dw_bot}" ops/docker/constructed_bots.sh --port "$PORT" --think-ms 0 --iduna-url "http://127.0.0.1:$IPORT2" --agent-secret-file "$W/secret2" > "$W/sup.out" 2> "$W/sup.err" & SUP=$!; PIDS+=("$SUP")
 }
+bot_pid() { pgrep -f -- "--name bot-$1-c$2 --mode constructed --tier $2 --tiers 5 --port $PORT " | head -1 || true; }   # the dw_bot of that tier (the subshells' own command line has no --name)
+nbots() { pgrep -f -- "dw_bot --archetype .* --name bot-.*-c[0-9] --mode constructed --tier [0-9] --tiers 5 --port $PORT " | wc -l || true; }
 sup_start
+for _ in $(seq 100); do [ "$(nbots)" -ge 5 ] && break; sleep 0.1; done
+[ "$(nbots)" = 5 ] || fail "the supervisor did not start five bots: $(cat "$W/sup.err")"
 for want in "mirror:1" "wall:2" "ripper:3" "mirror:4" "wall:5"; do
-  a=${want%%:*}; t=${want##*:}
-  ps -o args= --ppid "$SUP" | grep -q -- "--archetype $a --name bot-$a-c$t --mode constructed --tier $t --tiers 5 " || fail "the tier $t bot is not bot-$a-c$t: $(ps -o args= --ppid "$SUP")"
+  [ -n "$(bot_pid "${want%%:*}" "${want##*:}")" ] || fail "no bot-${want%%:*}-c${want##*:} (tier ${want##*:}) running: $(pgrep -af "dw_bot --archetype" | cut -c1-150)"
 done
 for _ in $(seq 50); do n=$(grep -c '"tier": ' "$W/iduna2.results.decks" 2>/dev/null || true); [ "${n:-0}" -ge 5 ] && break; sleep 0.1; done
 for t in 1 2 3 4 5; do grep -q "\"tier\": $t," "$W/iduna2.results.decks" || fail "the tier $t bot never fetched its decks"; done
-# a bot dying takes the others down and the supervisor exits 1: the container restarts as a whole
-kid=$(pgrep -P "$SUP" | sed -n 2p); kill -KILL "$kid"
-for _ in $(seq 50); do kill -0 "$SUP" 2>/dev/null || break; sleep 0.1; done
-! kill -0 "$SUP" 2>/dev/null || fail "the supervisor survived one of its bots dying"
-rc=0; wait "$SUP" || rc=$?
-[ "$rc" = 1 ] || fail "the supervisor should exit 1 when a bot dies, it exited $rc"
-[ "$(pgrep -f "dw_bot --archetype .* --port $PORT " | wc -l)" = 0 ] || fail "bots outlived the supervisor"
-# SIGTERM (what kubelet sends) stops everything cleanly
-sup_start
+# one bot dying is restarted by itself (same tier, new process) while the other four keep running; the container does not exit
+old2=$(bot_pid wall 2); old1=$(bot_pid mirror 1); old5=$(bot_pid wall 5)
+kill -KILL "$old2"
+for _ in $(seq 80); do new2=$(bot_pid wall 2); [ -n "$new2" ] && [ "$new2" != "$old2" ] && break; sleep 0.1; done
+[ -n "${new2:-}" ] && [ "$new2" != "$old2" ] || fail "the tier 2 bot was not restarted: $(cat "$W/sup.err")"
+kill -0 "$SUP" 2>/dev/null || fail "the supervisor exited when a bot died"
+[ "$(bot_pid mirror 1)" = "$old1" ] && [ "$(bot_pid wall 5)" = "$old5" ] || fail "other tiers' bots were disturbed by the restart"
+grep -q "tier 2 bot (bot-wall-c2) exited" "$W/sup.err" || fail "the restart was not logged: $(cat "$W/sup.err")"
+# SIGTERM (what kubelet sends) stops everything: exit 143, no bot left
 kill -TERM "$SUP"
 for _ in $(seq 50); do kill -0 "$SUP" 2>/dev/null || break; sleep 0.1; done
 ! kill -0 "$SUP" 2>/dev/null || fail "SIGTERM did not stop the supervisor"
 rc=0; wait "$SUP" || rc=$?
 [ "$rc" = 143 ] || fail "the supervisor should exit 143 on SIGTERM, it exited $rc"
-[ "$(pgrep -f "dw_bot --archetype .* --port $PORT " | wc -l)" = 0 ] || fail "bots outlived SIGTERM"
+sleep 0.3; [ "$(nbots)" = 0 ] || fail "bots outlived SIGTERM"
+# bots that cannot even start (a dead binary) do not make it exit either: it keeps retrying, with a pause that grows
+sup_start /bin/false
+sleep 5
+kill -0 "$SUP" 2>/dev/null || fail "the supervisor exited because its bots cannot start"
+[ "$(grep -c "restarting in 2s" "$W/sup.err")" -ge 5 ] && grep -q "restarting in 4s" "$W/sup.err" || fail "failing bots were not retried with a growing pause: $(cat "$W/sup.err" | sort | uniq -c)"
+kill -TERM "$SUP"; rc=0; wait "$SUP" || rc=$?
+[ "$rc" = 143 ] || fail "the supervisor should exit 143 on SIGTERM while its bots are failing, it exited $rc"
 kill -TERM "$SPID"; wait "$SPID" || fail "supervisor-test server exited non-zero"; PIDS=()
 grep -q "AddressSanitizer\|runtime error" "$W/server.err" && fail "sanitizer report (supervisor-test server)"
 kill -TERM "$IP2" 2>/dev/null || true
-echo "OK: five tier bots (bot-<archetype>-c1..c5, each fetching its own tier), one dying stops the rest (exit 1), SIGTERM stops all (exit 143)"
+echo "OK: five tier bots (bot-<archetype>-c1..c5, each fetching its own tier); one dying is restarted alone, the container never exits by itself (not even when its bots cannot start), SIGTERM stops all (exit 143)"
 fi
 
 echo "== e2e 3: IDUNA auth + result reporting against a fake IDUNA (docs/IDUNA_CONTRACT.md) =="
