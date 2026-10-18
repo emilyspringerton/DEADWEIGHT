@@ -8,12 +8,13 @@ One TCP connection = one session. Server sends nothing before HELLO. `proto` = 3
 
 | type | name | payload |
 |---|---|---|
-| 0x01 | HELLO | `u8 proto`, `u8 mode` (0=card/**random**, 1=backpack reserved, **2=draft**), `u8 kind` (0=human, 1=bot), `name16 name`, `u8 token_len`, `token[token_len ≤ 200]` (IDUNA player token; empty allowed only with `--no-auth`) |
+| 0x01 | HELLO | `u8 proto`, `u8 mode` (0=card/**random**, 1=backpack reserved, **2=draft**, **3=constructed**), `u8 kind` (0=human, 1=bot), `name16 name`, `u8 token_len`, `token[token_len ≤ 200]` (IDUNA player token; empty allowed only with `--no-auth`) |
 | 0x02 | QUEUE | 0, 1, or 33 bytes: `u8 same_deck` (in **draft** mode: no byte / `0` = draft a new deck first (server replies `DRAFT_OFFER`), `1` = requeue with the last drafted deck, falls back to a redraft if there is none; random mode ignores the byte), optionally followed by a 32-byte ASCII `match_token` (S537 Duel Phase 2: IDUNA's duel-accept token — see `IDUNA/internal/http/handlers/game_social.go`'s `duelRespond`). Two queued connections in the **same mode** presenting an identical, non-empty `match_token` are paired together immediately, ahead of the server's normal FIFO/bot pairing (`try_pair_mode`'s `find_token_pair`). The token is trusted at face value, same client-reported trust level as `same_deck` — the server never calls back to IDUNA to validate it, so this is a pairing convenience, not an authorization check (both players still went through their own real IDUNA auth to get a token in the first place). Purely additive over v3 — no `proto` bump: an old client that never sends the 33-byte form behaves exactly as before. |
 | 0x03 | PLAY | `u32 match_id`, `u8 round`, `i8 slot` (0–3, −1 = pass) |
 | 0x04 | LEAVE | — (leaves queue or forfeits the current match) |
 | 0x05 | PING | `u32 nonce` |
 | 0x07 | DRAFT_PICK | `u8 index` (0/1: which offered card), `u8 mult` (1–3 copies). Draft mode only, while drafting. An invalid pick (bad index, or that copy-count bucket is full) is not an error: the server just re-sends the current `DRAFT_OFFER`. |
+| 0x08 | DRAFT_RESUME | `i8 cards[23]` — submit a whole deck instead of drafting one (S510 "Resume Uplink": an IDUNA-persisted draft deck; and the way a **constructed** client submits its built deck). Valid only while READY in draft or constructed mode, else `ERROR 4`; the deck is checked by the server (`dw_draft_deck_valid`), never trusted: illegal = `ERROR 3`. Answered by `DRAFT_DONE`. Draft mode: the client then sends `QUEUE(same_deck=1)`. Constructed mode: see the state machine below. |
 | 0x06 | AUTH | `u16 token_len` (≤ 900), `token[token_len]` — the IDUNA token (guest player JWT, or DEADWEIGHT-BOTS agent JWT for bots). **Real IDUNA ES256 JWTs are ~400–500 bytes, far above HELLO's 200-byte `token` field**, so with auth required the client sends HELLO with `token_len = 0` and then AUTH; the server replies WELCOME only after IDUNA verification. HELLO's inline token (≤200) is still accepted for short tokens. With `--no-auth` the server sends WELCOME straight after HELLO and ignores a later AUTH. |
 
 ## Server → client
@@ -36,6 +37,7 @@ One TCP connection = one session. Server sends nothing before HELLO. `proto` = 3
 ## Session state machine
 
 `CONNECTED --HELLO--> (auth required: --AUTH--> VERIFYING, ERROR 2 on rejection) READY --QUEUE--> QUEUED --MATCH_FOUND--> IN_MATCH --MATCH_END--> READY`.
+Constructed mode (HELLO mode 3) has no draft: the client submits a deck it built from the whole catalog with `DRAFT_RESUME` while READY, the server checks it (`dw_draft_deck_valid`: 23 ids, 16 distinct, exactly ten 1-ofs, five 2-ofs and one 3-of) and answers `DRAFT_DONE` (the deck echoed back, with a new `deck_id`), and then `QUEUE` (any `same_deck` byte) enters the constructed queue with that deck: `READY --DRAFT_RESUME--> READY (DRAFT_DONE) --QUEUE--> QUEUED --MATCH_FOUND--> ...`. After `MATCH_END` the server still holds the deck, so another `QUEUE` plays it again; a new `DRAFT_RESUME` swaps it. `QUEUE` before any deck was accepted, or `DRAFT_RESUME` from a random-queue connection, is `ERROR 4`; an illegal deck is `ERROR 3`. As everywhere, an `ERROR` closes the connection. A constructed deck is **not** logged in `decks.ndjson` (that file is the draft tracker's and the draft bots' deck source), and the match log record says `"mode":"constructed"` with both seats' decks, so `dw_replay_dump` replays it like a draft match.
 Draft mode inserts a draft: `READY --QUEUE--> DRAFTING (DRAFT_OFFER / DRAFT_PICK x16) --DRAFT_DONE--> QUEUED --MATCH_FOUND--> ...`; after `MATCH_END`, `QUEUE(same_deck=1)` skips the draft and `QUEUE` (or `same_deck=0`) redrafts. `LEAVE` while drafting returns to READY.
 Inside a match the server loops `ROUND_START` → collect locks → `ROUND_RESULT`, up to round 100, then `MATCH_END`.
 `ROUND_START` for round *n*+1 follows `ROUND_RESULT` *n* immediately. Both clients get every message; opponent
@@ -50,5 +52,13 @@ slots (`is-legal-play(card, energy, credits)` over the hand, minus `lock_mask`) 
 
 ## Server matchmaking rule
 
-FIFO queue per `mode` (**random and draft are fully separate queues**: a draft player only ever meets someone in the draft queue, so each queue needs its own bot pool of 3). Two waiting entries pair immediately **unless** both are bots and pairing them would
+FIFO queue per `mode` (**random, draft and constructed are fully separate queues**: a player only ever meets someone in their own queue, so each queue needs its own bot pool of 3; the constructed queue differs, see below). Two waiting entries pair immediately **unless** both are bots and pairing them would
 leave zero bots waiting (the last waiting bot is reserved for a human). Humans always pair ahead of bot–bot.
+
+### Constructed queue: by rating
+
+The constructed queue is matched by ladder rating, not FIFO (`try_pair_constructed`). Each verified connection carries its IDUNA rating (read from `GET /api/v1/games/deadweight/players/{id}/profile` when it authenticates; 1500 when IDUNA has none yet or the server runs `--no-auth`), and the server keeps it current from the two ratings in every `match-result` response.
+- Token duels first (`match_token`), as in the other queues.
+- A **human** meets the waiting **bot whose rating is closest to theirs** (ties: the one that has waited longest), so a low-rated player gets the bots with the weaker decks; two humans meet the closest-rated pair, ahead of bots.
+- **Bots mostly wait for humans.** Two bots only meet when at least three bots are waiting (the last is kept for a human) and both have waited `--bot-wait-ms` (default 45 s); a bot with fewer than 30 rated matches ("placement") waits 1.5 s instead, so a new bot calibrates against the others quickly. The server re-evaluates this every loop tick, since it is a matter of time and not of events.
+- Bots choose their deck: `dw_bot --mode constructed --tier N --tiers T` keeps a pool of decks from slice N of T (1 = weakest) of IDUNA's draft-deck tracker (`GET /api/v1/games/deadweight/bot-decks?tier=&tiers=&n=`, decks ranked by the Wilson score of their record) and plays a random one per match; without IDUNA it plays the decks in `--deck-file`, else a random legal deck. Every deck is validated with `dw_draft_deck_valid` before it is used. Bot ratings are what their deck and play earn on the ladder, so the tiers sort themselves.

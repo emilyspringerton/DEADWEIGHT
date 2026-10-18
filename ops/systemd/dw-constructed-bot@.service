@@ -1,0 +1,23 @@
+# One standing DEADWEIGHT CONSTRUCTED-queue bot per instance: dw-constructed-bot@1 ... @5 (user unit template; the instance is the deck TIER).
+# FILES ONLY -- not installed/enabled by this repo. Same brain as the other bots; --mode constructed: the bot plays a deck from slice N of 5 of
+# IDUNA's draft-deck tracker (1 = the weakest fifth of the tracked decks, 5 = the strongest), a random one from its pool each match (refreshed
+# every 30 min). The server pairs a human in the constructed queue with the waiting bot whose IDUNA ladder rating is nearest theirs, so the
+# five tiers sort themselves by what their decks earn. --tier needs IDUNA (--iduna-url in DW_BOT_ARGS); without it add --deck-file instead
+# and drop --tier. The archetype (play style) cycles mirror, wall, ripper, mirror, wall over the tiers.
+[Unit]
+Description=DEADWEIGHT constructed-queue bot, deck tier %i of 5 (dw_bot --mode constructed)
+After=network-online.target dw-server.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+EnvironmentFile=%h/.config/deadweight/dw.env
+ExecStartPre=/usr/bin/test -x %h/.local/opt/deadweight/bin/dw_bot
+ExecStart=/bin/sh -c 'case %i in 1|4) a=mirror;; 2|5) a=wall;; *) a=ripper;; esac; exec %h/.local/opt/deadweight/bin/dw_bot --archetype $$a --name bot-$$a-c%i --mode constructed --tier %i --tiers 5 --host ${DW_HOST} --port ${DW_PORT} --think-ms ${DW_BOT_THINK_MS} $DW_BOT_ARGS'
+Restart=always
+RestartSec=3
+KillSignal=SIGTERM
+TimeoutStopSec=10
+
+[Install]
+WantedBy=default.target

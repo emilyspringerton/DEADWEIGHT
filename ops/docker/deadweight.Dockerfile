@@ -6,5 +6,5 @@ WORKDIR /app
 COPY bridge/package.json bridge/package-lock.json /app/bridge/
 RUN cd /app/bridge && npm ci --omit=dev
 COPY bridge/ws-tcp-bridge.js /app/bridge/
-COPY dw_server dw_bot /app/
-RUN chmod 755 /app/dw_server /app/dw_bot
+COPY dw_server dw_bot constructed_bots.sh /app/
+RUN chmod 755 /app/dw_server /app/dw_bot /app/constructed_bots.sh

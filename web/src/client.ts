@@ -37,8 +37,8 @@ export class DeadweightClient {
 
     constructor(private bridgeUrl: string, private ev: ClientEvents) {}
 
-    /** mode 0 = random card queue, 2 = draft (HELLO mode byte; docs/WIRE_PROTOCOL.md). */
-    connect(name: string, token: string = '', mode: 0 | 2 = 0) {
+    /** mode 0 = random card queue, 2 = draft, 3 = constructed (HELLO mode byte; docs/WIRE_PROTOCOL.md). */
+    connect(name: string, token: string = '', mode: 0 | 2 | 3 = 0) {
         this.setState('connecting');
         this.ws = new WebSocket(this.bridgeUrl);
         this.ws.binaryType = 'arraybuffer';

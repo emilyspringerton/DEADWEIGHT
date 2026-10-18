@@ -54,11 +54,11 @@ if command -v python3 >/dev/null; then (cd training && python3 -m unittest test_
 
 echo "== C: server + client =="
 SERVER_SRC="apps/server/main.c core/match.c core/draft.c core/protocol.c core/card_rules.c core/card_text.c core/iduna.c core/http.c"
-CLIENT_SRC="apps/client/main.c core/client.c core/policy.c core/protocol.c core/card_rules.c core/iduna.c core/http.c"
+CLIENT_SRC="apps/client/main.c core/client.c core/policy.c core/protocol.c core/card_rules.c core/draft.c core/iduna.c core/http.c"
 gcc $CFLAGS_BASE -O2 -pthread $SERVER_SRC -o build/dw_server
 gcc $CFLAGS_BASE -O2 $CLIENT_SRC -o build/dw_client
 BRAIN_SRC="core/brain.c core/bot_brain.c core/brain_default.c core/runtime/parena_runtime.c"   # bot_brain.c is PARENA-generated: needs card_rules.h forced in
-BOT_SRC="apps/bot/main.c core/client.c core/policy.c core/protocol.c core/card_rules.c core/iduna.c core/http.c $BRAIN_SRC"
+BOT_SRC="apps/bot/main.c core/client.c core/policy.c core/protocol.c core/card_rules.c core/draft.c core/iduna.c core/http.c $BRAIN_SRC"
 gcc $CFLAGS_BASE -include card_rules.h -O2 $BOT_SRC -lm -o build/dw_bot
 ./build/dw_bot --version
 ./build/dw_server --version
@@ -91,7 +91,7 @@ if [[ "$ARGS" == *" --gui "* ]]; then
   # core/fx_rules.c is PARENA-generated (fx_rules.prn) and calls card_kind/kind_beats/card_power/
   # card_cost/card_keyword without its own prototypes -- same real reason core/bot_brain.c already
   # needs `-include card_rules.h` forced in (see BRAIN_SRC above), not a new pattern.
-  GUI_SRC="apps/gui/main.c apps/gui/fx.c apps/gui/sfx.c core/client.c core/policy.c core/protocol.c core/card_rules.c core/fx_rules.c core/card_text.c core/iduna.c core/http.c core/account_rules.c"
+  GUI_SRC="apps/gui/main.c apps/gui/fx.c apps/gui/sfx.c core/client.c core/policy.c core/protocol.c core/card_rules.c core/draft.c core/fx_rules.c core/card_text.c core/iduna.c core/http.c core/account_rules.c"
   # S508e -- real TLS via PARENA's net/tls.prn (mbedTLS FFI, never hand-rolled crypto). Auto-
   # detected, not hard-required: without it, dw_gui still builds and runs, but any https:// IDUNA
   # URL (the real shipped default) fails clean at connect time instead of silently downgrading to

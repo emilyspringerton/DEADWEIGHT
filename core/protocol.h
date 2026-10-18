@@ -13,14 +13,18 @@
 
 enum {
     DW_C_HELLO = 0x01, DW_C_QUEUE = 0x02, DW_C_PLAY = 0x03, DW_C_LEAVE = 0x04, DW_C_PING = 0x05, DW_C_AUTH = 0x06, DW_C_DRAFT_PICK = 0x07,
-    DW_C_DRAFT_RESUME = 0x08, /* S510: submit an already-drafted (IDUNA-persisted) deck instead of redrafting -- see dw_draft_deck_valid */
+    DW_C_DRAFT_RESUME = 0x08, /* S510: submit an already-drafted (IDUNA-persisted) deck instead of redrafting -- see dw_draft_deck_valid.
+                               * Also how a DW_MODE_CONSTRUCTED client submits its built deck (answered by DRAFT_DONE, not logged as a draft) */
     DW_S_WELCOME = 0x81, DW_S_QUEUED = 0x82, DW_S_MATCH_FOUND = 0x83, DW_S_ROUND_START = 0x84,
     DW_S_PLAY_ACK = 0x85, DW_S_PLAY_REJECT = 0x86, DW_S_ROUND_RESULT = 0x87, DW_S_MATCH_END = 0x88,
     DW_S_PONG = 0x89, DW_S_DRAFT_OFFER = 0x8A, DW_S_DRAFT_DONE = 0x8B, DW_S_ERROR = 0x8F
 };
 /* DW_MODE_CARD is the "random" queue (whole shuffled catalog); DW_MODE_DRAFT drafts a 23-card deck first (core/draft.h) and
- * has its own queue. Backpack is VS1. */
-enum { DW_MODE_CARD = 0, DW_MODE_BACKPACK = 1, DW_MODE_DRAFT = 2 };
+ * has its own queue. DW_MODE_CONSTRUCTED (HELLO mode 3) plays a deck the player built from the whole catalog (the standard set:
+ * ten 1-ofs, five 2-ofs, one 3-of -- the same legality rule as a draft): the client submits it with DW_C_DRAFT_RESUME while
+ * READY, then QUEUEs. It has its own queue, its own bots, costs no tickets and is not part of the draft deck log. Backpack is
+ * VS1. */
+enum { DW_MODE_CARD = 0, DW_MODE_BACKPACK = 1, DW_MODE_DRAFT = 2, DW_MODE_CONSTRUCTED = 3 };
 #define DW_DRAFT_DECK 23
 enum { DW_KIND_HUMAN = 0, DW_KIND_BOT = 1 };
 enum { DW_FLAG_FAST_FORWARD = 1, DW_FLAG_AUTH_REQUIRED = 2 };

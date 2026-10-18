@@ -4,6 +4,7 @@
 #include "net.h"
 #include "protocol.h"
 #include "policy.h"
+#include "draft.h"
 
 typedef struct { dw_sock fd; uint8_t in[2048]; size_t n; } DwClient;
 
@@ -17,7 +18,10 @@ typedef struct {
     const char *token;                     /* optional IDUNA token; sent as AUTH after HELLO (needed when the server requires auth) */
     const char *match_token;               /* S537 Duel Phase 2: optional 32-char IDUNA duel match_token, sent on every QUEUE */
     int policy; uint32_t seed;
-    int mode;                              /* DW_MODE_CARD (random, default) or DW_MODE_DRAFT: draft a deck, then requeue same-deck on win/draw, redraft on loss */
+    int mode;                              /* DW_MODE_CARD (random, default), DW_MODE_DRAFT (draft a deck, then requeue same-deck on win/draw, redraft on loss) or DW_MODE_CONSTRUCTED */
+    /* DW_MODE_CONSTRUCTED: where each deck comes from. Called before every queue (a bot rotates through its pool); returns 0 and
+     * fills deck, or nonzero to fall back to a random legal deck. NULL = always a random legal deck. */
+    int (*next_deck)(void *ctx, int8_t deck[DW_DECK_SIZE]); void *deck_ctx;
     /* DW_POL_HYBRID only: brain config copied into the policy context (survives per-match resets) */
     DwDecideFn decide; const struct DwBrain *brain; int arch; double w_h, w_n, sigma;
     long target_matches;                   /* stop after this many completed matches (<=0: forever) */

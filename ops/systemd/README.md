@@ -12,6 +12,9 @@ for a in ripper wall mirror; do systemctl --user enable --now dw-bot@$a; done   
 # draft queue: its own pool of 3 (random and draft are separate queues)
 cp 'ops/systemd/dw-draft-bot@.service' ~/.config/systemd/user/ && systemctl --user daemon-reload
 for a in ripper wall mirror; do systemctl --user enable --now dw-draft-bot@$a; done
+# constructed queue (bring your own deck): five bots, one per deck tier 1 (weakest) .. 5 (strongest); needs IDUNA in DW_BOT_ARGS
+cp 'ops/systemd/dw-constructed-bot@.service' ~/.config/systemd/user/ && systemctl --user daemon-reload
+for t in 1 2 3 4 5; do systemctl --user enable --now dw-constructed-bot@$t; done
 # browser/wasm client bridge (WOTAN's wotan.okemily.com/DEADWEIGHT hosting, see
 # docs/NATIVE_WASM_CLIENT_NORTHSTAR.md) -- npm i in web/bridge/ first if node_modules/ws is missing:
 cp ops/systemd/dw-ws-bridge.service ~/.config/systemd/user/ && systemctl --user daemon-reload

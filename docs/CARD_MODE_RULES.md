@@ -210,8 +210,8 @@ wrote /tmp/cj.json (105 cards)
 ## Queues and Draft mode (shipped 2026-09-19)
 
 There are separate queues (HELLO `mode`): **random** (mode 0, the original: each player's deck is the whole shuffled 105-card
-catalog) and **draft** (mode 2). Constructed (bring your own deck) is a later mode; random may go away when it lands.
-A player only ever meets someone in the same queue, so every queue needs its own bot pool of 3.
+catalog), **draft** (mode 2) and **constructed** (mode 3, 2026-10-18, below); random may go away eventually.
+A player only ever meets someone in the same queue, so every queue needs its own bot pool of 3 (constructed: see below).
 
 In draft mode each player first drafts a deck (`core/draft.[ch]`, host-owned, not PARENA). Each of 16 picks offers **2 cards
 from the catalog** (a card already taken is never offered again); the drafter takes one card *and* a copy count from three
@@ -237,3 +237,17 @@ draft records carry `deck_ids` and both `decks`, so draft matches replay exactly
 `fx-ch` / `fx-phase` / `fx-amount(word, dealt, taken, my-kind, opp-kind, opp-cost, my-hull, opp-hull, energy-left,
 opp-energy, my-credits, opp-credits, round, roll)`. Constants are zero-parameter defns (`start-hull`, `start-energy`,
 `start-vault`, `max-rounds`, `hand-size`, `num-cards`).
+
+## Constructed mode (2026-10-18)
+
+The deck is built, not drafted: from the **whole catalog** (the "standard set": every player has every card, there are no
+packs), with the draft's own shape — **ten 1-ofs, five 2-ofs, one 3-of = 23 cards, 16 distinct**. The server checks the deck
+when it is submitted (`dw_draft_deck_valid`) whatever the client says. Matches play exactly like draft matches
+(`dw_match_init_decks`: the draw pile is the deck, the discard is reshuffled into it). It costs no tickets and is not part of
+a draft run. Hands can still show the opponent's cards after a Realm Warp (swap hands), as in every mode.
+
+The queue is paired by **IDUNA ladder rating** (`docs/WIRE_PROTOCOL.md`, "Constructed queue: by rating"): a human meets the
+waiting bot nearest their rating, and the bots play decks from tiers of IDUNA's draft-deck tracker (tier 1 of 5 = the weakest
+fifth of the tracked decks by Wilson score of their record, tier 5 = the strongest), so a new player faces weak decks and a
+strong one faces the best decks the draft has produced. The bots' ratings come from what those decks earn on the ladder, so
+how well the tiers actually separate is an empirical question the live ladder answers over time.

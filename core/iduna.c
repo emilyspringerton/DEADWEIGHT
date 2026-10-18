@@ -64,18 +64,54 @@ int dwi_verify(DwIduna *d, const char *token, const char *bot_name, DwIdentity *
     return 0;
 }
 
-int dwi_report(DwIduna *d, const DwMatchReport *r) {
+static int ratingAfter(const char *resp, const char *seat) {
+    char pat[16]; snprintf(pat, sizeof pat, "\"%s\"", seat);
+    const char *p = strstr(resp, pat); int v = -1;
+    return (p && dw_json_int(p, "rating", &v)) ? v : -1;
+}
+
+int dwi_report_ex(DwIduna *d, const DwMatchReport *r, int *rating0, int *rating1) {
     static const char *const reasons[] = { "hull", "rounds", "forfeit", "server" };
     char body[512], resp[2048]; int st = 0;
+    if (rating0) *rating0 = -1;
+    if (rating1) *rating1 = -1;
     snprintf(body, sizeof body, "{\"match_id\":%u,\"seed\":%u,\"seat0_player_id\":\"%s\",\"seat1_player_id\":\"%s\",\"winner\":%d,\"rounds\":%d,\"reason\":\"%s\",\"mode\":%d}",
              r->match_id, r->seed, r->seat_pid[0], r->seat_pid[1], r->winner, r->rounds, reasons[r->reason & 3], r->mode);
     for (int attempt = 0; attempt < 2; attempt++) {
         if (!d->token[0] && dwi_agent_login(d) != 0) return -1;
         if (dw_http("POST", d->host, d->port, d->use_tls, GAME "/match-result", d->token, body, resp, sizeof resp, &st, TMO) != 0) return -1;
         if (st == 401) { d->token[0] = 0; continue; }
-        return st == 200 ? 0 : -1;
+        if (st != 200) return -1;
+        if (rating0) *rating0 = ratingAfter(resp, "seat0");
+        if (rating1) *rating1 = ratingAfter(resp, "seat1");
+        return 0;
     }
     return -1;
+}
+
+int dwi_report(DwIduna *d, const DwMatchReport *r) { return dwi_report_ex(d, r, NULL, NULL); }
+
+int dwi_bot_decks(DwIduna *d, int tier, int tiers, int n, DwDeckPool *out) {
+    char path[160]; int st = 0;
+    out->n = 0;
+    if (n < 1) n = 1;
+    if (n > DW_POOL_MAX) n = DW_POOL_MAX;
+    snprintf(path, sizeof path, GAME "/bot-decks?tier=%d&tiers=%d&n=%d", tier, tiers, n);
+    const size_t cap = 48 * 1024;   /* 64 decks of ~250 bytes each, with room */
+    char *resp = (char *)malloc(cap);
+    if (!resp) return -1;
+    if (dw_http("GET", d->host, d->port, d->use_tls, path, NULL, NULL, resp, cap, &st, TMO) != 0 || st != 200) { free(resp); return -1; }
+    const char *obj;
+    for (int i = 0; i < DW_POOL_MAX && dw_json_array_at(resp, "decks", i, &obj); i++) {
+        int ids[DW_DECK_SIZE + 2];
+        if (dw_json_int_array(obj, "cards", ids, DW_DECK_SIZE + 1) != DW_DECK_SIZE) continue;
+        int8_t deck[DW_DECK_SIZE];
+        for (int k = 0; k < DW_DECK_SIZE; k++) deck[k] = (int8_t)(ids[k] > 127 ? -1 : ids[k]);
+        if (!dw_draft_deck_valid(deck, DW_DECK_SIZE)) continue;
+        memcpy(out->deck[out->n++], deck, sizeof deck);
+    }
+    free(resp);
+    return 0;
 }
 
 /* S522: "account_state" ("guest" vs "base", computed server-side from whether player_credentials
