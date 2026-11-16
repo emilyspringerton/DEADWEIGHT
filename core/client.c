@@ -78,7 +78,7 @@ int dwc_run(DwClient *c, DwRunOpts *o) {
     if (dwc_send(c, &m)) return -1;
     if (o->token && *o->token) {
         size_t tl = strlen(o->token);
-        if (tl > DW_MAX_AUTH_TOKEN) { fprintf(stderr, "dwc: IDUNA token too long for AUTH (%zu > %d)\n", tl, DW_MAX_AUTH_TOKEN); return -2; }
+        if (tl > DW_MAX_AUTH_TOKEN) { fprintf(stderr, "dwc: IDUNA token too long for AUTH (%lu > %d)\n", (unsigned long)tl, DW_MAX_AUTH_TOKEN); return -2; }
         DwMsg a; memset(&a, 0, sizeof a); a.type = DW_C_AUTH; a.u.auth.token_len = (uint16_t)tl; memcpy(a.u.auth.token, o->token, tl);
         if (dwc_send(c, &a)) return -1;
     }
